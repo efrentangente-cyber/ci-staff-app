@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CI Interview Checklist</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: #f5f5f5;
+            padding: 15px;
+        }
+        
+        .checklist-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .checklist-item .item-text {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .checklist-item .radio-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        
+        .checklist-item .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 13px;
+        }
+        
+        .checklist-item .radio-group input[type="radio"] {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .category-header {
+            background: #1e3a5f;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 20px 0 10px 0;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .form-header {
+            text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .btn-submit {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="form-header">
+            <h5>DCCCO - Dumaguete City Community Cooperative</h5>
+            <h6>CREDIT ASSESSMENT CHECKLIST</h6>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Borrower's Name:</label>
+            <input type="text" class="form-control" value="{{ application.member_name if application else '' }}" readonly>
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-6">
+                <label class="form-label">Date:</label>
+                <input type="date" class="form-control" id="interview_date">
+            </div>
+            <div class="col-6">
+                <label class="form-label">Type:</label>
+                <select class="form-select" id="loan_type">
+                    <option>Regular</option>
+                    <option>Emergency</option>
+                    <option>Special</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Area:</label>
+            <input type="text" class="form-control" id="area">
+        </div>
+        
+        <!-- CHARACTER -->
+        <div class="category-header">CHARACTER</div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Loan purpose is clear and valid</div>
+            <div class="radio-group">
+                <label><input type="radio" name="char1" value="approve"> ✓</label>
+                <label><input type="radio" name="char1" value="disapprove"> ✗</label>
+                <label><input type="radio" name="char1" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Borrower has good credit history</div>
+            <div class="radio-group">
+                <label><input type="radio" name="char2" value="approve"> ✓</label>
+                <label><input type="radio" name="char2" value="disapprove"> ✗</label>
+                <label><input type="radio" name="char2" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Borrower is cooperative and honest</div>
+            <div class="radio-group">
+                <label><input type="radio" name="char3" value="approve"> ✓</label>
+                <label><input type="radio" name="char3" value="disapprove"> ✗</label>
+                <label><input type="radio" name="char3" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Good reputation in community</div>
+            <div class="radio-group">
+                <label><input type="radio" name="char4" value="approve"> ✓</label>
+                <label><input type="radio" name="char4" value="disapprove"> ✗</label>
+                <label><input type="radio" name="char4" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <!-- CAPACITY -->
+        <div class="category-header">CAPACITY</div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Stable source of income</div>
+            <div class="radio-group">
+                <label><input type="radio" name="cap1" value="approve"> ✓</label>
+                <label><input type="radio" name="cap1" value="disapprove"> ✗</label>
+                <label><input type="radio" name="cap1" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Income sufficient to pay loan</div>
+            <div class="radio-group">
+                <label><input type="radio" name="cap2" value="approve"> ✓</label>
+                <label><input type="radio" name="cap2" value="disapprove"> ✗</label>
+                <label><input type="radio" name="cap2" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Debt-to-income ratio acceptable</div>
+            <div class="radio-group">
+                <label><input type="radio" name="cap3" value="approve"> ✓</label>
+                <label><input type="radio" name="cap3" value="disapprove"> ✗</label>
+                <label><input type="radio" name="cap3" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Business/employment is stable</div>
+            <div class="radio-group">
+                <label><input type="radio" name="cap4" value="approve"> ✓</label>
+                <label><input type="radio" name="cap4" value="disapprove"> ✗</label>
+                <label><input type="radio" name="cap4" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <!-- CAPITAL -->
+        <div class="category-header">CAPITAL</div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Borrower has savings/assets</div>
+            <div class="radio-group">
+                <label><input type="radio" name="cap5" value="approve"> ✓</label>
+                <label><input type="radio" name="cap5" value="disapprove"> ✗</label>
+                <label><input type="radio" name="cap5" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Net worth is positive</div>
+            <div class="radio-group">
+                <label><input type="radio" name="cap6" value="approve"> ✓</label>
+                <label><input type="radio" name="cap6" value="disapprove"> ✗</label>
+                <label><input type="radio" name="cap6" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Personal investment in business</div>
+            <div class="radio-group">
+                <label><input type="radio" name="cap7" value="approve"> ✓</label>
+                <label><input type="radio" name="cap7" value="disapprove"> ✗</label>
+                <label><input type="radio" name="cap7" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <!-- COLLATERAL -->
+        <div class="category-header">COLLATERAL</div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Collateral identified and verified</div>
+            <div class="radio-group">
+                <label><input type="radio" name="col1" value="approve"> ✓</label>
+                <label><input type="radio" name="col1" value="disapprove"> ✗</label>
+                <label><input type="radio" name="col1" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Collateral value covers loan amount</div>
+            <div class="radio-group">
+                <label><input type="radio" name="col2" value="approve"> ✓</label>
+                <label><input type="radio" name="col2" value="disapprove"> ✗</label>
+                <label><input type="radio" name="col2" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Ownership documents verified</div>
+            <div class="radio-group">
+                <label><input type="radio" name="col3" value="approve"> ✓</label>
+                <label><input type="radio" name="col3" value="disapprove"> ✗</label>
+                <label><input type="radio" name="col3" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <!-- CONDITION -->
+        <div class="category-header">CONDITION</div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Economic conditions are favorable</div>
+            <div class="radio-group">
+                <label><input type="radio" name="con1" value="approve"> ✓</label>
+                <label><input type="radio" name="con1" value="disapprove"> ✗</label>
+                <label><input type="radio" name="con1" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">Industry/business sector is stable</div>
+            <div class="radio-group">
+                <label><input type="radio" name="con2" value="approve"> ✓</label>
+                <label><input type="radio" name="con2" value="disapprove"> ✗</label>
+                <label><input type="radio" name="con2" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <div class="checklist-item">
+            <div class="item-text">No major risks identified</div>
+            <div class="radio-group">
+                <label><input type="radio" name="con3" value="approve"> ✓</label>
+                <label><input type="radio" name="con3" value="disapprove"> ✗</label>
+                <label><input type="radio" name="con3" value="defer"> ⏸</label>
+            </div>
+        </div>
+        
+        <!-- Remarks -->
+        <div class="mt-4 mb-3">
+            <label class="form-label fw-bold">Remarks:</label>
+            <textarea class="form-control" id="remarks" rows="4"></textarea>
+        </div>
+        
+        <!-- Other Info -->
+        <div class="mb-3">
+            <label class="form-label fw-bold">Residence verified:</label>
+            <div>
+                <label class="me-3"><input type="radio" name="residence_verified" value="yes"> Yes</label>
+                <label><input type="radio" name="residence_verified" value="no"> No</label>
+            </div>
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Family interviewed:</label>
+            <input type="text" class="form-control" id="family_interviewed">
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label">Neighbors interviewed:</label>
+            <input type="text" class="form-control" id="neighbors_interviewed">
+        </div>
+        
+        <!-- Final Recommendation -->
+        <div class="category-header">FINAL RECOMMENDATION</div>
+        <div class="text-center my-3">
+            <label class="me-3"><input type="radio" name="final_recommendation" value="Approve"> <span class="text-success">APPROVE</span></label>
+            <label class="me-3"><input type="radio" name="final_recommendation" value="Disapprove"> <span class="text-danger">DISAPPROVE</span></label>
+            <label><input type="radio" name="final_recommendation" value="Defer"> <span class="text-warning">DEFER</span></label>
+        </div>
+        
+        <button class="btn btn-primary btn-submit" onclick="submitForm()">Submit Checklist</button>
+    </div>
+    
+    <script>
+        document.getElementById('interview_date').valueAsDate = new Date();
+        
+        function submitForm() {
+            alert('Checklist submitted!');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}CI Staff Dashboard{% endblock %}
+{% block content %}
+<div class="top-bar">
+    <h2>CI Staff Dashboard</h2>
+    <div class="top-bar-actions">
+        <div class="user-menu-container">
+            <button class="btn btn-outline-secondary user-menu-btn" type="button" onclick="this.nextElementSibling.classList.toggle('show'); event.stopPropagation();">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <div class="user-menu-dropdown">
+                <div class="user-menu-header">
+                    <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                </div>
+                <a class="user-menu-item" href="{{ url_for('change_password') }}">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+                <div class="user-menu-divider"></div>
+                <a class="user-menu-item text-danger" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card blue">
+        <div class="stat-card-icon blue">
+            <i class="bi bi-clipboard-check"></i>
+        </div>
+        <h3>{{ applications|length }}</h3>
+        <p>Total Assigned</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon yellow">
+            <i class="bi bi-hourglass-split"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'equalto', 'assigned_to_ci')|list|length }}</h3>
+        <p>Pending Interview</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon blue">
+            <i class="bi bi-check-circle-fill"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }}</h3>
+        <p>Completed</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon yellow">
+            <i class="bi bi-percent"></i>
+        </div>
+        <h3>{{ "%.0f"|format((applications|selectattr('status', 'equalto', 'ci_completed')|list|length / applications|length * 100) if applications|length > 0 else 0) }}%</h3>
+        <p>Completion Rate</p>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0">Assigned Applications</h5>
+            <div class="input-group" style="max-width: 250px;">
+                <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Search..." onkeyup="searchApplications()">
+                <button class="btn btn-sm btn-outline-secondary" type="button">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary" id="totalCount">{{ applications|length }} Total</span>
+        </div>
+    </div>
+    <div class="content-card-body">
+        <table class="table table-hover" id="applicationsTable">
+            <thead>
+                <tr>
+                    <th>Member Name</th>
+                    <th>Date Submitted</th>
+                    <th>Location</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for app in applications %}
+                <tr>
+                    <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                    <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                    <td>{{ app.member_address }}</td>
+                    <td>
+                        <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-{% if app.status == 'ci_completed' %}primary{% else %}warning{% endif %}">
+                            <i class="bi bi-{% if app.status == 'ci_completed' %}eye{% else %}pencil{% endif %}"></i>
+                            <span class="btn-text">{% if app.status == 'ci_completed' %}View{% else %}Start{% endif %}</span>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// Search applications
+function searchApplications() {
+    const searchValue = document.getElementById('searchInput').value.toLowerCase();
+    const table = document.getElementById('applicationsTable');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    let visibleCount = 0;
+    
+    for (let i = 0; i < rows.length; i++) {
+        const cells = rows[i].getElementsByTagName('td');
+        let found = false;
+        
+        // Search in all cells
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().includes(searchValue)) {
+                found = true;
+                break;
+            }
+        }
+        
+        if (found) {
+            rows[i].style.display = '';
+            visibleCount++;
+        } else {
+            rows[i].style.display = 'none';
+        }
+    }
+    
+    // Update count badge
+    document.getElementById('totalCount').textContent = `${visibleCount} ${searchValue ? 'Found' : 'Total'}`;
+    
+    // Reset status filter when searching
+    if (searchValue) {
+        document.getElementById('statusFilter').value = 'all';
+    }
+}
+
+// Filter applications by status
+function filterApplications() {
+    const filterValue = document.getElementById('statusFilter').value;
+    const table = document.getElementById('applicationsTable');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    let visibleCount = 0;
+    
+    for (let i = 0; i < rows.length; i++) {
+        const statusCell = rows[i].getElementsByTagName('td')[3]; // Status column
+        if (statusCell) {
+            const statusBadge = statusCell.querySelector('.badge');
+            const statusText = statusBadge ? statusBadge.textContent.trim().toLowerCase() : '';
+            
+            if (filterValue === 'all') {
+                rows[i].style.display = '';
+                visibleCount++;
+            } else {
+                let showRow = false;
+                
+                // Exact matching for each status
+                if (filterValue === 'assigned_to_ci' && statusText === 'assigned to ci') {
+                    showRow = true;
+                } else if (filterValue === 'ci_completed' && statusText === 'ci completed') {
+                    showRow = true;
+                }
+                
+                rows[i].style.display = showRow ? '' : 'none';
+                if (showRow) visibleCount++;
+            }
+        }
+    }
+    
+    document.getElementById('totalCount').textContent = `${visibleCount} ${filterValue === 'all' ? 'Total' : 'Filtered'}`;
+}
+</script>
+
+<!-- Real-time Dashboard Updates -->
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
+{% endblock %}

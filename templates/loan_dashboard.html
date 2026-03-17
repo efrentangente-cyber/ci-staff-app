@@ -1,0 +1,215 @@
+    {% extends "base.html" %}
+{% block title %}Loan Staff Dashboard{% endblock %}
+{% block content %}
+<div class="top-bar">
+    <h2>Loan Staff Dashboard</h2>
+    <div class="top-bar-actions">
+        <a href="{{ url_for('submit_application') }}" class="btn btn-warning">
+            <i class="bi bi-plus-circle"></i> New Application
+        </a>
+        <div class="user-menu-container">
+            <button class="btn btn-outline-secondary user-menu-btn" type="button" onclick="this.nextElementSibling.classList.toggle('show'); event.stopPropagation();">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <div class="user-menu-dropdown">
+                <div class="user-menu-header">
+                    <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                </div>
+                <a class="user-menu-item" href="{{ url_for('change_password') }}">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+                <div class="user-menu-divider"></div>
+                <a class="user-menu-item text-danger" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card blue">
+        <div class="stat-card-icon blue">
+            <i class="bi bi-file-earmark-text"></i>
+        </div>
+        <h3>{{ applications|length }}</h3>
+        <p>Total Applications</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon yellow">
+            <i class="bi bi-clock"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'in', ['submitted', 'assigned_to_ci'])|list|length }}</h3>
+        <p>Pending</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon blue">
+            <i class="bi bi-check-circle"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'equalto', 'approved')|list|length }}</h3>
+        <p>Approved</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon yellow">
+            <i class="bi bi-star-fill"></i>
+        </div>
+        <h3>{{ "%.1f"|format((applications|selectattr('status', 'equalto', 'approved')|list|length / applications|length * 10) if applications|length > 0 else 0) }}</h3>
+        <p>Success Rating</p>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0">Applications</h5>
+            <div class="input-group" style="max-width: 250px;">
+                <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Search..." onkeyup="searchApplications()">
+                <button class="btn btn-sm btn-outline-secondary" type="button">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <select class="form-select form-select-sm" id="statusFilter" onchange="filterApplications()" style="width: auto;">
+                <option value="all">All Status</option>
+                <option value="submitted">Submitted</option>
+                <option value="assigned_to_ci">Assigned to CI</option>
+                <option value="ci_completed">CI Completed</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+            </select>
+            <span class="badge bg-secondary" id="totalCount">{{ applications|length }} Total</span>
+        </div>
+    </div>
+    <div class="content-card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="applicationsTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">Member Name <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th onclick="sortTable(1)">Loan Amount <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th onclick="sortTable(2)">Status <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th onclick="sortTable(3)">CI Staff <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th onclick="sortTable(4)">Submitted <i class="bi bi-arrow-down-up sort-icon"></i></th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for app in applications %}
+                    <tr>
+                        <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                        <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
+                        <td>
+                            {% if app.status == 'approved' %}
+                            <span class="badge bg-success">Approved</span>
+                            {% elif app.status == 'rejected' %}
+                            <span class="badge bg-danger">Rejected</span>
+                            {% elif app.status == 'ci_completed' %}
+                            <span class="badge bg-info">CI Completed</span>
+                            {% elif app.status == 'assigned_to_ci' %}
+                            <span class="badge bg-warning">Assigned to CI</span>
+                            {% elif app.status == 'submitted' %}
+                            <span class="badge bg-secondary">Submitted</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ app.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if app.assigned_ci_staff %}
+                            <span class="badge bg-primary">{{ app.ci_staff_name }}</span>
+                            {% else %}
+                            <span class="text-muted">Not Assigned</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                        <td>
+                            <a href="{{ url_for('loan_application', id=app.id) }}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-eye"></i>
+                                <span class="btn-text">View</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="pagination-container">
+            <div class="pagination-info">
+                Showing <span id="pageInfo">1-4 of {{ applications|length }}</span>
+            </div>
+            <ul class="pagination" id="pagination"></ul>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='datatable.js') }}"></script>
+<script>
+// Initialize DataTable with 4 items per page
+let dataTable;
+document.addEventListener('DOMContentLoaded', function() {
+    dataTable = new DataTable('applicationsTable', {
+        itemsPerPage: 4,
+        searchInputId: 'searchInput',
+        paginationId: 'pagination',
+        pageInfoId: 'pageInfo'
+    });
+});
+
+// Search applications
+function searchApplications() {
+    if (dataTable) {
+        dataTable.search(document.getElementById('searchInput').value);
+    }
+}
+
+// Filter applications by status
+function filterApplications() {
+    const filterValue = document.getElementById('statusFilter').value;
+    const table = document.getElementById('applicationsTable');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    
+    for (let i = 0; i < rows.length; i++) {
+        const statusCell = rows[i].getElementsByTagName('td')[2];
+        if (statusCell) {
+            const statusBadge = statusCell.querySelector('.badge');
+            const statusText = statusBadge ? statusBadge.textContent.trim().toLowerCase() : '';
+            
+            if (filterValue === 'all') {
+                rows[i].style.display = '';
+            } else {
+                let showRow = false;
+                
+                if (filterValue === 'submitted' && statusText === 'submitted') {
+                    showRow = true;
+                } else if (filterValue === 'assigned_to_ci' && statusText === 'assigned to ci') {
+                    showRow = true;
+                } else if (filterValue === 'ci_completed' && statusText === 'ci completed') {
+                    showRow = true;
+                } else if (filterValue === 'approved' && statusText === 'approved') {
+                    showRow = true;
+                } else if (filterValue === 'rejected' && statusText === 'rejected') {
+                    showRow = true;
+                }
+                
+                rows[i].style.display = showRow ? '' : 'none';
+            }
+        }
+    }
+    
+    // Reinitialize datatable after filtering
+    if (dataTable) {
+        dataTable.updatePagination();
+    }
+}
+
+// Sort table
+function sortTable(columnIndex) {
+    if (dataTable) {
+        dataTable.sort(columnIndex);
+    }
+}
+</script>
+
+<!-- Real-time Dashboard Updates -->
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
+{% endblock %}

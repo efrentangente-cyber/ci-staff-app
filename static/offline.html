@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Offline - CI Staff</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        .offline-container {
+            max-width: 400px;
+        }
+        .offline-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        p {
+            font-size: 16px;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+        .retry-btn {
+            background: #fbbf24;
+            color: #1e3a5f;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .retry-btn:hover {
+            background: #f59e0b;
+        }
+        .status {
+            margin-top: 20px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">📡</div>
+        <h1>You're Offline</h1>
+        <p>No internet connection detected. Your data will be saved locally and synced automatically when you're back online.</p>
+        <button class="retry-btn" onclick="location.reload()">Try Again</button>
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        // Check connection status
+        function updateStatus() {
+            const status = document.getElementById('status');
+            if (navigator.onLine) {
+                status.textContent = '✓ Connection restored! Reloading...';
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                status.textContent = '✗ Still offline';
+            }
+        }
+
+        // Listen for online event
+        window.addEventListener('online', updateStatus);
+        window.addEventListener('offline', updateStatus);
+
+        // Check every 5 seconds
+        setInterval(updateStatus, 5000);
+    </script>
+</body>
+</html>

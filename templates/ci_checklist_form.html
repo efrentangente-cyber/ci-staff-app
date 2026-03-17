@@ -1,0 +1,513 @@
+    <!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CI Interview Checklist</title>
+    <style>
+        @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            margin: 10px;
+            background: #f5f5f5;
+        }
+        
+        .form-container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: white;
+            padding: 15px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        
+        @media (min-width: 768px) {
+            .form-container {
+                max-width: 900px;
+                padding: 30px;
+            }
+            body {
+                margin: 20px;
+            }
+        }
+        
+        .form-header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        
+        .form-header p {
+            margin: 0;
+            font-size: 11px;
+        }
+        
+        .form-header h2 {
+            margin: 5px 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .info-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 8px;
+            font-size: 11px;
+        }
+        
+        .info-field {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+        
+        .info-field label {
+            margin-right: 5px;
+            white-space: nowrap;
+        }
+        
+        .info-field input,
+        .info-field select {
+            flex: 1;
+            border: none;
+            border-bottom: 1px solid #000;
+            padding: 2px 5px;
+            font-size: 11px;
+        }
+        
+        .checklist-table {
+            width: 100%;
+            min-width: 700px;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 11px;
+            table-layout: fixed;
+        }
+        
+        .checklist-table th,
+        .checklist-table td {
+            border: 1px solid #000;
+            padding: 8px 6px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            vertical-align: middle;
+        }
+        
+        .checklist-table th {
+            background: #e0e0e0;
+            font-weight: bold;
+            text-align: center;
+            font-size: 9px;
+        }
+        
+        .checklist-table th:nth-child(1) { width: 12%; }
+        .checklist-table th:nth-child(2) { width: 58%; }
+        .checklist-table th:nth-child(3) { width: 10%; }
+        .checklist-table th:nth-child(4) { width: 10%; }
+        .checklist-table th:nth-child(5) { width: 10%; }
+        
+        .checklist-table .criteria-cell {
+            background: #e0e0e0;
+            font-weight: bold;
+            text-align: center;
+            vertical-align: middle;
+            font-size: 10px;
+        }
+        
+        .checklist-table .radio-cell {
+            text-align: center;
+            padding: 2px 1px;
+        }
+        
+        .checklist-table td:nth-child(2) {
+            white-space: normal !important;
+            word-break: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            hyphens: auto;
+            text-align: left;
+            padding-left: 10px;
+            font-size: 11px;
+            max-width: none !important;
+        }
+        
+        /* Force all item cells to show full text */
+        .checklist-table tbody tr td:nth-child(2) {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+        
+        .checklist-table input[type="radio"] {
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+        
+        @media (max-width: 768px) {
+            .checklist-table {
+                font-size: 10px;
+                min-width: 650px;
+            }
+            .checklist-table th {
+                font-size: 8px;
+                padding: 4px 2px;
+            }
+            .checklist-table td {
+                padding: 6px 4px;
+            }
+            .checklist-table .criteria-cell {
+                font-size: 9px;
+            }
+            .checklist-table input[type="radio"] {
+                width: 12px;
+                height: 12px;
+            }
+            .checklist-table td:nth-child(2) {
+                font-size: 10px;
+            }
+        }
+        
+        .checklist-table input[type="radio"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        
+        .remarks-section {
+            margin: 15px 0;
+        }
+        
+        .remarks-box {
+            border: 1px solid #000;
+            min-height: 80px;
+            padding: 8px;
+        }
+        
+        .remarks-box textarea {
+            width: 100%;
+            border: none;
+            font-size: 11px;
+            resize: vertical;
+            min-height: 70px;
+        }
+        
+        .other-info {
+            margin: 15px 0;
+            font-size: 11px;
+        }
+        
+        .other-info h3 {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .other-info-row {
+            margin-bottom: 8px;
+        }
+        
+        .other-info-row input[type="text"] {
+            border: none;
+            border-bottom: 1px solid #000;
+            width: 70%;
+            padding: 2px 5px;
+            font-size: 11px;
+        }
+        
+        .final-recommendation {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 12px;
+        }
+        
+        .final-recommendation h3 {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .final-recommendation label {
+            margin: 0 15px;
+            font-weight: bold;
+        }
+        
+        .final-recommendation input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            vertical-align: middle;
+        }
+        
+        .btn-submit {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+            display: block;
+            margin: 20px auto;
+        }
+        
+        .btn-submit:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <!-- Header -->
+        <div class="form-header">
+            <p>DCCCO - Dumaguete City Community Cooperative</p>
+            <h2>CREDIT ASSESSMENT CHECKLIST</h2>
+        </div>
+        
+        <!-- Borrower Information -->
+        <div class="info-row">
+            <div class="info-field" style="flex: 2;">
+                <label>Borrower's Name:</label>
+                <input type="text" id="borrower_name" value="{{ application.member_name if application else '' }}" readonly>
+            </div>
+            <div class="info-field">
+                <label>Date:</label>
+                <input type="date" id="interview_date">
+            </div>
+        </div>
+        
+        <div class="info-row">
+            <div class="info-field">
+                <label>Type:</label>
+                <select id="loan_type">
+                    <option>N/A</option>
+                    <option>Regular</option>
+                    <option>Emergency</option>
+                    <option>Special</option>
+                </select>
+            </div>
+            <div class="info-field">
+                <label>Loan Value:</label>
+                <input type="text" id="loan_value" value="{{ '₱' + application.loan_amount|string if application else '' }}" readonly>
+            </div>
+            <div class="info-field" style="flex: 1.5;">
+                <label>Area (Brgy, Mun, Prov):</label>
+                <input type="text" id="area">
+            </div>
+        </div>
+        
+        <!-- Assessment Table -->
+        <table class="checklist-table">
+            <thead>
+                <tr>
+                    <th style="width: 15%;">RECOMMENDATION</th>
+                    <th style="width: 55%;">ITEMS</th>
+                    <th style="width: 10%;">✓</th>
+                    <th style="width: 10%;">✗</th>
+                    <th style="width: 10%;">⏸</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- CHARACTER -->
+                <tr>
+                    <td rowspan="4" class="criteria-cell">CHARACTER</td>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Loan purpose is clear and valid</td>
+                    <td class="radio-cell"><input type="radio" name="char1" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="char1" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="char1" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Borrower has good credit history</td>
+                    <td class="radio-cell"><input type="radio" name="char2" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="char2" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="char2" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Borrower is cooperative and honest</td>
+                    <td class="radio-cell"><input type="radio" name="char3" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="char3" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="char3" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Good reputation in community</td>
+                    <td class="radio-cell"><input type="radio" name="char4" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="char4" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="char4" value="defer"></td>
+                </tr>
+                
+                <!-- CAPACITY -->
+                <tr>
+                    <td rowspan="4" class="criteria-cell">CAPACITY</td>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Stable source of income</td>
+                    <td class="radio-cell"><input type="radio" name="cap1" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="cap1" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="cap1" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Income sufficient to pay loan</td>
+                    <td class="radio-cell"><input type="radio" name="cap2" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="cap2" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="cap2" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Debt-to-income ratio acceptable</td>
+                    <td class="radio-cell"><input type="radio" name="cap3" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="cap3" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="cap3" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Business/employment is stable</td>
+                    <td class="radio-cell"><input type="radio" name="cap4" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="cap4" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="cap4" value="defer"></td>
+                </tr>
+                
+                <!-- CAPITAL -->
+                <tr>
+                    <td rowspan="3" class="criteria-cell">CAPITAL</td>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Borrower has savings/assets</td>
+                    <td class="radio-cell"><input type="radio" name="cap5" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="cap5" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="cap5" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Net worth is positive</td>
+                    <td class="radio-cell"><input type="radio" name="cap6" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="cap6" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="cap6" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Personal investment in business</td>
+                    <td class="radio-cell"><input type="radio" name="cap7" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="cap7" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="cap7" value="defer"></td>
+                </tr>
+                
+                <!-- COLLATERAL -->
+                <tr>
+                    <td rowspan="3" class="criteria-cell">COLLATERAL</td>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Collateral identified and verified</td>
+                    <td class="radio-cell"><input type="radio" name="col1" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="col1" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="col1" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Collateral value covers loan amount</td>
+                    <td class="radio-cell"><input type="radio" name="col2" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="col2" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="col2" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Ownership documents verified</td>
+                    <td class="radio-cell"><input type="radio" name="col3" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="col3" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="col3" value="defer"></td>
+                </tr>
+                
+                <!-- CONDITION -->
+                <tr>
+                    <td rowspan="3" class="criteria-cell">CONDITION</td>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Economic conditions are favorable</td>
+                    <td class="radio-cell"><input type="radio" name="con1" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="con1" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="con1" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">Industry/business sector is stable</td>
+                    <td class="radio-cell"><input type="radio" name="con2" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="con2" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="con2" value="defer"></td>
+                </tr>
+                <tr>
+                    <td style="white-space: normal !important; overflow: visible !important; text-overflow: clip !important;">No major risks identified</td>
+                    <td class="radio-cell"><input type="radio" name="con3" value="approve"></td>
+                    <td class="radio-cell"><input type="radio" name="con3" value="disapprove"></td>
+                    <td class="radio-cell"><input type="radio" name="con3" value="defer"></td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <!-- Remarks -->
+        <div class="remarks-section">
+            <div style="font-size: 11px; font-weight: bold; margin-bottom: 5px;">Remarks:</div>
+            <div class="remarks-box">
+                <textarea id="remarks" placeholder="Enter remarks here..."></textarea>
+            </div>
+        </div>
+        
+        <!-- Other Information -->
+        <div class="other-info">
+            <h3>OTHER INFORMATION</h3>
+            <div class="other-info-row">
+                <label>Residence verified: </label>
+                <label><input type="radio" name="residence_verified" value="yes"> Yes</label>
+                <label style="margin-left: 15px;"><input type="radio" name="residence_verified" value="no"> No</label>
+            </div>
+            <div class="other-info-row">
+                <label>Family interviewed: </label>
+                <input type="text" id="family_interviewed">
+            </div>
+            <div class="other-info-row">
+                <label>Neighbors interviewed: </label>
+                <input type="text" id="neighbors_interviewed">
+            </div>
+        </div>
+        
+        <!-- Final Recommendation -->
+        <div class="final-recommendation">
+            <h3>FINAL RECOMMENDATION:</h3>
+            <label><input type="radio" name="final_recommendation" value="Approve"> <span style="color: green;">APPROVE</span></label>
+            <label><input type="radio" name="final_recommendation" value="Disapprove"> <span style="color: red;">DISAPPROVE</span></label>
+            <label><input type="radio" name="final_recommendation" value="Defer"> <span style="color: orange;">DEFER</span></label>
+        </div>
+        
+        <!-- Submit Button -->
+        <button class="btn-submit no-print" onclick="submitForm()">Submit Checklist</button>
+        <button class="btn-submit no-print" onclick="window.print()" style="background: #6c757d;">Print Form</button>
+    </div>
+    
+    <script>
+        function submitForm() {
+            // Collect all form data
+            const formData = {
+                borrower_name: document.getElementById('borrower_name').value,
+                interview_date: document.getElementById('interview_date').value,
+                loan_type: document.getElementById('loan_type').value,
+                loan_value: document.getElementById('loan_value').value,
+                area: document.getElementById('area').value,
+                remarks: document.getElementById('remarks').value,
+                family_interviewed: document.getElementById('family_interviewed').value,
+                neighbors_interviewed: document.getElementById('neighbors_interviewed').value,
+                
+                // Get all radio button values
+                assessments: {},
+                residence_verified: document.querySelector('input[name="residence_verified"]:checked')?.value,
+                final_recommendation: document.querySelector('input[name="final_recommendation"]:checked')?.value
+            };
+            
+            // Collect all assessment radio buttons
+            const radioGroups = ['char1', 'char2', 'char3', 'char4', 'cap1', 'cap2', 'cap3', 'cap4', 
+                                'cap5', 'cap6', 'cap7', 'col1', 'col2', 'col3', 'con1', 'con2', 'con3'];
+            
+            radioGroups.forEach(group => {
+                const selected = document.querySelector(`input[name="${group}"]:checked`);
+                if (selected) {
+                    formData.assessments[group] = selected.value;
+                }
+            });
+            
+            console.log('Form Data:', formData);
+            alert('Checklist submitted! Check console for data.');
+            
+            // Here you would send formData to your backend
+            // fetch('/api/submit_checklist', { method: 'POST', body: JSON.stringify(formData) })
+        }
+        
+        // Set today's date by default
+        document.getElementById('interview_date').valueAsDate = new Date();
+    </script>
+</body>
+</html>

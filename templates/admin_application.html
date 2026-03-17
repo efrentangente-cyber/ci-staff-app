@@ -1,0 +1,573 @@
+{% extends "base.html" %}
+{% block title %}Admin Review{% endblock %}
+{% block content %}
+<h2>Admin Review - Application #{{ application.id }}</h2>
+<a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary mb-3">
+    <i class="bi bi-arrow-left"></i> Back to Dashboard
+</a>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Application Details</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr><th>Member Name:</th><td>{{ application.member_name }}</td></tr>
+                    <tr><th>Contact:</th><td>{{ application.member_contact }}</td></tr>
+                    <tr><th>Address:</th><td>{{ application.member_address }}</td></tr>
+                    <tr><th>Loan Amount:</th><td>₱{{ application.loan_amount }}</td></tr>
+                    <tr><th>Status:</th><td><span class="badge bg-warning">{{ application.status.replace('_', ' ').title() }}</span></td></tr>
+                    <tr><th>Submitted By:</th><td>{{ application.loan_staff_name }}</td></tr>
+                    <tr><th>CI Staff:</th><td>{{ application.ci_staff_name or 'N/A' }}</td></tr>
+                </table>
+            </div>
+        </div>
+        
+        {% if application.status in ['ci_completed', 'approved', 'rejected'] and application.ci_notes %}
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> CI Interview Report & Checklist</h5>
+                <button class="btn btn-sm btn-light no-print" onclick="window.print()">
+                    <i class="bi bi-printer"></i> Print Report
+                </button>
+            </div>
+            <div class="card-body">
+                
+                <!-- Application Details Section -->
+                <div class="mb-4 p-3 border rounded bg-light">
+                    <h6 class="fw-bold text-primary mb-3"><i class="bi bi-person-badge"></i> Application Details</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-2"><strong>Member Name:</strong> {{ application.member_name }}</p>
+                            <p class="mb-2"><strong>Contact:</strong> {{ application.member_contact }}</p>
+                            <p class="mb-2"><strong>Address:</strong> {{ application.member_address }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-2"><strong>Loan Amount:</strong> ₱{{ "{:,.2f}".format(application.loan_amount) }}</p>
+                            <p class="mb-2"><strong>Submitted By:</strong> {{ application.loan_staff_name }}</p>
+                            <p class="mb-2"><strong>CI Staff:</strong> {{ application.ci_staff_name }}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-4">
+                
+                {% if application.ci_checklist_data %}
+                <div id="full_checklist_display" class="checklist-display-container"></div>
+                <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        try {
+                            const checklistData = {{ application.ci_checklist_data|safe }};
+                            console.log('Checklist data loaded:', checklistData);
+                            displayCompleteChecklist(checklistData);
+                        } catch(e) {
+                            console.error('Error parsing checklist data:', e);
+                            document.getElementById('full_checklist_display').innerHTML = '<div class="alert alert-danger">Error loading checklist: ' + e.message + '</div>';
+                        }
+                    });
+                </script>
+                
+                <hr class="my-4">
+                {% endif %}
+                
+                <h6 class="fw-bold"><i class="bi bi-file-text"></i> Detailed Interview Notes & Findings</h6>
+                <div class="p-3 bg-light rounded mb-4">
+                    <p style="white-space: pre-wrap;">{{ application.ci_notes }}</p>
+                </div>
+                
+                <!-- Interview Photos Section -->
+                {% set has_photos = namespace(value=False) %}
+                {% for doc in documents %}
+                    {% if doc.file_name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')) %}
+                        {% set has_photos.value = True %}
+                    {% endif %}
+                {% endfor %}
+                
+                {% if has_photos.value %}
+                <h6 class="fw-bold mb-3"><i class="bi bi-camera"></i> Interview Photos & Evidence</h6>
+                <div class="row g-3 mb-4">
+                    {% for doc in documents %}
+                    {% if doc.file_name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')) %}
+                    <div class="col-md-4 col-6">
+                        <div class="card shadow-sm">
+                            <img src="{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}?t={{ doc.id }}" 
+                                 class="card-img-top" 
+                                 style="height: 200px; object-fit: cover; cursor: pointer;" 
+                                 onclick="openLightbox('{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}', '{{ doc.file_name }}')"
+                                 alt="{{ doc.file_name }}" 
+                                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23ddd%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3EImage not found%3C/text%3E%3C/svg%3E'">
+                            <div class="card-body p-2">
+                                <small class="text-muted d-block text-truncate">{{ doc.file_name }}</small>
+                                <small class="text-muted">{{ doc.uploaded_at[:16] if doc.uploaded_at else 'N/A' }}</small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Signature at bottom right -->
+                {% if application.ci_signature %}
+                <div class="d-flex justify-content-end mt-4">
+                    <div class="signature-box text-center" style="max-width: 350px;">
+                        <div class="border-bottom border-dark pb-2 mb-2">
+                            {% set ci_staff = get_user_by_id(application.assigned_ci_staff) %}
+                            {% if ci_staff and ci_staff.signature_path %}
+                            <img src="{{ url_for('serve_signature', filename=ci_staff.signature_path.split('/')[-1].split('\\')[-1]) }}" alt="CI Signature" style="max-width: 250px; height: auto; max-height: 80px;">
+                            {% else %}
+                            <div style="font-family: 'Brush Script MT', cursive; font-size: 28px; padding: 10px;">{{ application.ci_signature }}</div>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <strong>{{ application.ci_staff_name }}</strong><br>
+                            <small class="text-muted">CI Staff</small><br>
+                            <small class="text-muted">{{ application.ci_completed_at[:10] if application.ci_completed_at else 'N/A' }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% elif application.status in ['ci_completed', 'approved', 'rejected'] %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i> CI interview was completed but no notes were recorded.
+        </div>
+        {% endif %}
+        
+        <div class="card mb-3 no-print">
+            <div class="card-header">
+                <h5>Documents (Non-Interview Files)</h5>
+            </div>
+            <div class="card-body">
+                {% if documents %}
+                <div class="row g-3">
+                    {% for doc in documents %}
+                    {% if not doc.file_name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')) %}
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 200px;">
+                                <i class="bi bi-file-earmark" style="font-size: 3rem;"></i>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text small mb-2">
+                                    <i class="bi bi-file-earmark"></i> {{ doc.file_name }}<br>
+                                    <small class="text-muted">{{ doc.uploaded_at[:16] }}</small>
+                                </p>
+                                <a href="{{ url_for('download_document', doc_id=doc.id) }}" class="btn btn-sm btn-primary w-100">
+                                    <i class="bi bi-download"></i> Download
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No additional documents</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if application.status not in ['approved', 'rejected'] %}
+        <div class="card mb-3">
+            <div class="card-header bg-success text-white">
+                <h5>Make Decision</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Decision *</label>
+                        <select name="decision" class="form-select" required>
+                            <option value="">-- Select Decision --</option>
+                            <option value="approved">Approve</option>
+                            <option value="rejected">Reject</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Admin Notes</label>
+                        <textarea name="admin_notes" class="form-control" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-circle"></i> Submit Decision
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-{% if application.status == 'approved' %}success{% else %}danger{% endif %}">
+            <strong>Decision: {{ application.status.title() }}</strong><br>
+            {% if application.admin_notes %}Notes: {{ application.admin_notes }}{% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Image Lightbox Modal -->
+<div class="modal fade" id="imageLightbox" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-0">
+                <h5 class="modal-title text-white" id="lightboxTitle">Image</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center p-0">
+                <img id="lightboxImage" src="" class="img-fluid" style="max-height: 80vh; width: auto;">
+            </div>
+            <div class="modal-footer border-0 justify-content-center">
+                <button type="button" class="btn btn-light" onclick="downloadCurrentImage()">
+                    <i class="bi bi-download"></i> Download
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// Lightbox functions
+let currentImageSrc = '';
+
+function openLightbox(imageSrc, imageTitle) {
+    currentImageSrc = imageSrc;
+    document.getElementById('lightboxImage').src = imageSrc;
+    document.getElementById('lightboxTitle').textContent = imageTitle || 'Image';
+    const lightboxModal = new bootstrap.Modal(document.getElementById('imageLightbox'));
+    lightboxModal.show();
+}
+
+function downloadCurrentImage() {
+    if (currentImageSrc) {
+        const link = document.createElement('a');
+        link.href = currentImageSrc;
+        link.download = document.getElementById('lightboxTitle').textContent;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
+
+function displayCompleteChecklist(data) {
+    if (!data) return;
+    
+    const container = document.getElementById('full_checklist_display');
+    if (!container) return;
+    
+    const criteriaLabels = {
+        char1: 'Loan purpose is clear and valid',
+        char2: 'Borrower has good credit history',
+        char3: 'Borrower is cooperative and honest',
+        char4: 'Good reputation in community',
+        cap1: 'Stable source of income',
+        cap2: 'Income sufficient to pay loan',
+        cap3: 'Debt-to-income ratio acceptable',
+        cap4: 'Business/employment stable',
+        cap5: 'Borrower has savings/assets',
+        cap6: 'Net worth is positive',
+        cap7: 'Personal investment in business',
+        col1: 'Collateral identified and verified',
+        col2: 'Collateral value covers loan',
+        col3: 'Ownership documents verified',
+        con1: 'Economic conditions favorable',
+        con2: 'Industry/business sector stable',
+        con3: 'No major risks identified'
+    };
+    
+    const sections = {
+        'CHARACTER': ['char1', 'char2', 'char3', 'char4'],
+        'CAPACITY': ['cap1', 'cap2', 'cap3', 'cap4'],
+        'CAPITAL': ['cap5', 'cap6', 'cap7'],
+        'COLLATERAL': ['col1', 'col2', 'col3'],
+        'CONDITION': ['con1', 'con2', 'con3']
+    };
+    
+    let html = '<div class="complete-checklist-form">';
+    
+    // Header
+    html += '<div class="text-center mb-4 pb-3 border-bottom">';
+    html += '<h4 class="fw-bold mb-1">DCCCO - Dumaguete City Community Cooperative</h4>';
+    html += '<h5 class="text-muted">CREDIT ASSESSMENT CHECKLIST</h5>';
+    html += '</div>';
+    
+    // Info Section
+    html += '<div class="info-section mb-4">';
+    html += '<div class="row mb-3">';
+    html += '<div class="col-md-6"><label class="form-label fw-bold">Date:</label><div class="form-control-plaintext border rounded px-3 py-2 bg-light">' + (data.interview_date || 'N/A') + '</div></div>';
+    html += '<div class="col-md-6"><label class="form-label fw-bold">Type:</label><div class="form-control-plaintext border rounded px-3 py-2 bg-light">' + (data.loan_type || 'N/A') + '</div></div>';
+    html += '</div>';
+    html += '<div class="row mb-3"><div class="col-md-12"><label class="form-label fw-bold">Area:</label><div class="form-control-plaintext border rounded px-3 py-2 bg-light">' + (data.area || 'N/A') + '</div></div></div>';
+    html += '</div><hr class="my-4">';
+    
+    html += '<h5 class="fw-bold mb-4 text-primary">RECOMMENDATION</h5>';
+    html += '<div class="table-responsive"><table class="table table-bordered assessment-table">';
+    html += '<thead class="table-primary"><tr><th width="20%">Criteria</th><th width="45%">Items</th><th width="12%" class="text-center">Approve</th><th width="12%" class="text-center">Disapprove</th><th width="11%" class="text-center">Defer</th></tr></thead><tbody>';
+    
+    for (const [section, items] of Object.entries(sections)) {
+        items.forEach((item, index) => {
+            const assessment = data.assessments?.[item] || '';
+            html += '<tr>';
+            if (index === 0) html += `<td rowspan="${items.length}" class="align-middle fw-bold bg-light text-center">${section}</td>`;
+            html += `<td class="px-3">${criteriaLabels[item]}</td>`;
+            html += `<td class="text-center bg-success bg-opacity-10">${assessment === 'approve' ? '<i class="bi bi-check-circle-fill text-success fs-4"></i>' : '○'}</td>`;
+            html += `<td class="text-center bg-danger bg-opacity-10">${assessment === 'disapprove' ? '<i class="bi bi-x-circle-fill text-danger fs-4"></i>' : '○'}</td>`;
+            html += `<td class="text-center bg-warning bg-opacity-10">${assessment === 'defer' ? '<i class="bi bi-pause-circle-fill text-warning fs-4"></i>' : '○'}</td>`;
+            html += '</tr>';
+        });
+    }
+    html += '</tbody></table></div>';
+    
+    // Remarks
+    html += '<div class="remarks-section mt-4 mb-4"><h6 class="fw-bold mb-2">Remarks:</h6>';
+    if (data.remarks) {
+        html += '<div class="border rounded p-3 bg-light"><p class="mb-0" style="white-space: pre-wrap;">' + data.remarks + '</p></div>';
+    } else {
+        html += '<div class="border rounded p-3 bg-light text-muted">No remarks</div>';
+    }
+    html += '</div>';
+    
+    // Other Info - hidden on print
+    html += '<div class="other-info-section no-print"><hr class="my-4">';
+    html += '<h6 class="fw-bold mb-3 text-primary">OTHER INFORMATION</h6>';
+    html += '<div class="row mb-3"><div class="col-md-12"><label class="fw-bold">Residence Verified:</label><div class="ms-3 mt-2">';
+    html += '<span class="badge ' + (data.residence_verified === 'yes' ? 'bg-success' : 'bg-secondary') + ' me-2"><i class="bi bi-' + (data.residence_verified === 'yes' ? 'check-circle' : 'circle') + '"></i> Yes</span>';
+    html += '<span class="badge ' + (data.residence_verified === 'no' ? 'bg-danger' : 'bg-secondary') + '"><i class="bi bi-' + (data.residence_verified === 'no' ? 'x-circle' : 'circle') + '"></i> No</span>';
+    html += '</div></div></div>';
+    html += '<div class="row mb-3"><div class="col-md-12"><label class="fw-bold">Family Interviewed:</label><div class="form-control-plaintext border rounded px-3 py-2 bg-light mt-2">' + (data.family_interviewed || 'N/A') + '</div></div></div>';
+    html += '<div class="row mb-3"><div class="col-md-12"><label class="fw-bold">Neighbors Interviewed:</label><div class="form-control-plaintext border rounded px-3 py-2 bg-light mt-2">' + (data.neighbors_interviewed || 'N/A') + '</div></div></div>';
+    html += '</div>';
+    
+    // Final Recommendation - hidden on print
+    html += '<div class="final-recommendation-section no-print"><hr class="my-4">';
+    html += '<h6 class="fw-bold mb-3 text-primary">FINAL RECOMMENDATION</h6>';
+    const recClass = data.final_recommendation === 'Approve' ? 'success' : data.final_recommendation === 'Disapprove' ? 'danger' : 'warning';
+    const recIcon = data.final_recommendation === 'Approve' ? 'check-circle-fill' : data.final_recommendation === 'Disapprove' ? 'x-circle-fill' : 'pause-circle-fill';
+    html += '<div class="text-center mb-4"><span class="badge bg-' + recClass + ' fs-3 px-5 py-3"><i class="bi bi-' + recIcon + '"></i> ' + (data.final_recommendation || 'NOT SPECIFIED').toUpperCase() + '</span></div>';
+    html += '</div>';
+    
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+</script>
+
+<style>
+.complete-checklist-form {
+    background: white;
+    padding: 30px;
+    border: 2px solid #0d6efd;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.assessment-table {
+    font-size: 0.95rem;
+    margin-bottom: 0;
+}
+
+.assessment-table th {
+    background-color: #0d6efd !important;
+    color: white !important;
+    border: 2px solid #0a58ca !important;
+    padding: 12px 8px !important;
+    vertical-align: middle !important;
+}
+
+.assessment-table td {
+    border: 1px solid #dee2e6 !important;
+    padding: 12px 8px !important;
+    vertical-align: middle !important;
+}
+
+.assessment-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.checklist-display-container {
+    margin: 20px 0;
+}
+
+.signature-section {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.signature-section img {
+    border: 2px solid #0d6efd;
+    padding: 10px;
+    background: white;
+    border-radius: 4px;
+}
+
+@media print {
+    /* Hide everything that shouldn't print */
+    .sidebar, .no-print, .btn, .chat-box, .input-group, nav, .navbar, 
+    .card-header .btn, h2, .btn-secondary, .col-md-4, .bottom-nav,
+    .bi-house-door, .bi-chat-dots, .bi-bell, .bi-geo-alt, .bi-people {
+        display: none !important;
+    }
+    
+    /* Hide the bottom navigation bar */
+    .fixed-bottom, [style*="position: fixed"], [style*="bottom: 0"] {
+        display: none !important;
+    }
+    
+    body {
+        margin: 0;
+        padding: 0;
+        background: white !important;
+    }
+    
+    .main-content {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding: 10px !important;
+    }
+    
+    .row {
+        display: block !important;
+    }
+    
+    .col-md-8 {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+    }
+    
+    /* Hide all cards except the CI report */
+    .card:not(:has(.bg-primary)) {
+        display: none !important;
+    }
+    
+    /* Show only the CI report card */
+    .card:has(.bg-primary) {
+        border: 2px solid #000 !important;
+        box-shadow: none !important;
+        page-break-after: auto;
+        page-break-inside: auto;
+        margin: 0 !important;
+        display: block !important;
+    }
+    
+    .card-header.bg-primary {
+        background-color: #0d6efd !important;
+        color: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        border-bottom: 2px solid #000 !important;
+        page-break-after: avoid;
+    }
+    
+    .card-body {
+        padding: 15px !important;
+    }
+    
+    /* Application details section */
+    .mb-4.p-3.border.rounded.bg-light {
+        background-color: #f8f9fa !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        page-break-inside: avoid;
+        page-break-after: avoid;
+    }
+    
+    /* Checklist form */
+    .complete-checklist-form {
+        border: 2px solid #000 !important;
+        box-shadow: none !important;
+        page-break-inside: auto;
+        padding: 15px !important;
+    }
+    
+    /* Assessment table */
+    .assessment-table {
+        font-size: 8px !important;
+        page-break-inside: auto;
+        width: 100% !important;
+    }
+    
+    .assessment-table th,
+    .assessment-table td {
+        padding: 4px 2px !important;
+        border: 1px solid #000 !important;
+    }
+    
+    .assessment-table th {
+        background-color: #0d6efd !important;
+        color: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    .table-primary {
+        background-color: #0d6efd !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    .bg-success, .bg-danger, .bg-warning, .bg-light {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    
+    /* Interview notes */
+    h6, h5, h4 {
+        page-break-after: avoid;
+    }
+    
+    hr {
+        page-break-after: avoid;
+    }
+    
+    /* Photos section */
+    .row.g-3.mb-4 {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        page-break-inside: auto;
+    }
+    
+    .row.g-3.mb-4 .col-md-4,
+    .row.g-3.mb-4 .col-6 {
+        display: block !important;
+        width: 32% !important;
+        float: left;
+        padding: 3px !important;
+        page-break-inside: avoid;
+    }
+    
+    .row.g-3.mb-4 .card {
+        display: block !important;
+        border: 1px solid #ddd !important;
+        page-break-inside: avoid;
+    }
+    
+    .row.g-3.mb-4 .card img {
+        max-width: 100%;
+        height: 150px !important;
+        object-fit: cover;
+        display: block;
+    }
+    
+    /* Signature section */
+    .signature-box {
+        page-break-inside: avoid;
+        margin-top: 20px;
+    }
+    
+    .signature-box img {
+        max-width: 200px;
+        height: auto;
+    }
+    
+    /* Remove blank pages */
+    * {
+        overflow: visible !important;
+    }
+}
+</style>
+{% endblock %}

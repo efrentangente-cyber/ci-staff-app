@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Submit Application{% endblock %}
+
+<style>
+#address_suggestions {
+    max-width: 100%;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-top: 2px;
+}
+
+#address_suggestions .list-group-item {
+    border-left: none;
+    border-right: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#address_suggestions .list-group-item:first-child {
+    border-top: none;
+    border-top-left-radius: 0.25rem;
+    border-top-right-radius: 0.25rem;
+}
+
+#address_suggestions .list-group-item:last-child {
+    border-bottom: none;
+    border-bottom-left-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem;
+}
+
+#address_suggestions .list-group-item:hover {
+    background-color: #f8f9fa;
+}
+
+#address_suggestions h6 {
+    font-size: 0.95rem;
+    color: #212529;
+    margin-bottom: 0.25rem;
+}
+
+#address_suggestions small {
+    font-size: 0.8rem;
+}
+
+.position-relative {
+    position: relative;
+}
+</style>
+
+{% block content %}
+<h2>Submit New Loan Application</h2>
+<div class="card position-relative">
+    <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Member Name *</label>
+                    <input type="text" name="member_name" class="form-control" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Contact Number</label>
+                    <input type="text" name="member_contact" class="form-control">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Address (Purok/Barangay, Municipality, Province) *</label>
+                <input type="text" name="member_address" id="member_address" class="form-control" required autocomplete="off" placeholder="Start typing purok or barangay...">
+                <div id="address_suggestions" class="list-group position-absolute" style="z-index: 1000; max-height: 300px; overflow-y: auto; display: none;"></div>
+                <small class="text-muted">Type purok or barangay name (e.g., "Purok 1", "Maninihon", "Poblacion")</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Loan Amount *</label>
+                <input type="number" name="loan_amount" class="form-control" step="0.01" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label"><i class="bi bi-images"></i> Upload Documents/Photos (Requirements/Papers)</label>
+                <input type="file" name="documents" class="form-control" multiple accept="image/*,.pdf" id="documentUpload">
+                <small class="text-muted">You can select multiple images or PDF files</small>
+                <div id="document_preview" class="mt-3 row g-2"></div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Needs CI Interview?</label>
+                <select name="needs_ci" class="form-select">
+                    <option value="0">No - Send directly to Admin</option>
+                    <option value="1" selected>Yes - Auto-assign to available CI Staff</option>
+                    <optgroup label="Or assign to specific CI Staff:">
+                        {% for ci in ci_staff_list %}
+                        <option value="ci_{{ ci.id }}">
+                            {{ ci.name }} ({{ ci.email }})
+                            {% if ci.is_approved == 0 %} - Pending Approval{% endif %}
+                        </option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-success">Submit Application</button>
+                <a href="{{ url_for('loan_dashboard') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='addresses.js') }}"></script>
+<script>
+// Wait for addresses to load, then setup autocomplete
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if addressDatabase is loaded
+    if (typeof addressDatabase === 'undefined' || addressDatabase.length === 0) {
+        console.error('Address database not loaded!');
+        return;
+    }
+    
+    console.log(`Address database loaded with ${addressDatabase.length} addresses`);
+    
+    // Address autocomplete functionality
+    document.getElementById('member_address')?.addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase().trim();
+    const suggestionsDiv = document.getElementById('address_suggestions');
+    
+    if (searchTerm.length < 2) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+    
+    // Filter addresses based on search term
+    const matches = addressDatabase.filter(addr => {
+        const purokMatch = addr.purok && addr.purok.toLowerCase().includes(searchTerm);
+        const barangayMatch = addr.barangay.toLowerCase().includes(searchTerm);
+        const municipalityMatch = addr.municipality.toLowerCase().includes(searchTerm);
+        return purokMatch || barangayMatch || municipalityMatch;
+    }).slice(0, 10); // Limit to 10 results
+    
+    if (matches.length === 0) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+    
+    // Display suggestions
+    suggestionsDiv.innerHTML = '';
+    matches.forEach(addr => {
+        const item = document.createElement('a');
+        item.href = '#';
+        item.className = 'list-group-item list-group-item-action';
+        
+        const fullAddress = addr.purok 
+            ? `${addr.purok}, ${addr.barangay}, ${addr.municipality}, ${addr.province}`
+            : `${addr.barangay}, ${addr.municipality}, ${addr.province}`;
+        
+        item.innerHTML = `
+            <div class="d-flex w-100 justify-content-between">
+                <h6 class="mb-1">${addr.purok || addr.barangay}</h6>
+                <small class="text-muted">${addr.municipality}</small>
+            </div>
+            <small class="text-muted">${fullAddress}</small>
+        `;
+        
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.getElementById('member_address').value = fullAddress;
+            suggestionsDiv.style.display = 'none';
+        });
+        
+        suggestionsDiv.appendChild(item);
+    });
+    
+    suggestionsDiv.style.display = 'block';
+    });
+    
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', function(e) {
+        const addressInput = document.getElementById('member_address');
+        const suggestionsDiv = document.getElementById('address_suggestions');
+        if (e.target !== addressInput && !suggestionsDiv.contains(e.target)) {
+            suggestionsDiv.style.display = 'none';
+        }
+    });
+});
+
+// Document preview functionality
+document.getElementById('documentUpload')?.addEventListener('change', function(e) {
+    const preview = document.getElementById('document_preview');
+    preview.innerHTML = '';
+    
+    Array.from(e.target.files).forEach((file, index) => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 col-6';
+        
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                col.innerHTML = `
+                    <div class="card">
+                        <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                        <div class="card-body p-2">
+                            <small class="text-muted text-truncate d-block">${file.name}</small>
+                        </div>
+                    </div>
+                `;
+                preview.appendChild(col);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            col.innerHTML = `
+                <div class="card">
+                    <div class="card-body text-center" style="height: 150px; display: flex; align-items: center; justify-content: center; background: #f8f9fa;">
+                        <div>
+                            <i class="bi bi-file-pdf" style="font-size: 3rem; color: #dc3545;"></i>
+                            <div class="mt-2"><small class="text-muted text-truncate d-block">${file.name}</small></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            preview.appendChild(col);
+        }
+    });
+});
+</script>
+{% endblock %}

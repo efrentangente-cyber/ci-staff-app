@@ -1,0 +1,701 @@
+{% extends "base.html" %}
+{% block title %}CI Interview{% endblock %}
+{% block content %}
+<h2>CI Interview - Application #{{ application.id }}</h2>
+<a href="{{ url_for('ci_dashboard') }}" class="btn btn-secondary mb-3">
+    <i class="bi bi-arrow-left"></i> Back to Dashboard
+</a>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Member Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr><th>Name:</th><td>{{ application.member_name }}</td></tr>
+                    <tr><th>Contact:</th><td>{{ application.member_contact }}</td></tr>
+                    <tr><th>Address:</th><td>{{ application.member_address }}</td></tr>
+                    <tr><th>Loan Amount:</th><td>₱{{ application.loan_amount }}</td></tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5><i class="bi bi-images"></i> Submitted Documents & Photos</h5>
+            </div>
+            <div class="card-body">
+                {% if documents %}
+                <div class="row g-3">
+                    {% for doc in documents %}
+                    {% if doc.file_name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')) %}
+                    <!-- Image files - show as gallery -->
+                    <div class="col-md-3 col-6">
+                        <div class="card h-100 shadow-sm">
+                            <img src="{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}" 
+                                 class="card-img-top document-thumbnail" 
+                                 style="height: 200px; object-fit: cover; cursor: pointer;"
+                                 onclick="openLightbox('{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}', '{{ doc.file_name }}')"
+                                 alt="{{ doc.file_name }}">
+                            <div class="card-body p-2">
+                                <small class="text-muted text-truncate d-block" title="{{ doc.file_name }}">
+                                    <i class="bi bi-image"></i> {{ doc.file_name }}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <!-- PDF or other files - show with download button -->
+                    <div class="col-md-3 col-6">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-body text-center d-flex flex-column justify-content-center" style="height: 200px; background: #f8f9fa;">
+                                <i class="bi bi-file-pdf" style="font-size: 3rem; color: #dc3545;"></i>
+                                <small class="text-muted mt-2 text-truncate d-block" title="{{ doc.file_name }}">{{ doc.file_name }}</small>
+                                <a href="{{ url_for('download_document', doc_id=doc.id) }}" class="btn btn-sm btn-primary mt-2">
+                                    <i class="bi bi-download"></i> Download
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                    <p class="mt-2">No documents uploaded</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Image Lightbox Modal -->
+        <div class="modal fade" id="imageLightbox" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-xl">
+                <div class="modal-content bg-dark">
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title text-white" id="lightboxTitle">Image</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body text-center p-0">
+                        <img id="lightboxImage" src="" class="img-fluid" style="max-height: 80vh; width: auto;">
+                    </div>
+                    <div class="modal-footer border-0 justify-content-center">
+                        <button type="button" class="btn btn-light" onclick="downloadCurrentImage()">
+                            <i class="bi bi-download"></i> Download
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        {% if application.status == 'ci_completed' %}
+        <div class="alert alert-success mb-3">
+            <i class="bi bi-check-circle-fill"></i> <strong>Interview Completed!</strong> You can view or edit the submitted data below.
+        </div>
+        {% endif %}
+        
+        <div class="card mb-3">
+            <div class="card-header bg-primary text-white">
+                <h5><i class="bi bi-clipboard-check"></i> CI Interview Checklist</h5>
+            </div>
+            <div class="card-body">
+                <div class="checklist-form">
+                    <!-- Header Section -->
+                    <div class="text-center mb-4">
+                        <h5 class="fw-bold">DCCCO - Dumaguete City Community Cooperative</h5>
+                        <h6>CREDIT ASSESSMENT CHECKLIST</h6>
+                    </div>
+
+                    <!-- Borrower Information -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Borrower's Name:</label>
+                            <input type="text" class="form-control" value="{{ application.member_name }}" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Date:</label>
+                            <input type="date" class="form-control" id="interview_date">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Type:</label>
+                            <select class="form-select" id="loan_type">
+                                <option>N/A</option>
+                                <option>Regular</option>
+                                <option>Emergency</option>
+                                <option>Special</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Loan Value:</label>
+                            <input type="text" class="form-control" value="₱{{ application.loan_amount }}" readonly>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Area (Brgy, Mun, Prov):</label>
+                            <input type="text" class="form-control" id="area">
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- 5 C's Assessment - Card-Based Layout -->
+                    <h6 class="fw-bold mb-3">RECOMMENDATION</h6>
+                    
+                    <div class="checklist-items">
+                        <!-- CHARACTER -->
+                        <div class="criteria-section mb-3">
+                            <div class="criteria-header bg-primary text-white p-2 rounded-top">
+                                <strong>CHARACTER</strong>
+                            </div>
+                            <div class="criteria-items border border-top-0 rounded-bottom">
+                                <div class="checklist-item">
+                                    <div class="item-text">Loan purpose is clear and valid</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="char1" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="char1" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="char1" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Borrower has good credit history</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="char2" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="char2" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="char2" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Borrower is cooperative and honest</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="char3" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="char3" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="char3" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Good reputation in community</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="char4" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="char4" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="char4" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CAPACITY -->
+                        <div class="criteria-section mb-3">
+                            <div class="criteria-header bg-primary text-white p-2 rounded-top">
+                                <strong>CAPACITY</strong>
+                            </div>
+                            <div class="criteria-items border border-top-0 rounded-bottom">
+                                <div class="checklist-item">
+                                    <div class="item-text">Stable source of income</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="cap1" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap1" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap1" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Income sufficient to pay loan</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="cap2" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap2" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap2" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Debt-to-income ratio acceptable</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="cap3" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap3" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap3" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Business/employment is stable</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="cap4" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap4" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap4" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CAPITAL -->
+                        <div class="criteria-section mb-3">
+                            <div class="criteria-header bg-primary text-white p-2 rounded-top">
+                                <strong>CAPITAL</strong>
+                            </div>
+                            <div class="criteria-items border border-top-0 rounded-bottom">
+                                <div class="checklist-item">
+                                    <div class="item-text">Borrower has savings/assets</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="cap5" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap5" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap5" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Net worth is positive</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="cap6" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap6" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap6" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Personal investment in business</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="cap7" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap7" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="cap7" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- COLLATERAL -->
+                        <div class="criteria-section mb-3">
+                            <div class="criteria-header bg-primary text-white p-2 rounded-top">
+                                <strong>COLLATERAL</strong>
+                            </div>
+                            <div class="criteria-items border border-top-0 rounded-bottom">
+                                <div class="checklist-item">
+                                    <div class="item-text">Collateral identified and verified</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="col1" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="col1" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="col1" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Collateral value covers loan amount</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="col2" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="col2" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="col2" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Ownership documents verified</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="col3" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="col3" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="col3" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CONDITION -->
+                        <div class="criteria-section mb-3">
+                            <div class="criteria-header bg-primary text-white p-2 rounded-top">
+                                <strong>CONDITION</strong>
+                            </div>
+                            <div class="criteria-items border border-top-0 rounded-bottom">
+                                <div class="checklist-item">
+                                    <div class="item-text">Economic conditions are favorable</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="con1" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="con1" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="con1" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">Industry/business sector is stable</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="con2" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="con2" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="con2" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                                <div class="checklist-item">
+                                    <div class="item-text">No major risks identified</div>
+                                    <div class="item-radios">
+                                        <label class="radio-label"><input type="radio" name="con3" value="approve"> <span class="text-success">✓</span></label>
+                                        <label class="radio-label"><input type="radio" name="con3" value="disapprove"> <span class="text-danger">✗</span></label>
+                                        <label class="radio-label"><input type="radio" name="con3" value="defer"> <span class="text-warning">⏸</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Remarks Section -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Remarks:</label>
+                        <textarea class="form-control" rows="3" id="checklist_remarks" placeholder="Additional observations and comments..."></textarea>
+                    </div>
+
+                    <!-- Other Information Section -->
+                    <h6 class="fw-bold mb-3">OTHER INFORMATION</h6>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Residence/Address Verified:</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="residence_verified" id="res_yes" value="yes">
+                                <label class="form-check-label" for="res_yes">Yes</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="residence_verified" id="res_no" value="no">
+                                <label class="form-check-label" for="res_no">No</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Family Members Interviewed:</label>
+                            <input type="text" class="form-control" id="family_interviewed" placeholder="Names of family members interviewed">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Neighbors Interviewed:</label>
+                            <input type="text" class="form-control" id="neighbors_interviewed" placeholder="Names of neighbors interviewed">
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Final Recommendation -->
+                    <h6 class="fw-bold mb-3">FINAL RECOMMENDATION</h6>
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="final_recommendation" id="final_approve" value="Approve">
+                                <label class="form-check-label fw-bold text-success" for="final_approve">
+                                    <i class="bi bi-check-circle"></i> APPROVE
+                                </label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="final_recommendation" id="final_disapprove" value="Disapprove">
+                                <label class="form-check-label fw-bold text-danger" for="final_disapprove">
+                                    <i class="bi bi-x-circle"></i> DISAPPROVE
+                                </label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="final_recommendation" id="final_defer" value="Defer">
+                                <label class="form-check-label fw-bold text-warning" for="final_defer">
+                                    <i class="bi bi-pause-circle"></i> DEFER
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> <strong>Note:</strong> Complete all sections of the checklist before submitting your report.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5><i class="bi bi-file-text"></i> {% if application.status == 'ci_completed' %}View/Edit Interview Report{% else %}Complete Interview Report{% endif %}</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="interview_form" enctype="multipart/form-data" onsubmit="return collectChecklistData()">
+                    <!-- Hidden field to store checklist data -->
+                    <input type="hidden" name="checklist_data" id="checklist_data">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Detailed Interview Notes & Findings *</label>
+                        <textarea name="ci_notes" class="form-control" rows="6" required placeholder="Provide comprehensive notes including:
+- Interview observations
+- Borrower's responses
+- Site visit findings
+- Risk assessment
+- Recommendation justification
+- Any other relevant information">{{ application.ci_notes if application.ci_notes else '' }}</textarea>
+                        <small class="text-muted">Include all information from the checklist above</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold"><i class="bi bi-camera"></i> Upload Interview Photos/Proof</label>
+                        <input type="file" name="interview_photos" class="form-control" multiple accept="image/*" id="interview_photos">
+                        <small class="text-muted">Upload photos of residence, business, or any supporting evidence (multiple files allowed)</small>
+                        <div id="photo_preview" class="mt-3 row g-2"></div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold"><i class="bi bi-pen"></i> CI Staff Signature</label>
+                        <div class="border rounded p-3" style="background: #f8f9fa;">
+                            <div style="text-align: center;">
+                                {% if current_user.signature_path %}
+                                <div style="margin-bottom: 5px;">
+                                    <img src="{{ url_for('serve_signature', filename=current_user.signature_path.split('/')[-1].split('\\')[-1]) }}" alt="Signature" style="max-width: 300px; height: auto;">
+                                </div>
+                                {% endif %}
+                                <div style="border-top: 2px solid #000; padding-top: 5px; margin: 0 auto; max-width: 300px;">
+                                    <strong>{{ current_user.name }}</strong>
+                                </div>
+                                <small class="text-muted">CI Staff</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-circle"></i> {% if application.status == 'ci_completed' %}Update Interview Report{% else %}Complete Interview & Send to Admin{% endif %}
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="printChecklist()">
+                            <i class="bi bi-printer"></i> Print Checklist
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// Collect all checklist data before submit
+function collectChecklistData() {
+    
+    const checklistData = {
+        interview_date: document.getElementById('interview_date')?.value,
+        loan_type: document.getElementById('loan_type')?.value,
+        area: document.getElementById('area')?.value,
+        assessments: {},
+        remarks: document.getElementById('checklist_remarks')?.value,
+        residence_verified: document.querySelector('input[name="residence_verified"]:checked')?.value,
+        family_interviewed: document.getElementById('family_interviewed')?.value,
+        neighbors_interviewed: document.getElementById('neighbors_interviewed')?.value,
+        final_recommendation: document.querySelector('input[name="final_recommendation"]:checked')?.value
+    };
+    
+    // Collect all radio button assessments
+    const radioGroups = ['char1', 'char2', 'char3', 'char4', 'cap1', 'cap2', 'cap3', 'cap4', 
+                        'cap5', 'cap6', 'cap7', 'col1', 'col2', 'col3', 'con1', 'con2', 'con3'];
+    
+    radioGroups.forEach(group => {
+        const selected = document.querySelector(`input[name="${group}"]:checked`);
+        if (selected) {
+            checklistData.assessments[group] = selected.value;
+        }
+    });
+    
+    // Store as JSON in hidden field
+    document.getElementById('checklist_data').value = JSON.stringify(checklistData);
+    
+    return true; // Allow form submission
+}
+
+// Photo preview functionality
+document.getElementById('interview_photos')?.addEventListener('change', function(e) {
+    const preview = document.getElementById('photo_preview');
+    preview.innerHTML = '';
+    
+    Array.from(e.target.files).forEach((file, index) => {
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const col = document.createElement('div');
+                col.className = 'col-md-3';
+                col.innerHTML = `
+                    <div class="card">
+                        <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                        <div class="card-body p-2">
+                            <small class="text-muted">${file.name}</small>
+                        </div>
+                    </div>
+                `;
+                preview.appendChild(col);
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+});
+
+// Print checklist function
+function printChecklist() {
+    window.print();
+}
+
+// Lightbox functions
+let currentImageSrc = '';
+
+function openLightbox(imageSrc, imageTitle) {
+    currentImageSrc = imageSrc;
+    document.getElementById('lightboxImage').src = imageSrc;
+    document.getElementById('lightboxTitle').textContent = imageTitle || 'Image';
+    const lightboxModal = new bootstrap.Modal(document.getElementById('imageLightbox'));
+    lightboxModal.show();
+}
+
+function downloadCurrentImage() {
+    if (currentImageSrc) {
+        const link = document.createElement('a');
+        link.href = currentImageSrc;
+        link.download = document.getElementById('lightboxTitle').textContent;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
+
+// Signature Pad and other CI-specific scripts already included above
+
+// Load saved checklist data if exists
+{% if application.ci_checklist_data %}
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        const savedData = JSON.parse('{{ application.ci_checklist_data|safe }}');
+        
+        // Load basic fields
+        if (savedData.interview_date) document.getElementById('interview_date').value = savedData.interview_date;
+        if (savedData.loan_type) document.getElementById('loan_type').value = savedData.loan_type;
+        if (savedData.area) document.getElementById('area').value = savedData.area;
+        if (savedData.remarks) document.getElementById('checklist_remarks').value = savedData.remarks;
+        if (savedData.family_interviewed) document.getElementById('family_interviewed').value = savedData.family_interviewed;
+        if (savedData.neighbors_interviewed) document.getElementById('neighbors_interviewed').value = savedData.neighbors_interviewed;
+        
+        // Load radio buttons
+        if (savedData.residence_verified) {
+            const resRadio = document.querySelector(`input[name="residence_verified"][value="${savedData.residence_verified}"]`);
+            if (resRadio) resRadio.checked = true;
+        }
+        
+        if (savedData.final_recommendation) {
+            const finalRadio = document.querySelector(`input[name="final_recommendation"][value="${savedData.final_recommendation}"]`);
+            if (finalRadio) finalRadio.checked = true;
+        }
+        
+        // Load assessment radio buttons
+        if (savedData.assessments) {
+            Object.keys(savedData.assessments).forEach(key => {
+                const radio = document.querySelector(`input[name="${key}"][value="${savedData.assessments[key]}"]`);
+                if (radio) radio.checked = true;
+            });
+        }
+    } catch (e) {
+        console.error('Error loading checklist data:', e);
+    }
+});
+{% endif %}
+</script>
+
+<style>
+/* Card-based checklist styles */
+.checklist-items {
+    max-width: 100%;
+}
+
+.criteria-section {
+    margin-bottom: 1rem;
+}
+
+.criteria-header {
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+}
+
+.criteria-items {
+    background: #fff;
+}
+
+.checklist-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e9ecef;
+    gap: 1rem;
+}
+
+.checklist-item:last-child {
+    border-bottom: none;
+}
+
+.item-text {
+    flex: 1;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.item-radios {
+    display: flex;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin: 0;
+    cursor: pointer;
+    font-size: 1.1rem;
+}
+
+.radio-label input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.radio-label span {
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+/* Mobile responsive */
+@media (max-width: 576px) {
+    .checklist-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .item-radios {
+        width: 100%;
+        justify-content: space-around;
+        padding-top: 0.5rem;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .item-text {
+        font-size: 0.85rem;
+    }
+}
+
+@media print {
+    .sidebar, .no-print, .btn, .modern-chat-container, #photo_preview {
+        display: none !important;
+    }
+    .main-content {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+    .card {
+        border: 1px solid #000 !important;
+        page-break-inside: avoid;
+    }
+    .criteria-section {
+        page-break-inside: avoid;
+    }
+    .checklist-item {
+        font-size: 10px !important;
+        padding: 0.4rem !important;
+    }
+}
+</style>
+{% endblock %}
