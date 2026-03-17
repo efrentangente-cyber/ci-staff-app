@@ -182,18 +182,18 @@ def init_db():
         with open('schema.sql', 'r') as f:
             conn.executescript(f.read())
         
-        # Create demo users
+        # Create demo users (all approved by default)
         from werkzeug.security import generate_password_hash
         admin_hash = generate_password_hash('admin123')
         loan_hash = generate_password_hash('loan123')
         ci_hash = generate_password_hash('ci123')
         
-        conn.execute('INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)',
-                     ('admin@dccco.test', admin_hash, 'Admin User', 'admin'))
-        conn.execute('INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)',
-                     ('loan@dccco.test', loan_hash, 'Loan Staff', 'loan_staff'))
-        conn.execute('INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)',
-                     ('ci@dccco.test', ci_hash, 'CI Staff', 'ci_staff'))
+        conn.execute('INSERT INTO users (email, password_hash, name, role, is_approved) VALUES (?, ?, ?, ?, ?)',
+                     ('admin@dccco.test', admin_hash, 'Admin User', 'admin', 1))
+        conn.execute('INSERT INTO users (email, password_hash, name, role, is_approved) VALUES (?, ?, ?, ?, ?)',
+                     ('loan@dccco.test', loan_hash, 'Loan Staff', 'loan_staff', 1))
+        conn.execute('INSERT INTO users (email, password_hash, name, role, is_approved) VALUES (?, ?, ?, ?, ?)',
+                     ('ci@dccco.test', ci_hash, 'CI Staff', 'ci_staff', 1))
         
         conn.commit()
         conn.close()
