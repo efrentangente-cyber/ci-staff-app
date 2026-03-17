@@ -804,88 +804,48 @@
 
     <!-- Offline Mode & Auto-Sync -->
     <script>
-        // Offline status indicator
-        function updateOnlineStatus() {
-            const indicator = document.getElementById('offlineIndicator');
-            if (!indicator) {
-                const div = document.createElement('div');
-                div.id = 'offlineIndicator';
-                div.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:10px;text-align:center;z-index:9999;transition:all 0.3s;';
-                document.body.appendChild(div);
+        // ── Banner ──────────────────────────────────────────────────────────
+        function showBanner(msg, color, autohide) {
+            let ind = document.getElementById('offlineIndicator');
+            if (!ind) {
+                ind = document.createElement('div');
+                ind.id = 'offlineIndicator';
+                ind.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:10px;text-align:center;z-index:9999;font-weight:bold;font-size:14px;';
+                document.body.appendChild(ind);
             }
-            
-            const ind = document.getElementById('offlineIndicator');
-            if (!navigator.onLine) {
-                ind.innerHTML = '📡 Offline Mode - Data will sync when connection returns';
-                ind.style.background = '#f59e0b';
-                ind.style.color = 'white';
-                ind.style.display = 'block';
-            } else {
-                ind.innerHTML = '✓ Back Online - Syncing data...';
-                ind.style.background = '#10b981';
-                ind.style.color = 'white';
-                ind.style.display = 'block';
-                
-                // Trigger background sync
-                if ('serviceWorker' in navigator && 'sync' in registration) {
-                    navigator.serviceWorker.ready.then(reg => {
-                        return reg.sync.register('sync-data');
-                    });
-                }
-                
-                // Hide after 3 seconds
-                setTimeout(() => {
-                    ind.style.display = 'none';
-                }, 3000);
-            }
+            ind.innerHTML = msg;
+            ind.style.background = color;
+            ind.style.color = 'white';
+            ind.style.display = 'block';
+            if (autohide) setTimeout(() => ind.style.display = 'none', 3000);
         }
 
-        // Listen for online/offline events
-        window.addEventListener('online', updateOnlineStatus);
-        window.addEventListener('offline', updateOnlineStatus);
-        
-        // Check on load
-        if (!navigator.onLine) {
-            updateOnlineStatus();
-        }
-
-        // Intercept form submissions for offline queueing
-        document.addEventListener('submit', async (e) => {
-            if (!navigator.onLine) {
-                e.preventDefault();
-                const form = e.target;
-                const formData = new FormData(form);
-                
-                // Store in IndexedDB
-                const db = await openOfflineDB();
-                const tx = db.transaction('pending', 'readwrite');
-                const store = tx.objectStore('pending');
-                
-                await store.add({
-                    url: form.action,
-                    method: form.method || 'POST',
-                    data: Object.fromEntries(formData),
-                    timestamp: Date.now()
-                });
-                
-                alert('✓ Saved offline! Will sync when connection returns.');
-            }
+        // ── Online / Offline events ─────────────────────────────────────────
+        window.addEventListener('offline', () => {
+            showBanner('📡 Offline — forms will be saved and sent when you reconnect', '#f59e0b', false);
         });
 
-        // Open IndexedDB for offline storage
-        function openOfflineDB() {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open('ci-staff-offline', 1);
-                request.onerror = () => reject(request.error);
-                request.onsuccess = () => resolve(request.result);
-                request.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('pending')) {
-                        db.createObjectStore('pending', { keyPath: 'id', autoIncrement: true });
-                    }
-                };
+        window.addEventListener('online', () => {
+            showBanner('✅ Back online — syncing saved data...', '#10b981', false);
+            // Trigger background sync via service worker
+            navigator.serviceWorker.ready.then(reg => {
+                if ('sync' in reg) {
+                    reg.sync.register('sync-pending');
+                }
             });
+        });
+
+        // Show banner on load if offline
+        if (!navigator.onLine) {
+            showBanner('📡 Offline — forms will be saved and sent when you reconnect', '#f59e0b', false);
         }
+
+        // ── Listen for sync complete message from SW ────────────────────────
+        navigator.serviceWorker.addEventListener('message', e => {
+            if (e.data && e.data.type === 'SYNC_COMPLETE') {
+                showBanner('✅ All offline data synced successfully!', '#10b981', true);
+            }
+        });
     </script>
     
     <script>

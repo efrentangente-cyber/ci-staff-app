@@ -1,159 +1,189 @@
-// Service Worker for DCCCO CI Staff App - PWA Offline Mode
-const CACHE_NAME = 'dccco-staff-v3';
+// DCCCO CI Staff App - Service Worker v5
+const CACHE_NAME = 'dccco-staff-v5';
 const OFFLINE_URL = '/static/offline.html';
 
-const urlsToCache = [
-  '/',
-  '/login',
-  '/ci/dashboard',
+// Static assets to pre-cache on install
+const STATIC_ASSETS = [
+  '/static/offline.html',
   '/static/manifest.json',
-  OFFLINE_URL,
+  '/static/datatable.css',
+  '/static/datatable.js',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css',
-  'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css'
+  'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js',
+  'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css',
 ];
 
-// Install event - cache essential resources
+// Pages to cache after first visit (dynamic cache)
+const CACHE_PAGES = [
+  '/login',
+  '/ci/dashboard',
+  '/loan/dashboard',
+  '/admin/dashboard',
+  '/loan/submit',
+  '/messages',
+  '/notifications',
+];
+
+// ── Install: pre-cache static assets ───────────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
-        return cache.addAll(urlsToCache).catch(err => {
-          console.log('Cache addAll error:', err);
-        });
-      })
+      .then(cache => cache.addAll(STATIC_ASSETS).catch(() => {}))
       .then(() => self.skipWaiting())
   );
 });
 
-// Activate event - clean old caches
+// ── Activate: remove old caches ─────────────────────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch event - Network first, fallback to cache
+// ── Fetch ────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
-    // For POST requests (form submissions), store in IndexedDB if offline
-    if (!navigator.onLine) {
-      event.respondWith(
-        new Response(JSON.stringify({ offline: true, queued: true }), {
-          headers: { 'Content-Type': 'application/json' }
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Skip chrome-extension and non-http requests
+  if (!url.protocol.startsWith('http')) return;
+
+  // ── POST/PUT: try network, queue if offline ──────────────────────────────
+  if (request.method === 'POST' || request.method === 'PUT') {
+    event.respondWith(
+      fetch(request.clone())
+        .catch(async () => {
+          await queueRequest(request.clone());
+          // Return a response that tells the page the data was saved offline
+          return new Response(
+            `<script>
+              sessionStorage.setItem('offlineSaved', '1');
+              window.history.back();
+            </script>`,
+            {
+              status: 200,
+              headers: { 'Content-Type': 'text/html' }
+            }
+          );
         })
-      );
-      // Store request for later sync
-      event.waitUntil(queueRequest(event.request.clone()));
-    }
+    );
     return;
   }
 
+  // ── GET: network first, fallback to cache ────────────────────────────────
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then(response => {
-        // Clone response for caching
-        const responseToCache = response.clone();
-        
-        // Cache successful responses
-        if (response.status === 200) {
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseToCache);
-          });
+        // Cache successful page responses
+        if (response.status === 200 && (
+          request.mode === 'navigate' ||
+          CACHE_PAGES.some(p => url.pathname.startsWith(p)) ||
+          url.pathname.startsWith('/static/')
+        )) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
         }
-        
         return response;
       })
-      .catch(() => {
-        // Network failed, try cache
-        return caches.match(event.request)
-          .then(response => {
-            if (response) {
-              return response;
-            }
-            // If not in cache, show offline page for navigation requests
-            if (event.request.mode === 'navigate') {
-              return caches.match(OFFLINE_URL);
-            }
-            // For other requests, return error
-            return new Response('Offline - resource not cached', {
-              status: 503,
-              statusText: 'Service Unavailable'
-            });
-          });
-      })
+      .catch(() =>
+        caches.match(request).then(cached => {
+          if (cached) return cached;
+          if (request.mode === 'navigate') return caches.match(OFFLINE_URL);
+          return new Response('Offline', { status: 503 });
+        })
+      )
   );
 });
 
-// Background Sync - sync queued requests when online
+// ── Background Sync ──────────────────────────────────────────────────────────
 self.addEventListener('sync', event => {
-  if (event.tag === 'sync-data') {
-    event.waitUntil(syncQueuedRequests());
+  if (event.tag === 'sync-pending') {
+    event.waitUntil(syncPendingRequests());
   }
 });
 
-// Queue offline requests in IndexedDB
+// ── Queue a failed POST into IndexedDB ───────────────────────────────────────
 async function queueRequest(request) {
-  const db = await openDB();
-  const tx = db.transaction('requests', 'readwrite');
-  const store = tx.objectStore('requests');
-  
-  const requestData = {
-    url: request.url,
-    method: request.method,
-    headers: [...request.headers.entries()],
-    body: await request.text(),
-    timestamp: Date.now()
-  };
-  
-  await store.add(requestData);
-}
-
-// Sync queued requests when back online
-async function syncQueuedRequests() {
-  const db = await openDB();
-  const tx = db.transaction('requests', 'readonly');
-  const store = tx.objectStore('requests');
-  const requests = await store.getAll();
-  
-  for (const req of requests) {
-    try {
-      await fetch(req.url, {
-        method: req.method,
-        headers: new Headers(req.headers),
-        body: req.body
-      });
-      
-      // Remove from queue after successful sync
-      const deleteTx = db.transaction('requests', 'readwrite');
-      await deleteTx.objectStore('requests').delete(req.id);
-    } catch (err) {
-      console.log('Sync failed for request:', req.url);
-    }
+  try {
+    const body = await request.text();
+    const db = await openDB();
+    const tx = db.transaction('pending', 'readwrite');
+    tx.objectStore('pending').add({
+      url: request.url,
+      method: request.method,
+      headers: [...request.headers.entries()],
+      body,
+      timestamp: Date.now()
+    });
+  } catch (e) {
+    console.error('Queue error:', e);
   }
 }
 
-// Open IndexedDB for storing offline requests
+// ── Replay all queued requests when back online ───────────────────────────────
+async function syncPendingRequests() {
+  const db = await openDB();
+  const all = await getAll(db, 'pending');
+
+  let synced = 0;
+  for (const item of all) {
+    try {
+      const res = await fetch(item.url, {
+        method: item.method,
+        headers: new Headers(item.headers),
+        body: item.body,
+        credentials: 'include'
+      });
+      if (res.ok || res.status === 302 || res.redirected) {
+        await deleteItem(db, 'pending', item.id);
+        synced++;
+      }
+    } catch (e) {
+      // Still offline, keep in queue
+    }
+  }
+
+  // Notify all open tabs
+  const clients = await self.clients.matchAll({ includeUncontrolled: true });
+  clients.forEach(client => client.postMessage({
+    type: 'SYNC_COMPLETE',
+    count: synced
+  }));
+}
+
+// ── IndexedDB helpers ─────────────────────────────────────────────────────────
 function openDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('ci-staff-offline', 1);
-    
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-    
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('requests')) {
-        db.createObjectStore('requests', { keyPath: 'id', autoIncrement: true });
+    const req = indexedDB.open('ci-staff-offline', 2);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('pending')) {
+        db.createObjectStore('pending', { keyPath: 'id', autoIncrement: true });
       }
     };
+  });
+}
+
+function getAll(db, storeName) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function deleteItem(db, storeName, id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const req = tx.objectStore(storeName).delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
   });
 }
