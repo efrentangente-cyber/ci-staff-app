@@ -22,6 +22,12 @@ const CACHE_PAGES = [
   '/loan/submit',
   '/messages',
   '/notifications',
+  '/ci/application',
+  '/admin/application',
+  '/loan/application',
+  '/change_password',
+  '/ci/tracking',
+  '/manage_users',
 ];
 
 // ── Install: pre-cache static assets ───────────────────────────────────────
@@ -76,9 +82,9 @@ self.addEventListener('fetch', event => {
 
   // ── GET: network first, fallback to cache ────────────────────────────────
   event.respondWith(
-    fetch(request)
+    fetch(request, { credentials: 'include' })
       .then(response => {
-        // Cache successful page responses
+        // Cache successful page responses including authenticated ones
         if (response.status === 200 && (
           request.mode === 'navigate' ||
           CACHE_PAGES.some(p => url.pathname.startsWith(p)) ||
@@ -89,13 +95,29 @@ self.addEventListener('fetch', event => {
         }
         return response;
       })
-      .catch(() =>
-        caches.match(request).then(cached => {
-          if (cached) return cached;
-          if (request.mode === 'navigate') return caches.match(OFFLINE_URL);
-          return new Response('Offline', { status: 503 });
-        })
-      )
+      .catch(async () => {
+        // Network failed - try exact cache match first
+        const cached = await caches.match(request);
+        if (cached) return cached;
+
+        // Try without query string
+        const urlWithoutQuery = new Request(url.origin + url.pathname);
+        const cached2 = await caches.match(urlWithoutQuery);
+        if (cached2) return cached2;
+
+        // If navigating to login while offline, try to serve cached dashboard
+        if (request.mode === 'navigate' && url.pathname === '/login') {
+          const dashboards = ['/ci/dashboard', '/loan/dashboard', '/admin/dashboard'];
+          for (const dash of dashboards) {
+            const cachedDash = await caches.match(url.origin + dash);
+            if (cachedDash) return cachedDash;
+          }
+        }
+
+        // Last resort - offline page
+        if (request.mode === 'navigate') return caches.match(OFFLINE_URL);
+        return new Response('Offline', { status: 503 });
+      })
   );
 });
 

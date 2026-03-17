@@ -1616,7 +1616,6 @@ def update_signature():
     return redirect(url_for('change_password'))
 
 @app.route('/forgot_password', methods=['GET', 'POST'])
-@limiter.limit("3 per hour")  # Prevent abuse of password reset
 def forgot_password():
     if request.method == 'POST':
         try:
