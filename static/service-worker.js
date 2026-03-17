@@ -1,5 +1,5 @@
-// Service Worker for CI Staff App - Enhanced Offline Mode
-const CACHE_NAME = 'ci-staff-v2';
+// Service Worker for DCCCO CI Staff App - PWA Offline Mode
+const CACHE_NAME = 'dccco-staff-v3';
 const OFFLINE_URL = '/static/offline.html';
 
 const urlsToCache = [

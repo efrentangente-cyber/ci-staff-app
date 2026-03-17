@@ -120,9 +120,9 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
         }
         
-        // Load your CI Staff System with cache buster
+        // Load your CI Staff System - Render deployment
         val timestamp = System.currentTimeMillis()
-        webView.loadUrl("http://192.168.1.61:5000?nocache=$timestamp")
+        webView.loadUrl("https://dccco-ci-system.onrender.com?nocache=$timestamp")
     }
     
     private fun requestPermissions() {
