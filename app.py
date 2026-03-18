@@ -18,12 +18,10 @@ import resend
 # Load environment variables
 load_dotenv()
 
-# Philippines Standard Time (UTC+8)
-PH_TZ = pytz.timezone('Asia/Manila')
-
+# Always store UTC - JS will convert to local time for display
 def now_ph():
-    """Return current Philippine time as naive datetime (for DB storage)"""
-    return datetime.now(PH_TZ).replace(tzinfo=None)
+    """Return current UTC time for DB storage (JS handles timezone display)"""
+    return datetime.utcnow()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'replace-this-with-a-secure-random-secret')
@@ -83,14 +81,22 @@ def utility_processor():
 
     return dict(get_user_by_id=get_user_by_id, message_unread_count=message_unread_count)
 
-socketio = SocketIO(app, cors_allowed_origins=[
-    "http://localhost:5000",
-    "http://127.0.0.1:5000",
-    "http://192.168.1.61:5000",  # Your local network IP
-    "http://192.168.1.41:5000",   # Another device on your network
-    os.getenv('RENDER_EXTERNAL_URL', ''),  # Render deployment URL
-    os.getenv('RENDER_EXTERNAL_URL', '').replace('https://', 'http://') if os.getenv('RENDER_EXTERNAL_URL') else ''
-])
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=[
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://192.168.1.61:5000",
+        "http://192.168.1.41:5000",
+        os.getenv('RENDER_EXTERNAL_URL', ''),
+        os.getenv('RENDER_EXTERNAL_URL', '').replace('https://', 'http://') if os.getenv('RENDER_EXTERNAL_URL') else ''
+    ],
+    async_mode='threading',   # Use threading for instant emit
+    ping_timeout=60,
+    ping_interval=25,
+    logger=False,
+    engineio_logger=False
+)
 
 # Track online users
 online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timestamp}}
@@ -1043,7 +1049,7 @@ def edit_direct_message():
     new_text = data.get('new_text')
     
     conn = get_db()
-    msg = conn.execute('SELECT sender_id FROM direct_messages WHERE id=?', (message_id,)).fetchone()
+    msg = conn.execute('SELECT sender_id, receiver_id FROM direct_messages WHERE id=?', (message_id,)).fetchone()
     
     if msg and msg['sender_id'] == current_user.id:
         conn.execute('''
@@ -1053,6 +1059,10 @@ def edit_direct_message():
         ''', (new_text, now_ph().isoformat(), message_id))
         conn.commit()
         conn.close()
+        # Emit realtime edit to both users
+        payload = {'message_id': message_id, 'new_text': new_text}
+        socketio.emit('message_edited', payload, room=str(current_user.id))
+        socketio.emit('message_edited', payload, room=str(msg['receiver_id']))
         return jsonify({'success': True})
     
     conn.close()
@@ -1065,12 +1075,16 @@ def delete_direct_message():
     message_id = data.get('message_id')
     
     conn = get_db()
-    msg = conn.execute('SELECT sender_id FROM direct_messages WHERE id=?', (message_id,)).fetchone()
+    msg = conn.execute('SELECT sender_id, receiver_id FROM direct_messages WHERE id=?', (message_id,)).fetchone()
     
     if msg and msg['sender_id'] == current_user.id:
         conn.execute('UPDATE direct_messages SET is_deleted=1 WHERE id=?', (message_id,))
         conn.commit()
         conn.close()
+        # Emit realtime delete to both users
+        payload = {'message_id': message_id}
+        socketio.emit('message_deleted', payload, room=str(current_user.id))
+        socketio.emit('message_deleted', payload, room=str(msg['receiver_id']))
         return jsonify({'success': True})
     
     conn.close()

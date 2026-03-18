@@ -64,7 +64,7 @@
                     <div class="conv-info">
                         <div class="conv-top">
                             <h6>{{ conv.other_user_name }}</h6>
-                            <span class="conv-time">{{ conv.last_message_time[11:16] if conv.last_message_time else '' }}</span>
+                            <span class="conv-time" data-time="{{ conv.last_message_time }}">{{ conv.last_message_time[11:16] if conv.last_message_time else '' }}</span>
                         </div>
                         <div class="conv-bottom">
                             <p class="conv-message">{{ conv.last_message[:35] }}{% if conv.last_message|length > 35 %}...{% endif %}</p>
@@ -499,7 +499,8 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-width: 60%;
+    max-width: 65%;
+    min-width: 0;
 }
 
 .message-group.sent .message-bubbles {
@@ -512,6 +513,10 @@
     font-size: 15px;
     line-height: 1.4;
     word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    white-space: pre-wrap;
+    max-width: 100%;
     position: relative;
 }
 
@@ -757,7 +762,10 @@
 </style>
 
 <script>
-const socket = io();
+const socket = io({
+    transports: ['websocket'],   // Skip polling, use WebSocket directly
+    upgrade: false
+});
 let currentChatUserId = null;
 let onlineUsers = new Set();
 
@@ -842,7 +850,7 @@ socket.on('new_direct_message', function(data) {
                 const preview = item.querySelector('.conv-message');
                 if (preview) preview.textContent = data.message;
                 const time = item.querySelector('.conv-time');
-                if (time) time.textContent = data.timestamp.substring(11, 16);
+                if (time) time.textContent = fmtTime(data.timestamp);
                 item.classList.add('has-unread');
                 if (!item.querySelector('.unread-dot')) {
                     const bottom = item.querySelector('.conv-bottom');
@@ -863,7 +871,7 @@ socket.on('new_direct_message', function(data) {
                         <span class="online-indicator"></span>
                     </div>
                     <div class="conv-info">
-                        <div class="conv-top"><h6>${data.sender_name}</h6><span class="conv-time">${data.timestamp.substring(11,16)}</span></div>
+                        <div class="conv-top"><h6>${data.sender_name}</h6><span class="conv-time">${fmtTime(data.timestamp)}</span></div>
                         <div class="conv-bottom"><p class="conv-message">${data.message}</p><span class="unread-dot"></span></div>
                     </div>`;
                 list.prepend(div);
@@ -917,14 +925,29 @@ function sendMessage() {
     const message = input.value.trim();
     if (!message) return;
 
-    // Clear input immediately for zero-delay feel
+    // 1. Clear input instantly
     input.value = '';
 
-    // Show bubble instantly (optimistic)
+    // 2. Show bubble instantly (optimistic UI - no waiting)
+    const now = new Date().toISOString();
     const tempId = 'temp_' + Date.now();
-    addMessageToChat(message, '{{ current_user.name }}', new Date().toISOString(), true, tempId, false);
+    addMessageToChat(message, '{{ current_user.name }}', now, true, tempId, false);
 
-    // Send to server in background
+    // 3. Update conversation list preview instantly
+    const list = document.querySelector('.conversations-list');
+    let convItem = null;
+    document.querySelectorAll('.conversation-item').forEach(item => {
+        if ((item.getAttribute('onclick') || '').includes(`loadChat(${currentChatUserId},`)) convItem = item;
+    });
+    if (convItem) {
+        const preview = convItem.querySelector('.conv-message');
+        if (preview) preview.textContent = message;
+        const time = convItem.querySelector('.conv-time');
+        if (time) time.textContent = fmtTime(now);
+        list.prepend(convItem);
+    }
+
+    // 4. Fire-and-forget to server
     fetch('/api/send_direct_message', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -932,7 +955,6 @@ function sendMessage() {
     }).then(r => r.json())
       .then(data => {
           if (data.success && data.message_id) {
-              // Replace temp ID with real ID on the bubble
               const tempEl = document.querySelector(`[data-message-id="${tempId}"]`);
               if (tempEl) tempEl.setAttribute('data-message-id', data.message_id);
           }
@@ -941,7 +963,11 @@ function sendMessage() {
 
 function addMessageToChat(message, sender, timestamp, isSent, messageId, isEdited) {
     const container = document.getElementById('messagesContainer');
-    const time = timestamp.substring(11, 16);
+    // Timestamps are stored as UTC - add Z so browser converts to local time
+    const ts = (timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T'));
+    const utcStr = ts.endsWith('Z') ? ts : ts + 'Z';
+    const d = new Date(utcStr);
+    const time = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
     const editedLabel = isEdited ? '<span class="edited-label">(edited)</span>' : '';
     
     const messageHtml = `
@@ -975,37 +1001,58 @@ function editDirectMessage(messageId, currentText) {
     const newText = prompt('Edit message:', currentText);
     if (!newText || newText === currentText) return;
     
+    // Update DOM instantly
+    const el = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (el) {
+        const textEl = el.querySelector('.message-text');
+        if (textEl) textEl.textContent = newText;
+        const bubble = el.querySelector('.message-bubble');
+        if (bubble && !bubble.querySelector('.edited-label')) {
+            bubble.insertAdjacentHTML('beforeend', '<span class="edited-label">(edited)</span>');
+        }
+        // Update onclick with new text
+        const editBtn = el.querySelector('.msg-action-btn');
+        if (editBtn) editBtn.setAttribute('onclick', `editDirectMessage(${messageId}, '${newText.replace(/'/g, "\\'")}')`);
+    }
+
     fetch('/api/edit_direct_message', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({message_id: messageId, new_text: newText})
-    }).then(response => response.json())
-      .then(data => {
-          if (data.success) {
-              // Reload messages
-              loadChat(currentChatUserId, document.getElementById('chatUserName').textContent, document.getElementById('chatUserRole').textContent);
-          }
-      });
+    }).catch(() => {});
 }
 
 function deleteDirectMessage(messageId) {
     if (!confirm('Delete this message?')) return;
     
+    // Remove from DOM instantly
+    const el = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (el) el.remove();
+
     fetch('/api/delete_direct_message', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({message_id: messageId})
-    }).then(response => response.json())
-      .then(data => {
-          if (data.success) {
-              // Remove message from DOM
-              const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-              if (messageElement) {
-                  messageElement.remove();
-              }
-          }
-      });
+    }).catch(() => {});
 }
+
+// Realtime edit/delete from other user
+socket.on('message_edited', function(data) {
+    const el = document.querySelector(`[data-message-id="${data.message_id}"]`);
+    if (el) {
+        const textEl = el.querySelector('.message-text');
+        if (textEl) textEl.textContent = data.new_text;
+        const bubble = el.querySelector('.message-bubble');
+        if (bubble && !bubble.querySelector('.edited-label')) {
+            bubble.insertAdjacentHTML('beforeend', '<span class="edited-label">(edited)</span>');
+        }
+    }
+});
+
+socket.on('message_deleted', function(data) {
+    const el = document.querySelector(`[data-message-id="${data.message_id}"]`);
+    if (el) el.remove();
+});
 
 document.getElementById('messageInput')?.addEventListener('keypress', function(e) {
     if (e.key === 'Enter') {
@@ -1026,6 +1073,21 @@ document.getElementById('searchStaff')?.addEventListener('input', function(e) {
     document.querySelectorAll('.staff-item-modal').forEach(item => {
         const name = item.querySelector('h6').textContent.toLowerCase();
         item.style.display = name.includes(search) ? 'flex' : 'none';
+    });
+});
+
+// UTC timestamp → local 12h time string
+function fmtTime(ts) {
+    if (!ts) return '';
+    const s = ts.includes('T') ? ts : ts.replace(' ', 'T');
+    const utc = s.endsWith('Z') ? s : s + 'Z';
+    return new Date(utc).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
+}
+
+// Format all conv-time spans on load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.conv-time[data-time]').forEach(el => {
+        el.textContent = fmtTime(el.getAttribute('data-time'));
     });
 });
 </script>

@@ -168,7 +168,7 @@
 </style>
 
 <script>
-const socket = io();
+const socket = io({transports: ['websocket'], upgrade: false});
 const receiverId = {{ other_user.id }};
 
 // Clear message badge since we're viewing this chat
@@ -213,7 +213,7 @@ function addMessageToChat(message, sender, timestamp, isSent) {
     const raw = timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T');
     const utcStr = raw.endsWith('Z') ? raw : raw + 'Z';
     const d = new Date(utcStr);
-    const time = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
+    const time = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
     
     const messageHtml = `
         <div class="message-wrapper ${isSent ? 'sent' : 'received'}">
@@ -245,8 +245,7 @@ document.querySelectorAll('.message-time[data-time]').forEach(el => {
     if (raw) {
         const ts = raw.includes('T') ? raw : raw.replace(' ', 'T');
         const utcStr = ts.endsWith('Z') ? ts : ts + 'Z';
-        const d = new Date(utcStr);
-        el.textContent = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
+        el.textContent = new Date(utcStr).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
     }
 });
 </script>
