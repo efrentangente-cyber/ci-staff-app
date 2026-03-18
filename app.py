@@ -25,7 +25,10 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 app.config['WTF_CSRF_ENABLED'] = False  # Disabled - requires adding tokens to all forms
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
-app.config['WTF_CSRF_CHECK_DEFAULT'] = False  # We'll enable it selectively
+app.config['WTF_CSRF_CHECK_DEFAULT'] = False
+app.config['REMEMBER_COOKIE_DURATION'] = __import__('datetime').timedelta(days=30)
+app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(days=30)
+app.config['SESSION_PERMANENT'] = True  # We'll enable it selectively
 
 # Allowed file extensions for uploads
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm', 'mp3', 'wav'}
@@ -254,7 +257,7 @@ def login():
             
             user = User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], 
                        row['backup_email'] if 'backup_email' in row.keys() else None)
-            login_user(user)
+            login_user(user, remember=True)
             flash('Logged in successfully.', 'success')
             return redirect(url_for('index'))
         flash('Invalid credentials', 'danger')
@@ -966,7 +969,7 @@ def send_direct_message():
         'receiver_id': receiver_id,
         'message': message,
         'timestamp': datetime.now().isoformat()
-    }, room=f'user_{receiver_id}')
+    }, room=str(receiver_id))
     
     return jsonify({'success': True})
 

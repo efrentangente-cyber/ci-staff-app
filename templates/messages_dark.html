@@ -816,8 +816,27 @@ function updateOnlineIndicator(userId, isOnline) {
 }
 
 socket.on('new_direct_message', function(data) {
+    // If currently chatting with the sender, show message instantly
     if (currentChatUserId && data.sender_id == currentChatUserId) {
-        addMessageToChat(data.message, data.sender_name, data.timestamp, false);
+        addMessageToChat(data.message, data.sender_name, data.timestamp, false, data.message_id, false);
+        // Mark as read since we're viewing it
+        fetch(`/api/mark_messages_read/${data.sender_id}`, { method: 'POST' }).catch(() => {});
+    } else {
+        // Update conversation list preview for that sender
+        const convItems = document.querySelectorAll('.conversation-item');
+        convItems.forEach(item => {
+            if (item.getAttribute('onclick') && item.getAttribute('onclick').includes(`loadChat(${data.sender_id},`)) {
+                const preview = item.querySelector('.conv-message');
+                if (preview) preview.textContent = data.message;
+                const time = item.querySelector('.conv-time');
+                if (time) time.textContent = data.timestamp.substring(11, 16);
+                item.classList.add('has-unread');
+                if (!item.querySelector('.unread-dot')) {
+                    const bottom = item.querySelector('.conv-bottom');
+                    if (bottom) bottom.insertAdjacentHTML('beforeend', '<span class="unread-dot"></span>');
+                }
+            }
+        });
     }
 });
 
