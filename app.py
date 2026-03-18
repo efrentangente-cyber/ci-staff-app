@@ -925,6 +925,17 @@ def update_location():
     conn.commit()
     conn.close()
     
+    # Emit realtime location update to admin tracking room
+    from datetime import datetime
+    socketio.emit('ci_location_update', {
+        'user_id': current_user.id,
+        'name': current_user.name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'activity': activity,
+        'tracked_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    }, room='admin_tracking')
+    
     return jsonify({'success': True})
 
 @app.route('/api/online_users')
@@ -1361,6 +1372,17 @@ def handle_join_application(data):
     app_id = data.get('application_id')
     if app_id:
         join_room(f'app_{app_id}')
+
+@socketio.on('join')
+def handle_join(data):
+    room = data.get('room')
+    if room:
+        join_room(room)
+
+@socketio.on('join_tracking')
+def handle_join_tracking(data):
+    if current_user.is_authenticated and current_user.role == 'admin':
+        join_room('admin_tracking')
 
 # Flutter Mobile App API Endpoints
 @app.route('/api/user_info')
