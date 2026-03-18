@@ -210,7 +210,9 @@ function sendMessage() {
 
 function addMessageToChat(message, sender, timestamp, isSent) {
     const messagesArea = document.getElementById('messagesArea');
-    const d = new Date(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T'));
+    const raw = timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T');
+    const utcStr = raw.endsWith('Z') ? raw : raw + 'Z';
+    const d = new Date(utcStr);
     const time = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
     
     const messageHtml = `
@@ -241,7 +243,9 @@ document.getElementById('messagesArea').scrollTop = document.getElementById('mes
 document.querySelectorAll('.message-time[data-time]').forEach(el => {
     const raw = el.getAttribute('data-time');
     if (raw) {
-        const d = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
+        const ts = raw.includes('T') ? raw : raw.replace(' ', 'T');
+        const utcStr = ts.endsWith('Z') ? ts : ts + 'Z';
+        const d = new Date(utcStr);
         el.textContent = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
     }
 });

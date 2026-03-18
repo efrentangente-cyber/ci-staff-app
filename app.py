@@ -1016,17 +1016,19 @@ def send_direct_message():
     receiver = conn.execute('SELECT * FROM users WHERE id=?', (receiver_id,)).fetchone()
     conn.close()
     
-    # Emit socket event
-    socketio.emit('new_direct_message', {
+    # Emit socket event to both receiver and sender for zero-delay realtime
+    payload = {
         'message_id': msg_id,
         'sender_id': current_user.id,
         'sender_name': current_user.name,
         'receiver_id': receiver_id,
         'message': message,
         'timestamp': now_ph().isoformat()
-    }, room=str(receiver_id))
+    }
+    socketio.emit('new_direct_message', payload, room=str(receiver_id))
+    socketio.emit('new_direct_message', payload, room=str(current_user.id))
     
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'message_id': msg_id})
 
 @app.route('/api/edit_direct_message', methods=['POST'])
 @login_required

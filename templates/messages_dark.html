@@ -64,7 +64,7 @@
                     <div class="conv-info">
                         <div class="conv-top">
                             <h6>{{ conv.other_user_name }}</h6>
-                            <span class="conv-time" data-time="{{ conv.last_message_time }}">{{ conv.last_message_time[11:16] if conv.last_message_time else '' }}</span>
+                            <span class="conv-time">{{ conv.last_message_time[11:16] if conv.last_message_time else '' }}</span>
                         </div>
                         <div class="conv-bottom">
                             <p class="conv-message">{{ conv.last_message[:35] }}{% if conv.last_message|length > 35 %}...{% endif %}</p>
@@ -815,15 +815,63 @@ function updateOnlineIndicator(userId, isOnline) {
     }
 }
 
+// Track pending message IDs to avoid duplicates (sender gets socket echo back)
+const pendingMessages = new Set();
+
 socket.on('new_direct_message', function(data) {
-    // If currently chatting with the sender, show message instantly
-    if (currentChatUserId && data.sender_id == currentChatUserId) {
-        addMessageToChat(data.message, data.sender_name, data.timestamp, false, data.message_id || null, false);
-        // Mark as read since we're viewing it
-        fetch(`/api/mark_messages_read/${data.sender_id}`, { method: 'POST' }).catch(() => {});
-    } else {
-        // Update or add conversation item in the list
-        updateConversationPreview(data.sender_id, data.sender_name, data.message, data.timestamp);
+    const isMine = data.sender_id == {{ current_user.id }};
+    const otherUserId = isMine ? data.receiver_id : data.sender_id;
+
+    // Deduplicate: sender already added optimistic bubble, skip socket echo
+    if (isMine && pendingMessages.has(data.message_id)) {
+        pendingMessages.delete(data.message_id);
+        return;
+    }
+
+    // If the chat with this person is open, render the message
+    if (currentChatUserId && otherUserId == currentChatUserId) {
+        addMessageToChat(data.message, data.sender_name, data.timestamp, isMine, data.message_id, false);
+        if (!isMine) {
+            // Mark as read since we're viewing it
+            fetch(`/api/mark_messages_read/${data.sender_id}`, { method: 'POST' }).catch(() => {});
+        }
+    } else if (!isMine) {
+        // Update conversation list preview for incoming message from someone else
+        const convItems = document.querySelectorAll('.conversation-item');
+        let found = false;
+        convItems.forEach(item => {
+            if (item.getAttribute('onclick') && item.getAttribute('onclick').includes(`loadChat(${data.sender_id},`)) {
+                found = true;
+                const preview = item.querySelector('.conv-message');
+                if (preview) preview.textContent = data.message;
+                const time = item.querySelector('.conv-time');
+                if (time) time.textContent = data.timestamp.substring(11, 16);
+                item.classList.add('has-unread');
+                if (!item.querySelector('.unread-dot')) {
+                    const bottom = item.querySelector('.conv-bottom');
+                    if (bottom) bottom.insertAdjacentHTML('beforeend', '<span class="unread-dot"></span>');
+                }
+            }
+        });
+        // If no existing conversation item, add one dynamically
+        if (!found) {
+            const list = document.querySelector('.conversations-list');
+            if (list) {
+                const div = document.createElement('div');
+                div.className = 'conversation-item has-unread';
+                div.setAttribute('onclick', `loadChat(${data.sender_id}, '${data.sender_name}', '')`);
+                div.innerHTML = `
+                    <div class="conv-avatar">
+                        <img src="https://ui-avatars.com/api/?name=${data.sender_name}&background=random&color=fff" alt="Avatar">
+                        <span class="online-indicator"></span>
+                    </div>
+                    <div class="conv-info">
+                        <div class="conv-top"><h6>${data.sender_name}</h6><span class="conv-time">${data.timestamp.substring(11,16)}</span></div>
+                        <div class="conv-bottom"><p class="conv-message">${data.message}</p><span class="unread-dot"></span></div>
+                    </div>`;
+                list.prepend(div);
+            }
+        }
     }
 });
 
@@ -862,31 +910,6 @@ function loadChat(userId, userName, userRole) {
             });
             
             container.scrollTop = container.scrollHeight;
-
-            // Clear unread indicators for this conversation
-            document.querySelectorAll('.conversation-item').forEach(item => {
-                const oc = item.getAttribute('onclick') || '';
-                if (oc.includes(`loadChat(${userId},`)) {
-                    item.classList.remove('has-unread');
-                    const dot = item.querySelector('.unread-dot');
-                    if (dot) dot.remove();
-                }
-            });
-
-            // Recalculate total unread for nav badge
-            fetch('/api/unread_message_count')
-                .then(r => r.json())
-                .then(d => {
-                    const badge = document.getElementById('message-count');
-                    const mobileBadge = document.getElementById('message-count-mobile');
-                    if (d.count > 0) {
-                        if (badge) { badge.textContent = d.count; badge.style.display = 'inline'; }
-                        if (mobileBadge) { mobileBadge.textContent = d.count; mobileBadge.style.display = 'inline'; }
-                    } else {
-                        if (badge) { badge.textContent = ''; badge.style.display = 'none'; }
-                        if (mobileBadge) { mobileBadge.textContent = ''; mobileBadge.style.display = 'none'; }
-                    }
-                });
         });
 }
 
@@ -895,45 +918,35 @@ function sendMessage() {
     
     const input = document.getElementById('messageInput');
     const message = input.value.trim();
-    
     if (!message) return;
-    
+
+    // Clear input immediately for zero-delay feel
+    input.value = '';
+
+    // Show bubble instantly (optimistic)
+    const tempId = 'temp_' + Date.now();
+    addMessageToChat(message, '{{ current_user.name }}', new Date().toISOString(), true, tempId, false);
+
+    // Send to server in background
     fetch('/api/send_direct_message', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            receiver_id: currentChatUserId,
-            message: message
-        })
-    }).then(response => response.json())
+        body: JSON.stringify({ receiver_id: currentChatUserId, message: message })
+    }).then(r => r.json())
       .then(data => {
-          if (data.success) {
-              const now = new Date().toISOString();
-              addMessageToChat(message, '{{ current_user.name }}', now, true);
-              input.value = '';
-              // Update own conversation preview
-              const list = document.querySelector('.conversations-list');
-              let existing = null;
-              document.querySelectorAll('.conversation-item').forEach(item => {
-                  const oc = item.getAttribute('onclick') || '';
-                  if (oc.includes(`loadChat(${currentChatUserId},`)) existing = item;
-              });
-              if (existing) {
-                  const preview = existing.querySelector('.conv-message');
-                  if (preview) preview.textContent = message;
-                  const time = existing.querySelector('.conv-time');
-                  if (time) time.textContent = now.substring(11, 16);
-                  list.prepend(existing);
-              }
+          if (data.success && data.message_id) {
+              // Replace temp ID with real ID on the bubble
+              const tempEl = document.querySelector(`[data-message-id="${tempId}"]`);
+              if (tempEl) tempEl.setAttribute('data-message-id', data.message_id);
+              // Register real ID so socket echo is deduplicated
+              pendingMessages.add(data.message_id);
           }
-      });
+      }).catch(() => {});
 }
 
 function addMessageToChat(message, sender, timestamp, isSent, messageId, isEdited) {
     const container = document.getElementById('messagesContainer');
-    // Parse timestamp and show in local time
-    const d = new Date(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T'));
-    const time = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
+    const time = timestamp.substring(11, 16);
     const editedLabel = isEdited ? '<span class="edited-label">(edited)</span>' : '';
     
     const messageHtml = `
@@ -1005,17 +1018,6 @@ document.getElementById('messageInput')?.addEventListener('keypress', function(e
     }
 });
 
-// Format all conversation timestamps to local time on load
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.conv-time[data-time]').forEach(el => {
-        const raw = el.getAttribute('data-time');
-        if (raw) {
-            const d = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
-            el.textContent = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
-        }
-    });
-});
-
 document.getElementById('searchChats')?.addEventListener('input', function(e) {
     const search = e.target.value.toLowerCase();
     document.querySelectorAll('.conversation-item').forEach(item => {
@@ -1031,57 +1033,6 @@ document.getElementById('searchStaff')?.addEventListener('input', function(e) {
         item.style.display = name.includes(search) ? 'flex' : 'none';
     });
 });
-
-function updateConversationPreview(userId, userName, message, timestamp) {
-    const list = document.querySelector('.conversations-list');
-    let existing = null;
-
-    document.querySelectorAll('.conversation-item').forEach(item => {
-        const oc = item.getAttribute('onclick') || '';
-        if (oc.includes(`loadChat(${userId},`)) existing = item;
-    });
-
-    if (existing) {
-        // Update existing conversation
-        const preview = existing.querySelector('.conv-message');
-        if (preview) preview.textContent = message;
-        const time = existing.querySelector('.conv-time');
-        if (time) time.textContent = timestamp.substring(11, 16);
-        existing.classList.add('has-unread');
-        if (!existing.querySelector('.unread-dot')) {
-            const bottom = existing.querySelector('.conv-bottom');
-            if (bottom) bottom.insertAdjacentHTML('beforeend', '<span class="unread-dot"></span>');
-        }
-        // Move to top
-        list.prepend(existing);
-    } else {
-        // New conversation - create item
-        const roleLabel = 'Staff';
-        const newItem = document.createElement('div');
-        newItem.className = 'conversation-item has-unread';
-        newItem.setAttribute('onclick', `loadChat(${userId}, '${userName}', '${roleLabel}')`);
-        newItem.innerHTML = `
-            <div class="conv-avatar">
-                <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random&color=fff" alt="Avatar">
-                <span class="online-indicator"></span>
-            </div>
-            <div class="conv-info">
-                <div class="conv-top">
-                    <h6>${userName}</h6>
-                    <span class="conv-time">${timestamp.substring(11, 16)}</span>
-                </div>
-                <div class="conv-bottom">
-                    <p class="conv-message">${message}</p>
-                    <span class="unread-dot"></span>
-                </div>
-            </div>
-        `;
-        // Remove empty state if present
-        const empty = list.querySelector('.empty-conversations');
-        if (empty) empty.remove();
-        list.prepend(newItem);
-    }
-}
 </script>
 
 {% endblock %}
