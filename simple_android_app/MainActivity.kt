@@ -122,7 +122,7 @@ class MainActivity : AppCompatActivity() {
         
         // Load your CI Staff System - Render deployment
         val timestamp = System.currentTimeMillis()
-        webView.loadUrl("https://dccco-ci-system.onrender.com?nocache=$timestamp")
+        webView.loadUrl("https://ci-staff-app-rrv5.onrender.com?nocache=$timestamp")
     }
     
     private fun requestPermissions() {

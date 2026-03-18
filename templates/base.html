@@ -744,10 +744,16 @@
         // Handle direct messages
         socket.on('new_direct_message', function(data) {
             if (data.receiver_id == {{ current_user.id }}) {
+                // Update desktop badge
                 const badge = document.getElementById('message-count');
                 const current = parseInt(badge.textContent) || 0;
                 badge.textContent = current + 1;
                 badge.style.display = 'inline';
+                // Update mobile bottom nav badge
+                const mobileBadge = document.getElementById('message-count-mobile');
+                const currentMobile = parseInt(mobileBadge.textContent) || 0;
+                mobileBadge.textContent = currentMobile + 1;
+                mobileBadge.style.display = 'inline';
             }
         });
         

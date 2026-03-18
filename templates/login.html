@@ -370,31 +370,57 @@
         const logoSection = document.getElementById('logoSection');
         const loginFormSection = document.getElementById('loginFormSection');
         
+        let hoverTimeout;
+        let isFormFocused = false;
+
         // Show login form when hovering over logo
         logoSection.addEventListener('mouseenter', function() {
+            clearTimeout(hoverTimeout);
             logoSection.classList.add('slide-left');
             loginFormSection.classList.add('show');
         });
         
-        // Hide login form when mouse leaves both logo and form
-        let hoverTimeout;
-        
         function hideLogin() {
+            // Don't hide if any input inside the form is focused
+            if (isFormFocused) return;
             hoverTimeout = setTimeout(() => {
-                logoSection.classList.remove('slide-left');
-                loginFormSection.classList.remove('show');
-            }, 300);
+                // Double-check focus hasn't moved into the form
+                if (!isFormFocused && !loginFormSection.contains(document.activeElement)) {
+                    logoSection.classList.remove('slide-left');
+                    loginFormSection.classList.remove('show');
+                }
+            }, 500);
         }
         
         function cancelHide() {
             clearTimeout(hoverTimeout);
         }
         
+        // Track focus state of form inputs
+        loginFormSection.addEventListener('focusin', function() {
+            isFormFocused = true;
+            cancelHide();
+            // Make sure form stays visible
+            logoSection.classList.add('slide-left');
+            loginFormSection.classList.add('show');
+        });
+
+        loginFormSection.addEventListener('focusout', function() {
+            // Small delay to allow focus to move to autocomplete suggestion
+            setTimeout(() => {
+                if (!loginFormSection.contains(document.activeElement)) {
+                    isFormFocused = false;
+                }
+            }, 200);
+        });
+        
         logoSection.addEventListener('mouseleave', hideLogin);
         logoSection.addEventListener('mouseenter', cancelHide);
         
         loginFormSection.addEventListener('mouseenter', cancelHide);
-        loginFormSection.addEventListener('mouseleave', hideLogin);
+        loginFormSection.addEventListener('mouseleave', function() {
+            if (!isFormFocused) hideLogin();
+        });
         
         // Auto-dismiss alerts after 3 seconds
         document.addEventListener('DOMContentLoaded', function() {
