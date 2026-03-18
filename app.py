@@ -100,6 +100,11 @@ online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timesta
 def serve_static(filename):
     return send_from_directory('static', filename)
 
+# Serve favicon directly at /favicon.ico
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory('static/images', 'logo.jpg', mimetype='image/jpeg')
+
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)

@@ -815,20 +815,17 @@ function updateOnlineIndicator(userId, isOnline) {
     }
 }
 
-// Track pending message IDs to avoid duplicates (sender gets socket echo back)
+// Track pending message IDs to avoid duplicates (no longer needed, kept for safety)
 const pendingMessages = new Set();
 
 socket.on('new_direct_message', function(data) {
     const isMine = data.sender_id == {{ current_user.id }};
-    const otherUserId = isMine ? data.receiver_id : data.sender_id;
 
-    // Deduplicate: sender already added optimistic bubble, skip socket echo
-    if (isMine && pendingMessages.has(data.message_id)) {
-        pendingMessages.delete(data.message_id);
-        return;
-    }
+    // Sender already has optimistic bubble — ignore own echoes entirely
+    if (isMine) return;
 
     // If the chat with this person is open, render the message
+    const otherUserId = data.sender_id;
     if (currentChatUserId && otherUserId == currentChatUserId) {
         addMessageToChat(data.message, data.sender_name, data.timestamp, isMine, data.message_id, false);
         if (!isMine) {
@@ -938,8 +935,6 @@ function sendMessage() {
               // Replace temp ID with real ID on the bubble
               const tempEl = document.querySelector(`[data-message-id="${tempId}"]`);
               if (tempEl) tempEl.setAttribute('data-message-id', data.message_id);
-              // Register real ID so socket echo is deduplicated
-              pendingMessages.add(data.message_id);
           }
       }).catch(() => {});
 }
