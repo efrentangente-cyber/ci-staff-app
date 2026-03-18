@@ -818,25 +818,12 @@ function updateOnlineIndicator(userId, isOnline) {
 socket.on('new_direct_message', function(data) {
     // If currently chatting with the sender, show message instantly
     if (currentChatUserId && data.sender_id == currentChatUserId) {
-        addMessageToChat(data.message, data.sender_name, data.timestamp, false, data.message_id, false);
+        addMessageToChat(data.message, data.sender_name, data.timestamp, false, data.message_id || null, false);
         // Mark as read since we're viewing it
         fetch(`/api/mark_messages_read/${data.sender_id}`, { method: 'POST' }).catch(() => {});
     } else {
-        // Update conversation list preview for that sender
-        const convItems = document.querySelectorAll('.conversation-item');
-        convItems.forEach(item => {
-            if (item.getAttribute('onclick') && item.getAttribute('onclick').includes(`loadChat(${data.sender_id},`)) {
-                const preview = item.querySelector('.conv-message');
-                if (preview) preview.textContent = data.message;
-                const time = item.querySelector('.conv-time');
-                if (time) time.textContent = data.timestamp.substring(11, 16);
-                item.classList.add('has-unread');
-                if (!item.querySelector('.unread-dot')) {
-                    const bottom = item.querySelector('.conv-bottom');
-                    if (bottom) bottom.insertAdjacentHTML('beforeend', '<span class="unread-dot"></span>');
-                }
-            }
-        });
+        // Update or add conversation item in the list
+        updateConversationPreview(data.sender_id, data.sender_name, data.message, data.timestamp);
     }
 });
 
@@ -875,6 +862,31 @@ function loadChat(userId, userName, userRole) {
             });
             
             container.scrollTop = container.scrollHeight;
+
+            // Clear unread indicators for this conversation
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                const oc = item.getAttribute('onclick') || '';
+                if (oc.includes(`loadChat(${userId},`)) {
+                    item.classList.remove('has-unread');
+                    const dot = item.querySelector('.unread-dot');
+                    if (dot) dot.remove();
+                }
+            });
+
+            // Recalculate total unread for nav badge
+            fetch('/api/unread_message_count')
+                .then(r => r.json())
+                .then(d => {
+                    const badge = document.getElementById('message-count');
+                    const mobileBadge = document.getElementById('message-count-mobile');
+                    if (d.count > 0) {
+                        if (badge) { badge.textContent = d.count; badge.style.display = 'inline'; }
+                        if (mobileBadge) { mobileBadge.textContent = d.count; mobileBadge.style.display = 'inline'; }
+                    } else {
+                        if (badge) { badge.textContent = ''; badge.style.display = 'none'; }
+                        if (mobileBadge) { mobileBadge.textContent = ''; mobileBadge.style.display = 'none'; }
+                    }
+                });
         });
 }
 
@@ -896,8 +908,23 @@ function sendMessage() {
     }).then(response => response.json())
       .then(data => {
           if (data.success) {
-              addMessageToChat(message, '{{ current_user.name }}', new Date().toISOString(), true);
+              const now = new Date().toISOString();
+              addMessageToChat(message, '{{ current_user.name }}', now, true);
               input.value = '';
+              // Update own conversation preview
+              const list = document.querySelector('.conversations-list');
+              let existing = null;
+              document.querySelectorAll('.conversation-item').forEach(item => {
+                  const oc = item.getAttribute('onclick') || '';
+                  if (oc.includes(`loadChat(${currentChatUserId},`)) existing = item;
+              });
+              if (existing) {
+                  const preview = existing.querySelector('.conv-message');
+                  if (preview) preview.textContent = message;
+                  const time = existing.querySelector('.conv-time');
+                  if (time) time.textContent = now.substring(11, 16);
+                  list.prepend(existing);
+              }
           }
       });
 }
@@ -991,6 +1018,57 @@ document.getElementById('searchStaff')?.addEventListener('input', function(e) {
         item.style.display = name.includes(search) ? 'flex' : 'none';
     });
 });
+
+function updateConversationPreview(userId, userName, message, timestamp) {
+    const list = document.querySelector('.conversations-list');
+    let existing = null;
+
+    document.querySelectorAll('.conversation-item').forEach(item => {
+        const oc = item.getAttribute('onclick') || '';
+        if (oc.includes(`loadChat(${userId},`)) existing = item;
+    });
+
+    if (existing) {
+        // Update existing conversation
+        const preview = existing.querySelector('.conv-message');
+        if (preview) preview.textContent = message;
+        const time = existing.querySelector('.conv-time');
+        if (time) time.textContent = timestamp.substring(11, 16);
+        existing.classList.add('has-unread');
+        if (!existing.querySelector('.unread-dot')) {
+            const bottom = existing.querySelector('.conv-bottom');
+            if (bottom) bottom.insertAdjacentHTML('beforeend', '<span class="unread-dot"></span>');
+        }
+        // Move to top
+        list.prepend(existing);
+    } else {
+        // New conversation - create item
+        const roleLabel = 'Staff';
+        const newItem = document.createElement('div');
+        newItem.className = 'conversation-item has-unread';
+        newItem.setAttribute('onclick', `loadChat(${userId}, '${userName}', '${roleLabel}')`);
+        newItem.innerHTML = `
+            <div class="conv-avatar">
+                <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random&color=fff" alt="Avatar">
+                <span class="online-indicator"></span>
+            </div>
+            <div class="conv-info">
+                <div class="conv-top">
+                    <h6>${userName}</h6>
+                    <span class="conv-time">${timestamp.substring(11, 16)}</span>
+                </div>
+                <div class="conv-bottom">
+                    <p class="conv-message">${message}</p>
+                    <span class="unread-dot"></span>
+                </div>
+            </div>
+        `;
+        // Remove empty state if present
+        const empty = list.querySelector('.empty-conversations');
+        if (empty) empty.remove();
+        list.prepend(newItem);
+    }
+}
 </script>
 
 {% endblock %}

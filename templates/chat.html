@@ -171,10 +171,15 @@
 const socket = io();
 const receiverId = {{ other_user.id }};
 
-// Join user room for direct messages
-socket.emit('join', {room: 'user_{{ current_user.id }}'});
+// Clear message badge since we're viewing this chat
+document.addEventListener('DOMContentLoaded', function() {
+    const badge = document.getElementById('message-count');
+    const mobileBadge = document.getElementById('message-count-mobile');
+    if (badge) { badge.textContent = ''; badge.style.display = 'none'; }
+    if (mobileBadge) { mobileBadge.textContent = ''; mobileBadge.style.display = 'none'; }
+});
 
-// Listen for new messages
+// Listen for new messages (room is auto-joined by server on connect)
 socket.on('new_direct_message', function(data) {
     if (data.sender_id == receiverId) {
         addMessageToChat(data.message, data.sender_name, data.timestamp, false);

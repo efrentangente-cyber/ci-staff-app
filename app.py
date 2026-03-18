@@ -57,7 +57,23 @@ def utility_processor():
         user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
         conn.close()
         return user
-    return dict(get_user_by_id=get_user_by_id)
+
+    # Inject unread message count into every template automatically
+    message_unread_count = 0
+    try:
+        from flask_login import current_user as _cu
+        if _cu.is_authenticated:
+            conn = get_db()
+            row = conn.execute('''
+                SELECT COUNT(*) as count FROM direct_messages
+                WHERE receiver_id = ? AND is_read = 0
+            ''', (_cu.id,)).fetchone()
+            conn.close()
+            message_unread_count = row['count'] if row else 0
+    except Exception:
+        pass
+
+    return dict(get_user_by_id=get_user_by_id, message_unread_count=message_unread_count)
 
 socketio = SocketIO(app, cors_allowed_origins=[
     "http://localhost:5000",
@@ -941,6 +957,37 @@ def get_messages(user_id):
         'messages': [dict(msg) for msg in messages]
     })
 
+@app.route('/api/mark_messages_read/<int:sender_id>', methods=['POST'])
+@login_required
+def mark_messages_read(sender_id):
+    conn = get_db()
+    conn.execute('''
+        UPDATE direct_messages SET is_read = 1
+        WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
+    ''', (sender_id, current_user.id))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+@app.route('/api/unread_message_count')
+@login_required
+def unread_message_count():
+    conn = get_db()
+    row = conn.execute('''
+        SELECT COUNT(*) as count FROM direct_messages
+        WHERE receiver_id = ? AND is_read = 0
+    ''', (current_user.id,)).fetchone()
+    conn.close()
+    return jsonify({'count': row['count'] if row else 0})
+
+@app.route('/api/unread_messages_count')
+@login_required
+def unread_messages_count():
+    conn = get_db()
+    count = conn.execute('SELECT COUNT(*) as count FROM direct_messages WHERE receiver_id=? AND is_read=0 AND is_deleted=0', (current_user.id,)).fetchone()['count']
+    conn.close()
+    return jsonify({'count': count})
+
 @app.route('/api/send_direct_message', methods=['POST'])
 @login_required
 def send_direct_message():
@@ -952,10 +999,11 @@ def send_direct_message():
         return jsonify({'success': False, 'error': 'Missing data'})
     
     conn = get_db()
-    conn.execute('''
+    cursor = conn.execute('''
         INSERT INTO direct_messages (sender_id, receiver_id, message)
         VALUES (?, ?, ?)
     ''', (current_user.id, receiver_id, message))
+    msg_id = cursor.lastrowid
     conn.commit()
     
     # Get receiver info for socket notification
@@ -964,6 +1012,7 @@ def send_direct_message():
     
     # Emit socket event
     socketio.emit('new_direct_message', {
+        'message_id': msg_id,
         'sender_id': current_user.id,
         'sender_name': current_user.name,
         'receiver_id': receiver_id,

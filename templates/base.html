@@ -652,7 +652,7 @@
                 {% endif %}
                 <a href="{{ url_for('messages') }}" class="notification-badge">
                     <i class="bi bi-messenger"></i> Messages
-                    <span class="badge bg-danger" id="message-count" style="display:none;">0</span>
+                    <span class="badge bg-danger" id="message-count" {% if not message_unread_count or message_unread_count == 0 %}style="display:none;"{% endif %}>{{ message_unread_count if message_unread_count else '' }}</span>
                 </a>
                 <a href="{{ url_for('notifications') }}" class="notification-badge">
                     <i class="bi bi-bell"></i> Notifications
@@ -681,7 +681,7 @@
             <a href="{{ url_for('messages') }}" class="notification-badge">
                 <i class="bi bi-chat-dots-fill"></i>
                 <span>Messages</span>
-                <span class="badge bg-danger" id="message-count-mobile" style="display:none;">0</span>
+                <span class="badge bg-danger" id="message-count-mobile" {% if not message_unread_count or message_unread_count == 0 %}style="display:none;"{% endif %}>{{ message_unread_count if message_unread_count else '' }}</span>
             </a>
             <a href="{{ url_for('notifications') }}" class="notification-badge">
                 <i class="bi bi-bell-fill"></i>
