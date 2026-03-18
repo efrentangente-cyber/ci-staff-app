@@ -476,16 +476,23 @@
     flex-direction: column;
     gap: 8px;
     background: #f9fafb;
+    align-items: stretch;
 }
 
 .message-group {
     display: flex;
     gap: 8px;
     margin-bottom: 12px;
+    max-width: 70%;
 }
 
 .message-group.sent {
     flex-direction: row-reverse;
+    align-self: flex-end;
+}
+
+.message-group.received {
+    align-self: flex-start;
 }
 
 .message-avatar {
@@ -493,13 +500,13 @@
     height: 28px;
     border-radius: 50%;
     flex-shrink: 0;
+    align-self: flex-end;
 }
 
 .message-bubbles {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-width: 65%;
     min-width: 0;
 }
 
@@ -507,15 +514,21 @@
     align-items: flex-end;
 }
 
+.message-group.received .message-bubbles {
+    align-items: flex-start;
+}
+
 .message-bubble {
-    padding: 8px 12px;
+    display: inline-block;
+    padding: 10px 14px;
     border-radius: 18px;
     font-size: 15px;
-    line-height: 1.4;
+    line-height: 1.5;
     word-wrap: break-word;
     overflow-wrap: break-word;
     word-break: break-word;
     max-width: 100%;
+    width: fit-content;
     position: relative;
 }
 
@@ -579,8 +592,7 @@
 .message-time {
     font-size: 11px;
     color: #9ca3af;
-    padding: 0 12px;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 .message-input-container {
