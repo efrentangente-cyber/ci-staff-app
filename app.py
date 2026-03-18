@@ -11,11 +11,19 @@ import os
 import uuid
 import re
 from datetime import datetime, timedelta
+import pytz
 from dotenv import load_dotenv
 import resend
 
 # Load environment variables
 load_dotenv()
+
+# Philippines Standard Time (UTC+8)
+PH_TZ = pytz.timezone('Asia/Manila')
+
+def now_ph():
+    """Return current Philippine time as naive datetime (for DB storage)"""
+    return datetime.now(PH_TZ).replace(tzinfo=None)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'replace-this-with-a-secure-random-secret')
@@ -309,7 +317,7 @@ def loan_dashboard():
         ORDER BY name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'', 
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     return render_template('loan_dashboard.html', applications=applications, unread_count=unread_count, ci_staff_list=ci_staff_list)
@@ -318,7 +326,7 @@ def loan_dashboard():
 @login_required
 def notification_count():
     conn = get_db()
-    count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'', 
+    count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                         (current_user.id,)).fetchone()['count']
     conn.close()
     return jsonify({'count': count})
@@ -487,7 +495,7 @@ def submit_application():
         ORDER BY name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'', 
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
@@ -507,7 +515,7 @@ def ci_dashboard():
         WHERE la.assigned_ci_staff = ?
         ORDER BY la.submitted_at ASC
     ''', (current_user.id,)).fetchall()
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'',
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     return render_template('ci_dashboard.html', applications=applications, unread_count=unread_count)
@@ -553,7 +561,7 @@ def ci_application(id):
                 UPDATE loan_applications 
                 SET status=?, ci_notes=?, ci_checklist_data=?, ci_signature=?, ci_completed_at=?
                 WHERE id=?
-            ''', ('ci_completed', ci_notes, checklist_data, current_user.name, datetime.now().isoformat(), id))
+            ''', ('ci_completed', ci_notes, checklist_data, current_user.name, now_ph().isoformat(), id))
             
             # Handle interview photo uploads
             if 'interview_photos' in request.files:
@@ -597,7 +605,7 @@ def ci_application(id):
         ORDER BY m.sent_at ASC
     ''', (id,)).fetchall()
     
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'', 
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     
@@ -631,7 +639,7 @@ def admin_dashboard():
         ORDER BY is_online DESC, name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'',
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     return render_template('admin_dashboard.html', applications=applications, ci_staff=ci_staff, unread_count=unread_count)
@@ -668,7 +676,7 @@ def admin_application(id):
                 UPDATE loan_applications 
                 SET status=?, admin_notes=?, admin_decision_at=?
                 WHERE id=?
-            ''', (decision, admin_notes, datetime.now().isoformat(), id))
+            ''', (decision, admin_notes, now_ph().isoformat(), id))
             
             conn.commit()
             conn.close()
@@ -693,7 +701,7 @@ def admin_application(id):
         WHERE m.loan_application_id=?
         ORDER BY m.sent_at ASC
     ''', (id,)).fetchall()
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'', 
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     
@@ -738,7 +746,7 @@ def loan_application(id):
         WHERE m.loan_application_id=?
         ORDER BY m.sent_at ASC
     ''', (id,)).fetchall()
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'', 
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     
@@ -805,9 +813,7 @@ def messages():
     
     conn.close()
     
-    unread_count = sum(conv['unread_count'] for conv in conversations)
-    
-    return render_template('messages_dark.html', staff=staff, conversations=conversations, unread_count=unread_count)
+    return render_template('messages_dark.html', staff=staff, conversations=conversations, unread_count=0)
 
 @app.route('/messages/<int:user_id>')
 @login_required
@@ -1017,7 +1023,7 @@ def send_direct_message():
         'sender_name': current_user.name,
         'receiver_id': receiver_id,
         'message': message,
-        'timestamp': datetime.now().isoformat()
+        'timestamp': now_ph().isoformat()
     }, room=str(receiver_id))
     
     return jsonify({'success': True})
@@ -1037,7 +1043,7 @@ def edit_direct_message():
             UPDATE direct_messages 
             SET message=?, is_edited=1, edited_at=? 
             WHERE id=?
-        ''', (new_text, datetime.now().isoformat(), message_id))
+        ''', (new_text, now_ph().isoformat(), message_id))
         conn.commit()
         conn.close()
         return jsonify({'success': True})
@@ -1133,7 +1139,7 @@ def send_message():
         'application_id': app_id,
         'sender': current_user.name,
         'message': message,
-        'timestamp': datetime.now().isoformat()
+        'timestamp': now_ph().isoformat()
     }, room=f'app_{app_id}')
     
     return jsonify({'success': True})
@@ -1194,7 +1200,7 @@ def send_message_with_attachment():
         'application_id': int(app_id),
         'sender': current_user.name,
         'message': message,
-        'timestamp': datetime.now().isoformat()
+        'timestamp': now_ph().isoformat()
     }, room=f'app_{app_id}')
     
     return jsonify({'success': True})
@@ -1214,7 +1220,7 @@ def edit_message():
             UPDATE messages 
             SET message=?, is_edited=1, edited_at=? 
             WHERE id=?
-        ''', (new_text, datetime.now().isoformat(), message_id))
+        ''', (new_text, now_ph().isoformat(), message_id))
         conn.commit()
         conn.close()
         return jsonify({'success': True})
@@ -1297,12 +1303,12 @@ def handle_connect(auth=None):
         online_users[current_user.id] = {
             'name': current_user.name,
             'role': current_user.role,
-            'last_seen': datetime.now().isoformat()
+            'last_seen': now_ph().isoformat()
         }
         # Update database
         conn = get_db()
         conn.execute('UPDATE users SET last_seen=?, is_online=1 WHERE id=?', 
-                    (datetime.now().isoformat(), current_user.id))
+                    (now_ph().isoformat(), current_user.id))
         conn.commit()
         conn.close()
         # Broadcast to all users that this user is online
@@ -1321,7 +1327,7 @@ def handle_disconnect(reason=None):
         # Update database
         conn = get_db()
         conn.execute('UPDATE users SET last_seen=?, is_online=0 WHERE id=?', 
-                    (datetime.now().isoformat(), current_user.id))
+                    (now_ph().isoformat(), current_user.id))
         conn.commit()
         conn.close()
         # Broadcast to all users that this user is offline
@@ -1435,7 +1441,7 @@ def signup():
             conn.execute('''
                 INSERT INTO users (email, password_hash, name, role, signature_path, is_approved, created_at)
                 VALUES (?, ?, ?, ?, ?, 0, ?)
-            ''', (email, password_hash, name, role, signature_path, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            ''', (email, password_hash, name, role, signature_path, now_ph().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
             
             # Notify admin
@@ -1481,7 +1487,7 @@ def manage_users():
         ORDER BY name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'',
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     
@@ -1610,7 +1616,7 @@ def change_password():
         return redirect(url_for('index'))
     
     conn = get_db()
-    unread_count = conn.execute('SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'',
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     return render_template('change_password.html', unread_count=unread_count)
@@ -1686,7 +1692,7 @@ def forgot_password():
                 if user:
                     import random
                     code = str(random.randint(100000, 999999))
-                    expires = (datetime.now() + timedelta(minutes=15)).isoformat()
+                    expires = (now_ph() + timedelta(minutes=15)).isoformat()
                     
                     conn.execute('UPDATE users SET password_reset_token=?, password_reset_expires=? WHERE id=?',
                                 (code, expires, user['id']))
@@ -1722,7 +1728,7 @@ def forgot_password():
                 
                 if user and user['password_reset_expires']:
                     expires = datetime.fromisoformat(user['password_reset_expires'])
-                    if datetime.now() <= expires:
+                    if now_ph() <= expires:
                         conn.close()
                         flash('Code verified! Enter your new password.', 'success')
                         return render_template('forgot_password.html', show_password_input=True, email=email, code=code)
@@ -1792,7 +1798,7 @@ def reset_password(token):
     # Check if token expired
     if user['password_reset_expires']:
         expires = datetime.fromisoformat(user['password_reset_expires'])
-        if datetime.now() > expires:
+        if now_ph() > expires:
             flash('Reset link has expired', 'danger')
             conn.close()
             return redirect(url_for('forgot_password'))

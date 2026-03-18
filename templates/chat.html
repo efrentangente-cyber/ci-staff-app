@@ -27,7 +27,7 @@
                 <div class="message-sender">{{ msg.sender_name }}</div>
                 {% endif %}
                 <div class="message-text">{{ msg.message }}</div>
-                <div class="message-time">{{ msg.sent_at[11:16] }}</div>
+                <div class="message-time" data-time="{{ msg.sent_at }}">{{ msg.sent_at[11:16] }}</div>
             </div>
         </div>
         {% endfor %}
@@ -210,7 +210,8 @@ function sendMessage() {
 
 function addMessageToChat(message, sender, timestamp, isSent) {
     const messagesArea = document.getElementById('messagesArea');
-    const time = timestamp.substring(11, 16);
+    const d = new Date(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T'));
+    const time = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
     
     const messageHtml = `
         <div class="message-wrapper ${isSent ? 'sent' : 'received'}">
@@ -235,6 +236,15 @@ document.getElementById('messageInput').addEventListener('keypress', function(e)
 
 // Scroll to bottom on load
 document.getElementById('messagesArea').scrollTop = document.getElementById('messagesArea').scrollHeight;
+
+// Format existing message timestamps to local time
+document.querySelectorAll('.message-time[data-time]').forEach(el => {
+    const raw = el.getAttribute('data-time');
+    if (raw) {
+        const d = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
+        el.textContent = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
+    }
+});
 </script>
 
 {% endblock %}

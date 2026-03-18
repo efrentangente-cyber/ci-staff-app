@@ -64,7 +64,7 @@
                     <div class="conv-info">
                         <div class="conv-top">
                             <h6>{{ conv.other_user_name }}</h6>
-                            <span class="conv-time">{{ conv.last_message_time[11:16] if conv.last_message_time else '' }}</span>
+                            <span class="conv-time" data-time="{{ conv.last_message_time }}">{{ conv.last_message_time[11:16] if conv.last_message_time else '' }}</span>
                         </div>
                         <div class="conv-bottom">
                             <p class="conv-message">{{ conv.last_message[:35] }}{% if conv.last_message|length > 35 %}...{% endif %}</p>
@@ -931,7 +931,9 @@ function sendMessage() {
 
 function addMessageToChat(message, sender, timestamp, isSent, messageId, isEdited) {
     const container = document.getElementById('messagesContainer');
-    const time = timestamp.substring(11, 16);
+    // Parse timestamp and show in local time
+    const d = new Date(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T'));
+    const time = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
     const editedLabel = isEdited ? '<span class="edited-label">(edited)</span>' : '';
     
     const messageHtml = `
@@ -1001,6 +1003,17 @@ document.getElementById('messageInput')?.addEventListener('keypress', function(e
     if (e.key === 'Enter') {
         sendMessage();
     }
+});
+
+// Format all conversation timestamps to local time on load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.conv-time[data-time]').forEach(el => {
+        const raw = el.getAttribute('data-time');
+        if (raw) {
+            const d = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
+            el.textContent = d.toLocaleTimeString('en-PH', {hour: '2-digit', minute: '2-digit', hour12: true});
+        }
+    });
 });
 
 document.getElementById('searchChats')?.addEventListener('input', function(e) {

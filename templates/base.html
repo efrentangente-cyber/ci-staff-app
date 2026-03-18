@@ -652,7 +652,7 @@
                 {% endif %}
                 <a href="{{ url_for('messages') }}" class="notification-badge">
                     <i class="bi bi-messenger"></i> Messages
-                    <span class="badge bg-danger" id="message-count" style="display:none;">0</span>
+                    <span class="badge bg-danger" id="message-count" {% if not message_unread_count or message_unread_count == 0 %}style="display:none;"{% endif %}>{{ message_unread_count if message_unread_count else '' }}</span>
                 </a>
                 <a href="{{ url_for('notifications') }}" class="notification-badge">
                     <i class="bi bi-bell"></i> Notifications
@@ -681,7 +681,7 @@
             <a href="{{ url_for('messages') }}" class="notification-badge">
                 <i class="bi bi-chat-dots-fill"></i>
                 <span>Messages</span>
-                <span class="badge bg-danger" id="message-count-mobile" style="display:none;">0</span>
+                <span class="badge bg-danger" id="message-count-mobile" {% if not message_unread_count or message_unread_count == 0 %}style="display:none;"{% endif %}>{{ message_unread_count if message_unread_count else '' }}</span>
             </a>
             <a href="{{ url_for('notifications') }}" class="notification-badge">
                 <i class="bi bi-bell-fill"></i>
@@ -753,18 +753,10 @@
         });
 
         // On page load, fetch unread message count and show on Messages badge
-        fetch('/api/unread_messages_count')
-            .then(r => r.json())
-            .then(d => {
-                if (d.count > 0) {
-                    const badge = document.getElementById('message-count');
-                    const mobileBadge = document.getElementById('message-count-mobile');
-                    if (badge) { badge.textContent = d.count; badge.style.display = 'inline'; }
-                    if (mobileBadge) { mobileBadge.textContent = d.count; mobileBadge.style.display = 'inline'; }
-                }
-            }).catch(() => {});
+        // (badge is already rendered server-side via message_unread_count)
+        // Only update via socket events below
         
-        // Handle direct messages
+        // Handle direct messages - update Messages badge only
         socket.on('new_direct_message', function(data) {
             if (data.receiver_id == {{ current_user.id }}) {
                 // Update desktop badge
