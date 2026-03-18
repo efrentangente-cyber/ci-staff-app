@@ -515,7 +515,6 @@
     word-wrap: break-word;
     overflow-wrap: break-word;
     word-break: break-word;
-    white-space: pre-wrap;
     max-width: 100%;
     position: relative;
 }
@@ -827,7 +826,7 @@ function updateOnlineIndicator(userId, isOnline) {
 const pendingMessages = new Set();
 
 socket.on('new_direct_message', function(data) {
-    const isMine = data.sender_id == {{ current_user.id }};
+    const isMine = parseInt(data.sender_id) === {{ current_user.id }};
 
     // Sender already has optimistic bubble — ignore own echoes entirely
     if (isMine) return;
@@ -975,7 +974,7 @@ function addMessageToChat(message, sender, timestamp, isSent, messageId, isEdite
             ${!isSent ? `<img class="message-avatar" src="https://ui-avatars.com/api/?name=${sender}&background=random&color=fff" alt="Avatar">` : ''}
             <div class="message-bubbles">
                 <div class="message-bubble">
-                    <span class="message-text">${message}</span>
+                    <span class="message-text">${message.trim()}</span>
                     ${editedLabel}
                     ${isSent ? `
                     <div class="message-actions">
