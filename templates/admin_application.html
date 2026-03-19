@@ -111,20 +111,20 @@
                 
                 <!-- Signature at bottom right -->
                 {% if application.ci_signature %}
-                <div class="d-flex justify-content-end mt-4">
-                    <div class="signature-box text-center" style="max-width: 350px;">
-                        <div class="border-bottom border-dark pb-2 mb-2">
+                <div class="d-flex justify-content-end mt-5 pt-4">
+                    <div class="signature-box text-center" style="min-width: 300px;">
+                        <div class="mb-2" style="min-height: 60px; display: flex; align-items: center; justify-content: center;">
                             {% set ci_staff = get_user_by_id(application.assigned_ci_staff) %}
                             {% if ci_staff and ci_staff.signature_path %}
-                            <img src="{{ url_for('serve_signature', filename=ci_staff.signature_path.split('/')[-1].split('\\')[-1]) }}" alt="CI Signature" style="max-width: 250px; height: auto; max-height: 80px;">
+                            <img src="{{ url_for('serve_signature', filename=ci_staff.signature_path.split('/')[-1].split('\\')[-1]) }}" alt="CI Signature" style="max-width: 250px; height: auto; max-height: 60px;">
                             {% else %}
-                            <div style="font-family: 'Brush Script MT', cursive; font-size: 28px; padding: 10px;">{{ application.ci_signature }}</div>
+                            <div style="font-family: 'Brush Script MT', cursive; font-size: 28px;">{{ application.ci_signature }}</div>
                             {% endif %}
                         </div>
-                        <div>
-                            <strong>{{ application.ci_staff_name }}</strong><br>
-                            <small class="text-muted">CI Staff</small><br>
-                            <small class="text-muted">{{ application.ci_completed_at[:10] if application.ci_completed_at else 'N/A' }}</small>
+                        <div class="border-top border-dark pt-2" style="border-width: 2px !important;">
+                            <strong style="font-size: 16px;">{{ application.ci_staff_name }}</strong><br>
+                            <span style="font-size: 14px;">CI Staff</span><br>
+                            <span style="font-size: 14px;">{{ application.ci_completed_at[:10] if application.ci_completed_at else 'N/A' }}</span>
                         </div>
                     </div>
                 </div>
@@ -341,7 +341,8 @@ function displayCompleteChecklist(data) {
     html += '</div>';
     
     // Final Recommendation - hidden on print
-    html += '<div class="final-recommendation-section no-print"><hr class="my-4">';
+    html += '<div class="final-recommendation-section no-print" style="display:none;">';
+    html += '<hr class="my-4">';
     html += '<h6 class="fw-bold mb-3 text-primary">FINAL RECOMMENDATION</h6>';
     const recClass = data.final_recommendation === 'Approve' ? 'success' : data.final_recommendation === 'Disapprove' ? 'danger' : 'warning';
     const recIcon = data.final_recommendation === 'Approve' ? 'check-circle-fill' : data.final_recommendation === 'Disapprove' ? 'x-circle-fill' : 'pause-circle-fill';
@@ -556,12 +557,40 @@ function displayCompleteChecklist(data) {
     /* Signature section */
     .signature-box {
         page-break-inside: avoid;
-        margin-top: 20px;
+        margin-top: 30px !important;
+        padding-top: 20px !important;
+        min-width: 300px !important;
+        text-align: center !important;
     }
     
     .signature-box img {
-        max-width: 200px;
-        height: auto;
+        max-width: 200px !important;
+        height: auto !important;
+        max-height: 60px !important;
+    }
+    
+    .signature-box .border-top {
+        border-top: 2px solid #000 !important;
+        padding-top: 8px !important;
+        margin-top: 5px !important;
+    }
+    
+    .signature-box strong {
+        font-size: 16px !important;
+        font-weight: bold !important;
+        display: block !important;
+        margin-bottom: 3px !important;
+    }
+    
+    .signature-box span {
+        font-size: 14px !important;
+        display: block !important;
+        line-height: 1.4 !important;
+    }
+    
+    .d-flex.justify-content-end {
+        display: flex !important;
+        justify-content: flex-end !important;
     }
     
     /* Remove blank pages */

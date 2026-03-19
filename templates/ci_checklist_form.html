@@ -456,14 +456,6 @@
             </div>
         </div>
         
-        <!-- Final Recommendation -->
-        <div class="final-recommendation">
-            <h3>FINAL RECOMMENDATION:</h3>
-            <label><input type="radio" name="final_recommendation" value="Approve"> <span style="color: green;">APPROVE</span></label>
-            <label><input type="radio" name="final_recommendation" value="Disapprove"> <span style="color: red;">DISAPPROVE</span></label>
-            <label><input type="radio" name="final_recommendation" value="Defer"> <span style="color: orange;">DEFER</span></label>
-        </div>
-        
         <!-- Submit Button -->
         <button class="btn-submit no-print" onclick="submitForm()">Submit Checklist</button>
         <button class="btn-submit no-print" onclick="window.print()" style="background: #6c757d;">Print Form</button>
@@ -484,8 +476,7 @@
                 
                 // Get all radio button values
                 assessments: {},
-                residence_verified: document.querySelector('input[name="residence_verified"]:checked')?.value,
-                final_recommendation: document.querySelector('input[name="final_recommendation"]:checked')?.value
+                residence_verified: document.querySelector('input[name="residence_verified"]:checked')?.value
             };
             
             // Collect all assessment radio buttons
