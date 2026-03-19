@@ -60,7 +60,11 @@
                     {% for staff in ci_staff %}
                     <div class="ci-staff-item-compact" data-user-id="{{ staff.id }}">
                         <div class="ci-staff-avatar">
+                            {% if staff.profile_photo %}
+                            <img src="{{ url_for('serve_upload', filename=staff.profile_photo.split('/')[-1].split('\\')[-1]) }}" alt="{{ staff.name }}" style="object-fit: cover;">
+                            {% else %}
                             <img src="https://ui-avatars.com/api/?name={{ staff.name }}&background=random&color=fff" alt="{{ staff.name }}">
+                            {% endif %}
                             <span class="status-indicator {% if staff.is_online %}online{% else %}offline{% endif %}"></span>
                         </div>
                         <div class="ci-staff-info">

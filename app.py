@@ -647,7 +647,7 @@ def admin_dashboard():
     
     # Get online CI staff
     ci_staff = conn.execute('''
-        SELECT id, name, email, is_online, last_seen
+        SELECT id, name, email, is_online, last_seen, profile_photo
         FROM users 
         WHERE role = 'ci_staff'
         ORDER BY is_online DESC, name ASC
@@ -773,7 +773,7 @@ def messages():
     
     # Get all staff members for chat
     staff = conn.execute('''
-        SELECT id, name, email, role 
+        SELECT id, name, email, role, profile_photo 
         FROM users 
         WHERE id != ?
         ORDER BY name
@@ -795,7 +795,7 @@ def messages():
         other_id = chat_user['user_id']
         
         # Get user info
-        user_info = conn.execute('SELECT name, role FROM users WHERE id = ?', (other_id,)).fetchone()
+        user_info = conn.execute('SELECT name, role, profile_photo FROM users WHERE id = ?', (other_id,)).fetchone()
         
         # Get last message
         last_msg = conn.execute('''
@@ -817,6 +817,7 @@ def messages():
             'other_user_id': other_id,
             'other_user_name': user_info['name'],
             'other_user_role': user_info['role'],
+            'other_user_photo': user_info['profile_photo'],
             'last_message': last_msg['message'] if last_msg else '',
             'last_message_time': last_msg['sent_at'] if last_msg else '',
             'unread_count': unread['count']
