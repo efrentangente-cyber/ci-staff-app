@@ -639,7 +639,11 @@
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-logo">
+                    {% if current_user.profile_photo %}
+                    <img src="{{ url_for('serve_upload', filename=current_user.profile_photo.split('/')[-1].split('\\')[-1]) }}" alt="{{ current_user.name }}" style="object-fit: cover;">
+                    {% else %}
                     <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="DCCCO Multipurpose Cooperative">
+                    {% endif %}
                 </div>
                 <div class="sidebar-user">{{ current_user.name }}</div>
                 <div class="sidebar-email">{{ current_user.role.replace('_', ' ').title() }}</div>

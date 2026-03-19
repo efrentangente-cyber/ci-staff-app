@@ -141,13 +141,14 @@ def sanitize_filename(filename):
     return filename
 
 class User(UserMixin):
-    def __init__(self, id, email, name, role, signature_path=None, backup_email=None):
+    def __init__(self, id, email, name, role, signature_path=None, backup_email=None, profile_photo=None):
         self.id = id
         self.email = email
         self.name = name
         self.role = role
         self.signature_path = signature_path
         self.backup_email = backup_email
+        self.profile_photo = profile_photo
 
 def send_verification_email(to_email, code, user_name):
     """Send verification code email using Resend"""
@@ -261,7 +262,8 @@ def load_user(user_id):
     conn.close()
     if row:
         backup_email = row['backup_email'] if 'backup_email' in row.keys() else None
-        return User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], backup_email)
+        profile_photo = row['profile_photo'] if 'profile_photo' in row.keys() else None
+        return User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], backup_email, profile_photo)
     return None
 
 @app.route('/')
@@ -291,7 +293,8 @@ def login():
                 return render_template('login.html')
             
             user = User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], 
-                       row['backup_email'] if 'backup_email' in row.keys() else None)
+                       row['backup_email'] if 'backup_email' in row.keys() else None,
+                       row['profile_photo'] if 'profile_photo' in row.keys() else None)
             login_user(user, remember=True)
             flash('Logged in successfully.', 'success')
             return redirect(url_for('index'))
@@ -1714,6 +1717,65 @@ def update_signature():
     except Exception as e:
         flash(f'Error updating signature: {str(e)}', 'danger')
     
+    return redirect(url_for('change_password'))
+
+@app.route('/update_profile', methods=['POST'])
+@login_required
+def update_profile():
+    name = request.form.get('name', '').strip()
+    email = request.form.get('email', '').strip()
+    
+    if not name or not email:
+        flash('Name and email are required', 'danger')
+        return redirect(url_for('change_password'))
+    
+    # Check if email is already taken by another user
+    conn = get_db()
+    existing = conn.execute('SELECT id FROM users WHERE email=? AND id!=?', (email, current_user.id)).fetchone()
+    if existing:
+        conn.close()
+        flash('Email already in use by another account', 'danger')
+        return redirect(url_for('change_password'))
+    
+    # Handle profile photo upload
+    profile_photo_path = None
+    if 'profile_photo' in request.files:
+        file = request.files['profile_photo']
+        if file and file.filename:
+            if not allowed_file(file.filename):
+                conn.close()
+                flash('Invalid file type. Allowed: PNG, JPG, JPEG, GIF', 'danger')
+                return redirect(url_for('change_password'))
+            
+            # Delete old photo if exists
+            old_photo = conn.execute('SELECT profile_photo FROM users WHERE id=?', (current_user.id,)).fetchone()
+            if old_photo and old_photo['profile_photo']:
+                try:
+                    os.remove(old_photo['profile_photo'])
+                except:
+                    pass
+            
+            # Save new photo
+            filename = sanitize_filename(file.filename)
+            unique_filename = f"profile_{current_user.id}_{uuid.uuid4().hex[:8]}_{filename}"
+            profile_photo_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(profile_photo_path)
+    
+    # Update database
+    if profile_photo_path:
+        conn.execute('UPDATE users SET name=?, email=?, profile_photo=? WHERE id=?', 
+                    (name, email, profile_photo_path, current_user.id))
+    else:
+        conn.execute('UPDATE users SET name=?, email=? WHERE id=?', 
+                    (name, email, current_user.id))
+    conn.commit()
+    conn.close()
+    
+    # Update current_user object
+    current_user.name = name
+    current_user.email = email
+    
+    flash('Profile updated successfully!', 'success')
     return redirect(url_for('change_password'))
 
 @app.route('/forgot_password', methods=['GET', 'POST'])

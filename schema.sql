@@ -11,6 +11,7 @@ CREATE TABLE users (
     name TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('admin', 'loan_staff', 'ci_staff')),
     signature_path TEXT,
+    profile_photo TEXT,
     current_workload INTEGER DEFAULT 0,
     is_approved INTEGER DEFAULT 0,
     is_online INTEGER DEFAULT 0,
