@@ -370,31 +370,6 @@
 
                     <hr class="my-4">
 
-                    <!-- Final Recommendation -->
-                    <h6 class="fw-bold mb-3">FINAL RECOMMENDATION</h6>
-                    <div class="row mb-4">
-                        <div class="col-md-12">
-                            <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="final_recommendation" id="final_approve" value="Approve">
-                                <label class="form-check-label fw-bold text-success" for="final_approve">
-                                    <i class="bi bi-check-circle"></i> APPROVE
-                                </label>
-                            </div>
-                            <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="final_recommendation" id="final_disapprove" value="Disapprove">
-                                <label class="form-check-label fw-bold text-danger" for="final_disapprove">
-                                    <i class="bi bi-x-circle"></i> DISAPPROVE
-                                </label>
-                            </div>
-                            <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="radio" name="final_recommendation" id="final_defer" value="Defer">
-                                <label class="form-check-label fw-bold text-warning" for="final_defer">
-                                    <i class="bi bi-pause-circle"></i> DEFER
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> <strong>Note:</strong> Complete all sections of the checklist before submitting your report.
                     </div>
@@ -404,7 +379,7 @@
 
         <div class="card mb-3">
             <div class="card-header">
-                <h5><i class="bi bi-file-text"></i> {% if application.status == 'ci_completed' %}View/Edit Interview Report{% else %}Complete Interview Report{% endif %}</h5>
+                <h5><i class="bi bi-file-text"></i> {% if application.status == 'ci_completed' %}View/Edit Interview Notes{% else %}Submit Interview Notes{% endif %}</h5>
             </div>
             <div class="card-body">
                 <form method="POST" id="interview_form" enctype="multipart/form-data" onsubmit="return collectChecklistData()">
@@ -412,15 +387,8 @@
                     <input type="hidden" name="checklist_data" id="checklist_data">
                     
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Detailed Interview Notes & Findings *</label>
-                        <textarea name="ci_notes" class="form-control" rows="6" required placeholder="Provide comprehensive notes including:
-- Interview observations
-- Borrower's responses
-- Site visit findings
-- Risk assessment
-- Recommendation justification
-- Any other relevant information">{{ application.ci_notes if application.ci_notes else '' }}</textarea>
-                        <small class="text-muted">Include all information from the checklist above</small>
+                        <label class="form-label fw-bold">Interview Notes *</label>
+                        <textarea name="ci_notes" class="form-control" rows="6" required placeholder="Provide your interview notes and observations here...">{{ application.ci_notes if application.ci_notes else '' }}</textarea>
                     </div>
                     
                     <div class="mb-3">
@@ -449,7 +417,7 @@
                     
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-success">
-                            <i class="bi bi-check-circle"></i> {% if application.status == 'ci_completed' %}Update Interview Report{% else %}Complete Interview & Send to Admin{% endif %}
+                            <i class="bi bi-check-circle"></i> {% if application.status == 'ci_completed' %}Update Interview{% else %}Submit Interview & Send to Admin{% endif %}
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="printChecklist()">
                             <i class="bi bi-printer"></i> Print Checklist
@@ -475,8 +443,7 @@ function collectChecklistData() {
         remarks: document.getElementById('checklist_remarks')?.value,
         residence_verified: document.querySelector('input[name="residence_verified"]:checked')?.value,
         family_interviewed: document.getElementById('family_interviewed')?.value,
-        neighbors_interviewed: document.getElementById('neighbors_interviewed')?.value,
-        final_recommendation: document.querySelector('input[name="final_recommendation"]:checked')?.value
+        neighbors_interviewed: document.getElementById('neighbors_interviewed')?.value
     };
     
     // Collect all radio button assessments
@@ -569,11 +536,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (savedData.residence_verified) {
             const resRadio = document.querySelector(`input[name="residence_verified"][value="${savedData.residence_verified}"]`);
             if (resRadio) resRadio.checked = true;
-        }
-        
-        if (savedData.final_recommendation) {
-            const finalRadio = document.querySelector(`input[name="final_recommendation"][value="${savedData.final_recommendation}"]`);
-            if (finalRadio) finalRadio.checked = true;
         }
         
         // Load assessment radio buttons
