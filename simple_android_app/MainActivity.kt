@@ -35,6 +35,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         
+        // Set up action bar with app title
+        supportActionBar?.apply {
+            title = "CI Staff System"
+            setDisplayShowTitleEnabled(true)
+        }
+        
         // Request permissions
         requestPermissions()
         
