@@ -273,7 +273,7 @@ Add these ONE BY ONE (click "Add Environment Variable" for each):
 You'll see logs scrolling. Wait for these messages:
 
 ```
-==> Installing dependencies...
+==> Installing dependencies... 
 ==> Building...
 ==> Starting service...
 ==> Your service is live 🎉
@@ -417,7 +417,6 @@ If you get stuck on any step:
 2. Check the troubleshooting section above
 3. Verify you followed each step exactly
 4. Check Render logs for errors
-
 ---
 
 **Total Time:** 30 minutes  

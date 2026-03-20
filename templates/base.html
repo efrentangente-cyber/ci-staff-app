@@ -746,7 +746,12 @@
     
     {% if current_user.is_authenticated %}
     <script>
-        const socket = io({transports: ['websocket'], upgrade: false});
+        const socket = io({
+            transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5
+        });
         
         // Handle system notifications - only for non-message notifications
         socket.on('new_notification', function(data) {

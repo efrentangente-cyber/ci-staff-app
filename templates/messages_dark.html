@@ -782,8 +782,10 @@
 
 <script>
 const socket = io({
-    transports: ['websocket'],   // Skip polling, use WebSocket directly
-    upgrade: false
+    transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: 5
 });
 let currentChatUserId = null;
 let onlineUsers = new Set();

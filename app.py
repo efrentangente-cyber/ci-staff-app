@@ -83,14 +83,7 @@ def utility_processor():
 
 socketio = SocketIO(
     app,
-    cors_allowed_origins=[
-        "http://localhost:5000",
-        "http://127.0.0.1:5000",
-        "http://192.168.1.61:5000",
-        "http://192.168.1.41:5000",
-        os.getenv('RENDER_EXTERNAL_URL', ''),
-        os.getenv('RENDER_EXTERNAL_URL', '').replace('https://', 'http://') if os.getenv('RENDER_EXTERNAL_URL') else ''
-    ],
+    cors_allowed_origins="*",  # Allow all origins - authentication handles security
     async_mode='threading',   # Use threading for instant emit
     ping_timeout=60,
     ping_interval=25,

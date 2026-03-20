@@ -14,7 +14,12 @@ if (window.location.pathname.includes('/admin/dashboard')) {
 }
 
 // WebSocket connection for instant updates
-const socket = io();
+const socket = io({
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: 5
+});
 
 // Listen for new application submissions
 socket.on('new_application', function(data) {
