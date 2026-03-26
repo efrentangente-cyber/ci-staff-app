@@ -10,6 +10,36 @@
     const isAuthenticated = document.body.classList.contains('authenticated');
     
     if (isAuthenticated) {
+        // Check if link was opened from external source (shared link)
+        // If referrer is empty or from different domain, it's likely a shared link
+        const isSharedLink = !document.referrer || 
+                            (document.referrer && !document.referrer.includes(window.location.hostname));
+        
+        // Check if this is a fresh page load (not navigation within app)
+        const isDirectAccess = window.performance && 
+                              window.performance.navigation && 
+                              window.performance.navigation.type === 0;
+        
+        // If link was shared/opened directly, logout and redirect to login
+        if (isSharedLink && isDirectAccess) {
+            // Check if user just logged in (within last 5 seconds)
+            const loginTime = sessionStorage.getItem('loginTime');
+            const now = Date.now();
+            const justLoggedIn = loginTime && (now - parseInt(loginTime)) < 5000;
+            
+            if (!justLoggedIn) {
+                // This is a shared link - logout and show login page
+                sessionStorage.clear();
+                fetch('/logout', {
+                    method: 'GET',
+                    credentials: 'same-origin'
+                }).then(() => {
+                    window.location.href = '/login?reason=shared_link';
+                });
+                return; // Stop further execution
+            }
+        }
+        
         // Clear session on browser close (when sessionStorage is cleared)
         window.addEventListener('beforeunload', function(e) {
             // Mark session as ending

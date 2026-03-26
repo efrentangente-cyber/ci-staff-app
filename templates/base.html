@@ -390,16 +390,16 @@
             background-color: #e9ecef !important;
         }
         
-        /* Mobile optimizations */
-        @media (max-width: 768px) {
+        /* Mobile optimizations - Force mobile layout in portrait mode */
+        @media (max-width: 768px), (orientation: portrait) {
             /* Hide desktop sidebar in portrait */
             .sidebar {
-                display: none;
+                display: none !important;
             }
             
             .main-content {
-                margin-left: 0;
-                width: 100%;
+                margin-left: 0 !important;
+                width: 100% !important;
                 padding: 15px;
                 padding-bottom: 80px; /* Space for bottom nav */
             }
@@ -482,8 +482,9 @@
             }
         }
         
-        /* Landscape mode - show sidebar like desktop */
-        @media (max-width: 768px) and (orientation: landscape) {
+        /* Landscape mode - show sidebar only on actual tablets/small screens */
+        @media (min-width: 769px) and (orientation: landscape), 
+               (max-width: 768px) and (orientation: landscape) and (min-height: 500px) {
             .sidebar {
                 display: block !important;
                 width: 200px;
@@ -940,6 +941,15 @@
     
     <!-- Session Security Script -->
     <script src="{{ url_for('static', filename='session-security.js') }}"></script>
+    
+    {% if current_user.is_authenticated %}
+    <script>
+        // Set login time to prevent immediate logout on successful login
+        if (!sessionStorage.getItem('loginTime')) {
+            sessionStorage.setItem('loginTime', Date.now().toString());
+        }
+    </script>
+    {% endif %}
     
     <script src="{{ url_for('static', filename='datatable.js') }}"></script>
     {% block scripts %}{% endblock %}
