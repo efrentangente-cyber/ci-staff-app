@@ -1860,13 +1860,13 @@ def forgot_password():
                 
                 if user:
                     hashed = generate_password_hash(new_password)
-                    # Set is_approved to 0 (pending) and approval_type to 'password_reset'
-                    conn.execute('UPDATE users SET password_hash=?, password_reset_token=NULL, password_reset_expires=NULL, is_approved=0, approval_type=? WHERE id=?',
-                                (hashed, 'password_reset', user['id']))
+                    # Update password without changing approval status
+                    conn.execute('UPDATE users SET password_hash=?, password_reset_token=NULL, password_reset_expires=NULL WHERE id=?',
+                                (hashed, user['id']))
                     conn.commit()
                     conn.close()
                     
-                    flash('Password reset successful! Please wait for admin approval before logging in.', 'success')
+                    flash('Password reset successful! You can now login with your new password.', 'success')
                     return redirect(url_for('login'))
                 else:
                     conn.close()
