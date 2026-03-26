@@ -3,6 +3,7 @@
 <head>
     <title>{% block title %}Loan Management System{% endblock %}</title>
     <meta charset="utf-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" type="image/png" href="/static/favicon.png?v=3">
 
 {% macro user_avatar(user_name, profile_photo, size=40) %}
@@ -616,7 +617,7 @@
         }
     </style>
 </head>
-<body>
+<body{% if current_user.is_authenticated %} class="authenticated"{% endif %}>
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -933,6 +934,12 @@
         });
     });
     </script>
+    
+    <!-- CSRF Protection Script -->
+    <script src="{{ url_for('static', filename='csrf-protection.js') }}"></script>
+    
+    <!-- Session Security Script -->
+    <script src="{{ url_for('static', filename='session-security.js') }}"></script>
     
     <script src="{{ url_for('static', filename='datatable.js') }}"></script>
     {% block scripts %}{% endblock %}

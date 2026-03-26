@@ -29,18 +29,24 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SIGNATURE_FOLDER'] = 'signatures'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-app.config['WTF_CSRF_ENABLED'] = False  # Disabled - requires adding tokens to all forms
+app.config['WTF_CSRF_ENABLED'] = True  # Enable CSRF protection
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
-app.config['WTF_CSRF_CHECK_DEFAULT'] = False
+app.config['WTF_CSRF_CHECK_DEFAULT'] = True  # Check CSRF on all POST/PUT/DELETE requests
 app.config['REMEMBER_COOKIE_DURATION'] = __import__('datetime').timedelta(days=30)
-app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(days=30)
-app.config['SESSION_PERMANENT'] = True  # We'll enable it selectively
+app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=2)  # Session expires after 2 hours of inactivity
+app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
+app.config['SESSION_COOKIE_SECURE'] = True  # Only send cookie over HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
 
 # Allowed file extensions for uploads
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm', 'mp3', 'wav'}
 
-# Initialize CSRF Protection (currently disabled)
+# Initialize CSRF Protection
 csrf = CSRFProtect(app)
+
+# Import secure routing module
+from secure_routes import SecureRouter, require_token
 
 # Initialize Rate Limiter
 limiter = Limiter(
@@ -56,6 +62,8 @@ resend.api_key = os.getenv('RESEND_API_KEY')
 # Add template helper function
 @app.context_processor
 def utility_processor():
+    from flask_wtf.csrf import generate_csrf
+    
     def get_user_by_id(user_id):
         if not user_id:
             return None
@@ -63,6 +71,14 @@ def utility_processor():
         user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
         conn.close()
         return user
+    
+    def secure_token(resource_type, resource_id):
+        """Generate a secure token for hiding IDs in URLs"""
+        return SecureRouter.generate_token(resource_type, resource_id)
+    
+    def csrf_token():
+        """Generate CSRF token for forms"""
+        return generate_csrf()
 
     # Inject unread message count into every template automatically
     message_unread_count = 0
@@ -79,7 +95,12 @@ def utility_processor():
     except Exception:
         pass
 
-    return dict(get_user_by_id=get_user_by_id, message_unread_count=message_unread_count)
+    return dict(
+        get_user_by_id=get_user_by_id, 
+        message_unread_count=message_unread_count,
+        secure_token=secure_token,
+        csrf_token=csrf_token
+    )
 
 socketio = SocketIO(
     app,
@@ -90,6 +111,9 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False
 )
+
+# Exempt SocketIO from CSRF protection (it has its own auth)
+csrf.exempt(socketio)
 
 # Track online users
 online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timestamp}}
@@ -259,6 +283,16 @@ def load_user(user_id):
         return User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], backup_email, profile_photo)
     return None
 
+# Add security headers to prevent caching of authenticated pages
+@app.after_request
+def add_security_headers(response):
+    # Prevent caching for authenticated users
+    if current_user.is_authenticated:
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 @app.route('/')
 def index():
     if current_user.is_authenticated:
@@ -288,7 +322,8 @@ def login():
             user = User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], 
                        row['backup_email'] if 'backup_email' in row.keys() else None,
                        row['profile_photo'] if 'profile_photo' in row.keys() else None)
-            login_user(user, remember=True)
+            login_user(user, remember=False)  # Session expires when browser closes
+            session.permanent = False  # Ensure session is not permanent
             flash('Logged in successfully.', 'success')
             return redirect(url_for('index'))
         flash('Invalid credentials', 'danger')
