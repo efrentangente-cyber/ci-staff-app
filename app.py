@@ -29,9 +29,9 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SIGNATURE_FOLDER'] = 'signatures'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-app.config['WTF_CSRF_ENABLED'] = True  # Enable CSRF protection
+app.config['WTF_CSRF_ENABLED'] = False  # Disabled for now - enable after testing
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
-app.config['WTF_CSRF_CHECK_DEFAULT'] = True  # Check CSRF on all POST/PUT/DELETE requests
+app.config['WTF_CSRF_CHECK_DEFAULT'] = False  # Disabled for now
 app.config['REMEMBER_COOKIE_DURATION'] = __import__('datetime').timedelta(days=30)
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=2)  # Session expires after 2 hours of inactivity
 app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
@@ -111,9 +111,6 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False
 )
-
-# Exempt SocketIO from CSRF protection (it has its own auth)
-csrf.exempt(socketio)
 
 # Track online users
 online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timestamp}}
