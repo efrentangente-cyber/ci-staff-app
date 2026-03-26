@@ -1818,7 +1818,8 @@ def forgot_password():
             conn = get_db()
             
             if step == 'send_code':
-                user = conn.execute('SELECT * FROM users WHERE email=? OR backup_email=?', (email, email)).fetchone()
+                # ONLY use the registered email (not backup email)
+                user = conn.execute('SELECT * FROM users WHERE email=?', (email,)).fetchone()
                 
                 if user:
                     import random
@@ -1828,12 +1829,13 @@ def forgot_password():
                     conn.execute('UPDATE users SET password_reset_token=?, password_reset_expires=? WHERE id=?',
                                 (code, expires, user['id']))
                     conn.commit()
+                    
+                    # Send code to the registered email only
+                    email_sent = send_verification_email(user['email'], code, user['name'])
                     conn.close()
                     
-                    email_sent = send_verification_email(email, code, user['name'])
-                    
                     if email_sent == True:
-                        flash('Verification code sent to your email! Check your inbox.', 'success')
+                        flash('Verification code sent to your registered email! Check your inbox.', 'success')
                         return render_template('forgot_password.html', show_code_input=True, email=email, code='')
                     elif email_sent == "RESEND_LIMIT":
                         flash(f'Testing Mode: Email can only be sent to tangentejerremiah9@gmail.com. For production use, a domain needs to be verified. Please contact admin.', 'info')
@@ -1854,8 +1856,9 @@ def forgot_password():
                     conn.close()
                     return render_template('forgot_password.html', show_code_input=True, email=email, code='')
                 
-                user = conn.execute('SELECT * FROM users WHERE (email=? OR backup_email=?) AND password_reset_token=?', 
-                                  (email, email, code)).fetchone()
+                # ONLY check registered email (not backup email)
+                user = conn.execute('SELECT * FROM users WHERE email=? AND password_reset_token=?', 
+                                  (email, code)).fetchone()
                 
                 if user and user['password_reset_expires']:
                     expires = datetime.fromisoformat(user['password_reset_expires'])
@@ -1887,8 +1890,9 @@ def forgot_password():
                     conn.close()
                     return render_template('forgot_password.html', show_password_input=True, email=email, code=code)
                 
-                user = conn.execute('SELECT * FROM users WHERE (email=? OR backup_email=?) AND password_reset_token=?', 
-                                  (email, email, code)).fetchone()
+                # ONLY check registered email (not backup email)
+                user = conn.execute('SELECT * FROM users WHERE email=? AND password_reset_token=?', 
+                                  (email, code)).fetchone()
                 
                 if user:
                     hashed = generate_password_hash(new_password)
