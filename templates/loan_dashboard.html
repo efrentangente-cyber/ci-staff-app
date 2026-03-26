@@ -121,11 +121,11 @@
                             <span class="text-muted">Not Assigned</span>
                             {% endif %}
                         </td>
-                        <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                        <td><span class="date-display">{{ app.submitted_at[8:10] }}/{{ app.submitted_at[5:7] }}/{{ app.submitted_at[0:4] }}</span></td>
                         <td>
                             <a href="{{ url_for('loan_application', id=app.id) }}" class="btn btn-sm btn-primary">
                                 <i class="bi bi-eye"></i>
-                                <span class="btn-text">View</span>
+                                <span class="d-none d-md-inline">View</span>
                             </a>
                         </td>
                     </tr>
