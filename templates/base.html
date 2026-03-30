@@ -5,6 +5,16 @@
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" type="image/png" href="/static/favicon.png?v=3">
+    
+    <!-- CRITICAL: Load dark mode BEFORE any rendering to prevent flash -->
+    <script>
+        (function() {
+            const isDarkMode = localStorage.getItem('darkMode') === 'true';
+            if (isDarkMode) {
+                document.documentElement.classList.add('dark-mode-loading');
+            }
+        })();
+    </script>
 
 {% macro user_avatar(user_name, profile_photo, size=40) %}
     {% if profile_photo %}
@@ -696,6 +706,14 @@
     </style>
 </head>
 <body{% if current_user.is_authenticated %} class="authenticated"{% endif %}>
+    <!-- Apply dark mode immediately on body load -->
+    <script>
+        if (document.documentElement.classList.contains('dark-mode-loading')) {
+            document.body.classList.add('dark-mode');
+            document.documentElement.classList.remove('dark-mode-loading');
+        }
+    </script>
+    
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -966,20 +984,25 @@
     </script>
     
     <script>
-    // Dark Mode Toggle
+    // Dark Mode Toggle - Apply immediately to prevent flash
+    (function() {
+        // Check for saved dark mode preference and apply to body immediately
+        const isDarkMode = localStorage.getItem('darkMode') === 'true';
+        if (isDarkMode) {
+            document.body.classList.add('dark-mode');
+        }
+    })();
+    
     document.addEventListener('DOMContentLoaded', function() {
         const darkModeToggle = document.getElementById('darkModeToggle');
         const darkModeIcon = document.getElementById('darkModeIcon');
         const body = document.body;
         
-        // Check for saved dark mode preference
-        const isDarkMode = localStorage.getItem('darkMode') === 'true';
-        if (isDarkMode) {
-            body.classList.add('dark-mode');
-            if (darkModeIcon) {
-                darkModeIcon.classList.remove('bi-moon-fill');
-                darkModeIcon.classList.add('bi-sun-fill');
-            }
+        // Update icon based on current mode
+        const isDarkMode = body.classList.contains('dark-mode');
+        if (isDarkMode && darkModeIcon) {
+            darkModeIcon.classList.remove('bi-moon-fill');
+            darkModeIcon.classList.add('bi-sun-fill');
         }
         
         // Toggle dark mode
