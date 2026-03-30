@@ -1057,6 +1057,8 @@ def ai_support():
 
 @app.route('/api/ai_query', methods=['POST'])
 @login_required
+@app.route('/api/ai_query', methods=['POST'])
+@login_required
 @limiter.limit("10 per minute")
 def ai_query():
     if current_user.role != 'admin':
