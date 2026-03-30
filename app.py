@@ -1,3 +1,7 @@
+# IMPORTANT: eventlet monkey_patch must be called FIRST before any other imports
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_socketio import SocketIO, emit, join_room
