@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Daisy & Coco AI Support{% endblock %}
+{% block title %}AI Support - DaisyandCoco{% endblock %}
+
 {% block content %}
 <div class="top-bar">
-    <h2><i class="bi bi-robot"></i> Daisy & Coco AI Support</h2>
+    <h2><i class="bi bi-robot"></i> AI Support Assistant</h2>
     <div class="top-bar-actions">
         <button class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode">
             <i class="bi bi-moon-fill" id="darkModeIcon"></i>
@@ -31,82 +32,59 @@
     </div>
 </div>
 
-<div class="content-card">
-    <div class="content-card-body" style="padding: 0;">
-        <!-- AI Support Chat Interface -->
-        <div class="ai-support-container">
-            <!-- Mascots Header -->
-            <div class="mascots-header">
-                <div class="mascot-intro">
-                    <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" alt="Daisy and Coco" class="mascot-image">
-                    <div class="mascot-text">
-                        <h4>👋 Hi! We're Daisy & Coco!</h4>
-                        <p>Your friendly AI support agents. Ask us anything about the DCCCO Loan Management System!</p>
-                    </div>
-                </div>
+<div class="ai-support-container">
+    <div class="ai-agent-panel">
+        <div class="agent-image-container">
+            <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" 
+                 alt="DaisyandCoco" 
+                 class="agent-image" 
+                 id="agentImage">
+            <div class="agent-status" id="agentStatus">
+                <i class="bi bi-circle-fill text-success"></i> Ready to help
             </div>
-
-            <!-- Quick Help Buttons -->
-            <div class="quick-help-section">
-                <h6><i class="bi bi-lightning-fill"></i> Quick Help Topics:</h6>
-                <div class="quick-help-buttons">
-                    <button class="quick-help-btn" onclick="askQuestion('How do I approve a loan application?')">
-                        <i class="bi bi-check-circle"></i> Approve Loans
-                    </button>
-                    <button class="quick-help-btn" onclick="askQuestion('How do I manage users?')">
-                        <i class="bi bi-people"></i> Manage Users
-                    </button>
-                    <button class="quick-help-btn" onclick="askQuestion('How do I track CI staff?')">
-                        <i class="bi bi-geo-alt"></i> Track CI Staff
-                    </button>
-                    <button class="quick-help-btn" onclick="askQuestion('How do I view reports?')">
-                        <i class="bi bi-file-earmark-text"></i> View Reports
-                    </button>
-                    <button class="quick-help-btn" onclick="askQuestion('How does SMS notification work?')">
-                        <i class="bi bi-phone"></i> SMS Notifications
-                    </button>
-                    <button class="quick-help-btn" onclick="askQuestion('How do I change my password?')">
-                        <i class="bi bi-key"></i> Change Password
-                    </button>
-                </div>
-            </div>
-
-            <!-- Chat Messages Area -->
-            <div class="chat-messages" id="chatMessages">
-                <div class="ai-message">
-                    <div class="ai-avatar">
-                        <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" alt="Daisy & Coco">
+        </div>
+        <div class="agent-info">
+            <h3>DaisyandCoco</h3>
+            <p class="text-muted">Your AI Support Assistant</p>
+            <small class="text-muted">Ask me anything about the system!</small>
+        </div>
+    </div>
+    
+    <div class="chat-panel">
+        <div class="chat-history" id="chatHistory">
+            {% if chat_history %}
+                {% for msg in chat_history %}
+                    <div class="message {{ msg.role }}">
+                        <div class="message-content">{{ msg.content }}</div>
                     </div>
-                    <div class="message-bubble ai-bubble">
-                        <div class="agent-name">Daisy & Coco</div>
-                        <div class="message-text">
-                            Hello! 👋 We're here to help you with any questions about the system. 
-                            You can click the quick help buttons above or type your question below!
-                        </div>
-                        <div class="message-time">Just now</div>
-                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="welcome-message">
+                    <i class="bi bi-chat-heart" style="font-size: 48px; color: var(--primary-blue); margin-bottom: 15px;"></i>
+                    <h4>Welcome to AI Support!</h4>
+                    <p class="text-muted">I'm here to help you with any questions about the DCCCO loan management system.</p>
+                    <p class="text-muted">Try asking me about:</p>
+                    <ul class="text-muted" style="text-align: left; display: inline-block;">
+                        <li>How to approve a loan application</li>
+                        <li>Managing user accounts</li>
+                        <li>Troubleshooting common issues</li>
+                        <li>Understanding the CI workflow</li>
+                    </ul>
                 </div>
-            </div>
-
-            <!-- Chat Input -->
-            <div class="chat-input-container">
-                <div class="typing-indicator" id="typingIndicator" style="display: none;">
-                    <div class="ai-avatar-small">
-                        <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" alt="Daisy & Coco">
-                    </div>
-                    <div class="typing-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                    <span class="typing-text">Daisy & Coco are typing...</span>
-                </div>
-                <div class="input-wrapper">
-                    <input type="text" id="userInput" class="chat-input" placeholder="Ask Daisy & Coco anything..." onkeypress="handleKeyPress(event)">
-                    <button class="send-btn" onclick="sendMessage()">
-                        <i class="bi bi-send-fill"></i>
-                    </button>
-                </div>
+            {% endif %}
+        </div>
+        
+        <div class="chat-input-container">
+            <textarea id="queryInput" 
+                      placeholder="Ask me anything about the system..." 
+                      rows="2"></textarea>
+            <div class="chat-buttons">
+                <button id="sendBtn" class="btn btn-primary">
+                    <i class="bi bi-send-fill"></i> Send
+                </button>
+                <button id="clearBtn" class="btn btn-outline-secondary">
+                    <i class="bi bi-trash"></i> Clear
+                </button>
             </div>
         </div>
     </div>
@@ -114,488 +92,471 @@
 
 <style>
 .ai-support-container {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+    height: calc(100vh - 150px);
+}
+
+.ai-agent-panel {
+    background: var(--bg-white);
+    border-radius: 10px;
+    padding: 30px;
+    text-align: center;
+    box-shadow: var(--card-shadow);
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 200px);
-    min-height: 600px;
-}
-
-.mascots-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 20px;
-    color: white;
-    border-radius: 10px 10px 0 0;
-}
-
-.mascot-intro {
-    display: flex;
     align-items: center;
-    gap: 20px;
 }
 
-.mascot-image {
-    width: 120px;
-    height: 120px;
+.agent-image-container {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.agent-image {
+    width: 200px;
+    height: 200px;
     border-radius: 50%;
-    border: 4px solid white;
     object-fit: cover;
-    animation: bounce 2s infinite;
+    border: 4px solid var(--primary-blue);
+    transition: all 0.3s ease;
 }
 
-@keyframes bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+.agent-image.pulsing {
+    animation: pulse 1.5s infinite;
 }
 
-.mascot-text h4 {
-    margin: 0 0 10px 0;
-    font-size: 24px;
+@keyframes pulse {
+    0%, 100% { 
+        transform: scale(1); 
+        box-shadow: 0 0 0 0 rgba(30, 58, 95, 0.7); 
+    }
+    50% { 
+        transform: scale(1.05); 
+        box-shadow: 0 0 0 10px rgba(30, 58, 95, 0); 
+    }
 }
 
-.mascot-text p {
-    margin: 0;
-    opacity: 0.9;
-}
-
-.quick-help-section {
-    padding: 20px;
-    background: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
-}
-
-.quick-help-section h6 {
-    margin: 0 0 15px 0;
-    color: #495057;
-}
-
-.quick-help-buttons {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
-}
-
-.quick-help-btn {
-    padding: 10px 15px;
-    background: white;
-    border: 2px solid #e9ecef;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s;
-    text-align: left;
+.agent-status {
+    margin-top: 10px;
     font-size: 14px;
+    font-weight: 500;
 }
 
-.quick-help-btn:hover {
-    background: #667eea;
-    color: white;
-    border-color: #667eea;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+.agent-info {
+    text-align: center;
 }
 
-.quick-help-btn i {
-    margin-right: 8px;
+.agent-info h3 {
+    margin: 0 0 5px 0;
+    color: var(--primary-blue);
 }
 
-.chat-messages {
+.agent-info p {
+    margin: 5px 0;
+}
+
+.chat-panel {
+    background: var(--bg-white);
+    border-radius: 10px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--card-shadow);
+}
+
+.chat-history {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
-    background: white;
-}
-
-.ai-message, .user-message {
-    display: flex;
-    gap: 12px;
     margin-bottom: 20px;
-    animation: slideIn 0.3s ease-out;
+    padding: 10px;
 }
 
-@keyframes slideIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.chat-history::-webkit-scrollbar {
+    width: 8px;
 }
 
-.user-message {
-    flex-direction: row-reverse;
+.chat-history::-webkit-scrollbar-track {
+    background: var(--light-bg);
+    border-radius: 4px;
 }
 
-.ai-avatar, .user-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    flex-shrink: 0;
+.chat-history::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
 }
 
-.ai-avatar img {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
+.chat-history::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
 }
 
-.user-avatar {
-    background: #667eea;
+.welcome-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+}
+
+.welcome-message h4 {
+    color: var(--text-primary);
+    margin-bottom: 15px;
+}
+
+.message {
+    margin-bottom: 15px;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: bold;
+    animation: fadeIn 0.3s ease;
 }
 
-.message-bubble {
+.message.user {
+    justify-content: flex-end;
+}
+
+.message.assistant {
+    justify-content: flex-start;
+}
+
+.message-content {
     max-width: 70%;
     padding: 12px 16px;
     border-radius: 12px;
-    position: relative;
+    word-wrap: break-word;
+    white-space: pre-wrap;
 }
 
-.ai-bubble {
-    background: #f1f3f5;
-    border-bottom-left-radius: 4px;
-}
-
-.user-bubble {
-    background: #667eea;
+.message.user .message-content {
+    background: var(--primary-blue);
     color: white;
     border-bottom-right-radius: 4px;
 }
 
-.agent-name {
-    font-weight: 600;
-    font-size: 12px;
-    color: #667eea;
-    margin-bottom: 4px;
-}
-
-.message-text {
-    line-height: 1.5;
-    word-wrap: break-word;
-}
-
-.message-time {
-    font-size: 11px;
-    color: #868e96;
-    margin-top: 4px;
-}
-
-.user-bubble .message-time {
-    color: rgba(255,255,255,0.7);
-}
-
-.chat-input-container {
-    padding: 20px;
-    background: white;
-    border-top: 1px solid #dee2e6;
-    border-radius: 0 0 10px 10px;
+.message.assistant .message-content {
+    background: var(--light-bg);
+    color: var(--text-primary);
+    border-bottom-left-radius: 4px;
 }
 
 .typing-indicator {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-    padding: 10px;
-    background: #f8f9fa;
-    border-radius: 8px;
+    justify-content: flex-start;
+    margin-bottom: 15px;
 }
 
-.ai-avatar-small {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
+.typing-indicator .message-content {
+    background: var(--light-bg);
+    padding: 12px 16px;
+    border-radius: 12px;
+    border-bottom-left-radius: 4px;
 }
 
-.ai-avatar-small img {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-.typing-dots {
-    display: flex;
-    gap: 4px;
-}
-
-.typing-dots span {
+.typing-indicator .dot {
+    display: inline-block;
     width: 8px;
     height: 8px;
-    background: #667eea;
     border-radius: 50%;
+    background: var(--text-secondary);
+    margin: 0 2px;
     animation: typing 1.4s infinite;
 }
 
-.typing-dots span:nth-child(2) {
+.typing-indicator .dot:nth-child(2) {
     animation-delay: 0.2s;
 }
 
-.typing-dots span:nth-child(3) {
+.typing-indicator .dot:nth-child(3) {
     animation-delay: 0.4s;
 }
 
 @keyframes typing {
-    0%, 60%, 100% {
-        transform: translateY(0);
-    }
-    30% {
-        transform: translateY(-10px);
-    }
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-10px); }
 }
 
-.typing-text {
-    font-size: 13px;
-    color: #868e96;
-    font-style: italic;
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-.input-wrapper {
+.chat-input-container {
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+}
+
+.chat-input-container textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    resize: none;
+    font-family: inherit;
+    font-size: 14px;
+    margin-bottom: 10px;
+    background: var(--bg-white);
+    color: var(--text-primary);
+}
+
+.chat-input-container textarea:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+}
+
+.chat-buttons {
     display: flex;
     gap: 10px;
 }
 
-.chat-input {
+.chat-buttons button {
     flex: 1;
-    padding: 12px 16px;
-    border: 2px solid #e9ecef;
-    border-radius: 25px;
-    font-size: 14px;
-    transition: border-color 0.3s;
 }
 
-.chat-input:focus {
-    outline: none;
-    border-color: #667eea;
-}
-
-.send-btn {
-    width: 45px;
-    height: 45px;
-    border-radius: 50%;
-    background: #667eea;
-    color: white;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.send-btn:hover {
-    background: #764ba2;
-    transform: scale(1.1);
-}
-
-.send-btn:active {
-    transform: scale(0.95);
-}
-
-/* Dark mode support */
-body.dark-mode .chat-messages,
-body.dark-mode .chat-input-container {
-    background: #2d2d2d;
-}
-
-body.dark-mode .ai-bubble {
-    background: #3a3a3a;
-    color: #e5e7eb;
-}
-
-body.dark-mode .quick-help-section {
-    background: #1a1a1a;
-}
-
-body.dark-mode .quick-help-btn {
-    background: #2d2d2d;
-    color: #e5e7eb;
-    border-color: #404040;
-}
-
-body.dark-mode .chat-input {
-    background: #1a1a1a;
-    color: #e5e7eb;
-    border-color: #404040;
-}
-
-body.dark-mode .typing-indicator {
-    background: #1a1a1a;
-}
-
+/* Mobile responsive */
 @media (max-width: 768px) {
-    .mascot-intro {
-        flex-direction: column;
-        text-align: center;
-    }
-    
-    .quick-help-buttons {
+    .ai-support-container {
         grid-template-columns: 1fr;
+        height: auto;
     }
     
-    .message-bubble {
+    .ai-agent-panel {
+        flex-direction: row;
+        padding: 15px;
+        text-align: left;
+    }
+    
+    .agent-image-container {
+        margin-bottom: 0;
+        margin-right: 15px;
+    }
+    
+    .agent-image {
+        width: 80px;
+        height: 80px;
+    }
+    
+    .agent-info {
+        text-align: left;
+        flex: 1;
+    }
+    
+    .agent-info h3 {
+        font-size: 18px;
+    }
+    
+    .agent-info p, .agent-info small {
+        font-size: 12px;
+    }
+    
+    .chat-panel {
+        height: 500px;
+    }
+    
+    .message-content {
         max-width: 85%;
     }
 }
 </style>
 
 <script>
-// AI Knowledge Base
-const knowledgeBase = {
-    'approve': {
-        keywords: ['approve', 'approval', 'accept', 'loan application'],
-        response: "To approve a loan application:\n\n1. Go to Admin Dashboard\n2. Click on the application you want to review\n3. Review all details including CI report\n4. Add your admin notes (optional)\n5. Click 'Approve' button\n6. The applicant will receive an SMS notification automatically!\n\n✅ The loan staff will also be notified."
-    },
-    'reject': {
-        keywords: ['reject', 'rejection', 'decline', 'deny'],
-        response: "To reject a loan application:\n\n1. Go to Admin Dashboard\n2. Click on the application\n3. Review the details\n4. Add rejection reason in admin notes (required)\n5. Click 'Reject' button\n6. Applicant receives SMS with rejection reason\n\n⚠️ Make sure to provide a clear reason for rejection."
-    },
-    'users': {
-        keywords: ['manage users', 'add user', 'delete user', 'user management', 'staff'],
-        response: "To manage users:\n\n1. Click 'Manage Users' in sidebar\n2. View pending approvals at the top\n3. Approve/reject new user registrations\n4. See all active users below\n5. Deactivate users if needed\n\n👥 You can manage: Admin, Loan Staff, and CI Staff accounts."
-    },
-    'track': {
-        keywords: ['track', 'tracking', 'location', 'ci staff', 'gps'],
-        response: "To track CI Staff:\n\n1. Click 'CI Tracking' in sidebar\n2. View real-time map with CI staff locations\n3. See online/offline status\n4. Check last activity time\n5. View assigned applications\n\n📍 CI staff locations update every 30 seconds automatically!"
-    },
-    'sms': {
-        keywords: ['sms', 'text', 'notification', 'message', 'phone'],
-        response: "SMS Notifications:\n\n✅ Automatically sent when:\n- Application is approved\n- Application is rejected\n\n📱 Uses Semaphore API\n💰 Cost: ~₱0.50 per SMS\n\n⚙️ Configure in .env file:\nSEMAPHORE_API_KEY=your_key\n\nCheck your credits at semaphore.co"
-    },
-    'password': {
-        keywords: ['password', 'change password', 'reset password', 'forgot password'],
-        response: "To change your password:\n\n1. Click 'Change Password' in sidebar\n2. Enter current password\n3. Enter new password\n4. Confirm new password\n5. Click 'Update Password'\n\n🔒 Password must be at least 6 characters.\n\nForgot password? Use the 'Forgot Password' link on login page."
-    },
-    'dashboard': {
-        keywords: ['dashboard', 'home', 'overview', 'statistics'],
-        response: "Admin Dashboard features:\n\n📊 Statistics Cards:\n- Total applications\n- Pending reviews\n- Approved count\n\n👥 CI Staff Status:\n- See who's online\n- Current workload\n- Send messages\n\n📋 Applications Table:\n- Search and filter\n- View all applications\n- Quick actions\n\n🔄 Real-time updates via WebSocket!"
-    },
-    'dark': {
-        keywords: ['dark mode', 'theme', 'light mode', 'appearance'],
-        response: "To toggle Dark Mode:\n\n1. Click the moon/sun icon in top bar\n2. Your preference is saved automatically\n3. Works across all pages\n\n🌙 Dark mode reduces eye strain\n☀️ Light mode for bright environments\n\nYour choice persists even after logout!"
-    },
-    'default': {
-        keywords: [],
-        response: "I'm here to help! I can assist you with:\n\n• Approving/rejecting loan applications\n• Managing users and staff\n• Tracking CI staff locations\n• Understanding SMS notifications\n• Changing passwords\n• Using the dashboard\n• Dark mode settings\n\nJust ask me anything about the system! 😊"
-    }
-};
-
-function askQuestion(question) {
-    document.getElementById('userInput').value = question;
-    sendMessage();
-}
-
-function handleKeyPress(event) {
-    if (event.key === 'Enter') {
-        sendMessage();
-    }
-}
-
-function sendMessage() {
-    const input = document.getElementById('userInput');
-    const message = input.value.trim();
+// Send query to AI
+async function sendQuery() {
+    const queryInput = document.getElementById('queryInput');
+    const query = queryInput.value.trim();
     
-    if (!message) return;
+    if (!query) return;
     
-    // Add user message
-    addUserMessage(message);
-    input.value = '';
+    // Display user message
+    appendMessage('user', query);
+    queryInput.value = '';
     
     // Show typing indicator
     showTypingIndicator();
+    animateAgent('thinking');
     
-    // Get AI response after delay
-    setTimeout(() => {
-        const response = getAIResponse(message);
-        hideTypingIndicator();
-        addAIMessage(response);
-    }, 1500 + Math.random() * 1000); // Random delay 1.5-2.5s
-}
-
-function addUserMessage(text) {
-    const chatMessages = document.getElementById('chatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'user-message';
-    messageDiv.innerHTML = `
-        <div class="user-avatar">{{ current_user.name[0].upper() }}</div>
-        <div class="message-bubble user-bubble">
-            <div class="message-text">${escapeHtml(text)}</div>
-            <div class="message-time">${getCurrentTime()}</div>
-        </div>
-    `;
-    chatMessages.appendChild(messageDiv);
-    scrollToBottom();
-}
-
-function addAIMessage(text) {
-    const chatMessages = document.getElementById('chatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'ai-message';
-    messageDiv.innerHTML = `
-        <div class="ai-avatar">
-            <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" alt="Daisy & Coco">
-        </div>
-        <div class="message-bubble ai-bubble">
-            <div class="agent-name">Daisy & Coco</div>
-            <div class="message-text">${formatResponse(text)}</div>
-            <div class="message-time">${getCurrentTime()}</div>
-        </div>
-    `;
-    chatMessages.appendChild(messageDiv);
-    scrollToBottom();
-}
-
-function getAIResponse(question) {
-    const lowerQuestion = question.toLowerCase();
-    
-    // Check each knowledge base entry
-    for (const [key, data] of Object.entries(knowledgeBase)) {
-        if (key === 'default') continue;
+    try {
+        const response = await fetch('/api/ai_query', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({query})
+        });
         
-        for (const keyword of data.keywords) {
-            if (lowerQuestion.includes(keyword)) {
-                return data.response;
-            }
+        const data = await response.json();
+        
+        // Hide typing indicator
+        hideTypingIndicator();
+        
+        if (data.error) {
+            appendMessage('error', data.error);
+            animateAgent('idle');
+            return;
         }
+        
+        // Animate response
+        await animateResponse(data.response);
+        animateAgent('idle');
+        
+    } catch (error) {
+        hideTypingIndicator();
+        appendMessage('error', 'Sorry, I encountered an error. Please try again.');
+        animateAgent('idle');
+    }
+}
+
+// Append message to chat
+function appendMessage(role, content) {
+    const chatHistory = document.getElementById('chatHistory');
+    
+    // Remove welcome message if exists
+    const welcomeMsg = chatHistory.querySelector('.welcome-message');
+    if (welcomeMsg) {
+        welcomeMsg.remove();
     }
     
-    // Default response
-    return knowledgeBase.default.response;
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${role}`;
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    contentDiv.textContent = content;
+    
+    if (role === 'error') {
+        messageDiv.className = 'message assistant';
+        contentDiv.style.background = '#fee2e2';
+        contentDiv.style.color = '#dc2626';
+    }
+    
+    messageDiv.appendChild(contentDiv);
+    chatHistory.appendChild(messageDiv);
+    scrollToBottom();
 }
 
-function formatResponse(text) {
-    // Convert newlines to <br>
-    return escapeHtml(text).replace(/\n/g, '<br>');
+// Animate response text (typewriter effect)
+async function animateResponse(text) {
+    const chatHistory = document.getElementById('chatHistory');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    contentDiv.textContent = '';
+    
+    messageDiv.appendChild(contentDiv);
+    chatHistory.appendChild(messageDiv);
+    
+    let index = 0;
+    
+    return new Promise((resolve) => {
+        const interval = setInterval(() => {
+            if (index < text.length) {
+                contentDiv.textContent += text[index];
+                index++;
+                scrollToBottom();
+            } else {
+                clearInterval(interval);
+                resolve();
+            }
+        }, 20); // 20ms per character
+    });
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function getCurrentTime() {
-    const now = new Date();
-    return now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-}
-
+// Show typing indicator
 function showTypingIndicator() {
-    document.getElementById('typingIndicator').style.display = 'flex';
+    const chatHistory = document.getElementById('chatHistory');
+    const indicator = document.createElement('div');
+    indicator.className = 'typing-indicator';
+    indicator.id = 'typingIndicator';
+    indicator.innerHTML = `
+        <div class="message-content">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+        </div>
+    `;
+    chatHistory.appendChild(indicator);
+    scrollToBottom();
 }
 
+// Hide typing indicator
 function hideTypingIndicator() {
-    document.getElementById('typingIndicator').style.display = 'none';
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) {
+        indicator.remove();
+    }
 }
 
-function scrollToBottom() {
-    const chatMessages = document.getElementById('chatMessages');
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+// Animate agent image
+function animateAgent(state) {
+    const agentImage = document.getElementById('agentImage');
+    const agentStatus = document.getElementById('agentStatus');
+    
+    if (state === 'thinking') {
+        agentImage.classList.add('pulsing');
+        agentStatus.innerHTML = '<i class="bi bi-circle-fill text-warning"></i> Thinking...';
+    } else {
+        agentImage.classList.remove('pulsing');
+        agentStatus.innerHTML = '<i class="bi bi-circle-fill text-success"></i> Ready to help';
+    }
 }
+
+// Scroll to bottom
+function scrollToBottom() {
+    const chatHistory = document.getElementById('chatHistory');
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+// Clear chat history
+async function clearHistory() {
+    if (!confirm('Are you sure you want to clear the chat history?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/ai_clear_history', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const chatHistory = document.getElementById('chatHistory');
+            chatHistory.innerHTML = `
+                <div class="welcome-message">
+                    <i class="bi bi-chat-heart" style="font-size: 48px; color: var(--primary-blue); margin-bottom: 15px;"></i>
+                    <h4>Welcome to AI Support!</h4>
+                    <p class="text-muted">I'm here to help you with any questions about the DCCCO loan management system.</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        alert('Error clearing history. Please try again.');
+    }
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    const sendBtn = document.getElementById('sendBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const queryInput = document.getElementById('queryInput');
+    
+    sendBtn.addEventListener('click', sendQuery);
+    clearBtn.addEventListener('click', clearHistory);
+    
+    // Enter key to send (Shift+Enter for new line)
+    queryInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendQuery();
+        }
+    });
+    
+    // Scroll to bottom on page load
+    scrollToBottom();
+});
 </script>
 
+<!-- Dark mode toggle script -->
+<script src="{{ url_for('static', filename='session-security.js') }}"></script>
 {% endblock %}

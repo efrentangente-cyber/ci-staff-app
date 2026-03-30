@@ -944,6 +944,11 @@
                 <a href="{{ url_for('change_password') }}">
                     <i class="bi bi-key"></i> Change Password
                 </a>
+                {% if current_user.role == 'admin' %}
+                <a href="{{ url_for('ai_support') }}">
+                    <i class="bi bi-robot"></i> AI Support
+                </a>
+                {% endif %}
             </nav> 
         </div>
         
@@ -966,6 +971,10 @@
             <a href="{{ url_for('manage_users') }}">
                 <i class="bi bi-people-fill"></i>
                 <span>Users</span>
+            </a>
+            <a href="{{ url_for('ai_support') }}">
+                <i class="bi bi-robot"></i>
+                <span>AI Help</span>
             </a>
             {% else %}
             <a href="{{ url_for('change_password') }}">

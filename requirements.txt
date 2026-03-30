@@ -12,3 +12,5 @@ Flask-Limiter>=3.5.0
 email-validator>=2.1.0
 pytz
 requests>=2.31.0
+openai>=1.0.0
+anthropic>=0.18.0

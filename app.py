@@ -341,6 +341,205 @@ def send_sms(phone_number, message):
         print(f"SMS error: {str(e)}")
         return False
 
+def build_system_context():
+    """
+    Build comprehensive system context for AI assistant
+    Includes database schema, routes, features, and workflows
+    """
+    context = """
+# DCCCO Loan Management System Documentation
+
+## System Overview
+Flask-based loan management system for DCCCO Multipurpose Cooperative with real-time features using Socket.IO.
+
+## User Roles
+1. **admin**: Full system access, approves/rejects loans, manages users
+2. **loan_staff**: Submits loan applications, assigns to CI staff
+3. **ci_staff**: Conducts credit investigations, completes checklists
+
+## Database Schema
+
+### users table
+- id, email, password_hash, name, role, is_approved
+- signature_path, backup_email, profile_photo
+- is_online, last_seen, current_workload
+
+### loan_applications table
+- id, member_name, member_contact, member_address, loan_amount
+- status: submitted, assigned_to_ci, ci_completed, approved, rejected
+- needs_ci_interview, submitted_by, assigned_ci_staff
+- ci_notes, ci_checklist_data, ci_signature, ci_completed_at
+- admin_notes, admin_decision_at, submitted_at
+
+### documents table
+- id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at
+
+### direct_messages table
+- id, sender_id, receiver_id, message, sent_at, is_read, is_edited, is_deleted
+
+### notifications table
+- id, user_id, message, link, is_read, created_at
+
+### location_tracking table
+- id, user_id, latitude, longitude, activity, tracked_at
+
+## Key Features
+
+### Loan Application Workflow
+1. Loan staff submits application via /loan/submit
+2. System auto-assigns to CI staff with lowest workload
+3. CI staff completes interview and checklist
+4. Admin reviews and approves/rejects
+5. SMS notification sent to applicant
+
+### Real-Time Messaging
+- Direct messages between users via Socket.IO
+- Application-specific messaging threads
+- Typing indicators and read receipts
+- Voice message support
+
+### CI Tracking
+- GPS location tracking for CI staff
+- Real-time map display for admin
+- Activity status updates
+
+### User Management
+- Admin approves new user registrations
+- Role-based access control
+- Password reset with email verification
+
+### Dark Mode
+- Toggle via localStorage
+- Applies to all pages
+- CSS variables for theming
+
+## Common Issues & Solutions
+
+### Issue: User not approved
+**Solution**: Admin must approve via /manage_users
+
+### Issue: CI staff not receiving assignments
+**Solution**: Check current_workload in users table, verify is_approved=1
+
+### Issue: SMS not sending
+**Solution**: Check SEMAPHORE_API_KEY or TEXTBELT_API_KEY in .env
+
+### Issue: Real-time features not working
+**Solution**: Verify Socket.IO connection, check browser console for errors
+
+### Issue: File upload failing
+**Solution**: Check UPLOAD_FOLDER permissions, verify file extension in ALLOWED_EXTENSIONS
+
+## File Structure
+- app.py: Main Flask application
+- templates/: HTML templates (Jinja2)
+- static/: CSS, JavaScript, images
+- uploads/: User-uploaded documents
+- signatures/: Digital signatures
+- schema.sql: Database schema
+
+## Environment Variables
+- SECRET_KEY: Flask session secret
+- RESEND_API_KEY: Email service
+- SEMAPHORE_API_KEY: SMS service (primary)
+- OPENAI_API_KEY or ANTHROPIC_API_KEY: AI assistant
+- FLASK_DEBUG: Debug mode flag
+
+## API Endpoints
+- /api/send_direct_message: Send message
+- /api/update_location: Update CI location
+- /api/unread_message_count: Get unread count
+- /api/ai_query: AI assistant query (admin only)
+"""
+    return context
+
+
+def call_ai_engine(query, history, context):
+    """
+    Call AI API with system context and conversation history
+    Supports OpenAI and Anthropic APIs
+    """
+    # Get API key from environment
+    openai_key = os.getenv('OPENAI_API_KEY')
+    anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+    
+    if not openai_key and not anthropic_key:
+        raise Exception('No AI API key configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env file.')
+    
+    # Build messages array
+    messages = []
+    
+    # Add conversation history
+    for msg in history:
+        messages.append({
+            'role': msg['role'],
+            'content': msg['content']
+        })
+    
+    # Add current query
+    messages.append({'role': 'user', 'content': query})
+    
+    # Call OpenAI API (preferred)
+    if openai_key:
+        try:
+            import openai
+            client = openai.OpenAI(api_key=openai_key)
+            
+            # Build system message with context
+            system_message = f"""You are DaisyandCoco, an AI assistant for the DCCCO Multipurpose Cooperative loan management system.
+
+You help administrators understand and troubleshoot the system.
+
+SYSTEM KNOWLEDGE:
+{context}
+
+Provide clear, accurate, and helpful responses. Use bullet points and code examples when appropriate.
+Reference specific file paths, database tables, and functions when relevant.
+Be friendly and conversational while maintaining professionalism."""
+            
+            response = client.chat.completions.create(
+                model='gpt-3.5-turbo',
+                messages=[
+                    {'role': 'system', 'content': system_message}
+                ] + messages,
+                max_tokens=1000,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            app.logger.error(f"OpenAI API error: {str(e)}")
+            raise Exception(f"AI service error: {str(e)}")
+    
+    # Fallback to Anthropic API
+    elif anthropic_key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=anthropic_key)
+            
+            # Build system message with context
+            system_message = f"""You are DaisyandCoco, an AI assistant for the DCCCO Multipurpose Cooperative loan management system.
+
+You help administrators understand and troubleshoot the system.
+
+SYSTEM KNOWLEDGE:
+{context}
+
+Provide clear, accurate, and helpful responses. Use bullet points and code examples when appropriate.
+Reference specific file paths, database tables, and functions when relevant.
+Be friendly and conversational while maintaining professionalism."""
+            
+            response = client.messages.create(
+                model='claude-3-haiku-20240307',
+                max_tokens=1000,
+                system=system_message,
+                messages=messages
+            )
+            return response.content[0].text
+        except Exception as e:
+            app.logger.error(f"Anthropic API error: {str(e)}")
+            raise Exception(f"AI service error: {str(e)}")
+
+
 @login_manager.user_loader
 def load_user(user_id):
     conn = get_db()
@@ -400,6 +599,9 @@ def login():
 @app.route('/logout')
 @login_required
 def logout():
+    # Clear AI chat history from session
+    if 'ai_chat_history' in session:
+        session.pop('ai_chat_history', None)
     logout_user()
     flash('Logged out.', 'info')
     return redirect(url_for('login'))
@@ -829,6 +1031,107 @@ def admin_application(id):
     conn.close()
     
     return render_template('admin_application.html', application=app_data, documents=documents, messages=messages, unread_count=unread_count)
+
+# AI SUPPORT ROUTES (Admin Only)
+@app.route('/ai-support')
+@login_required
+def ai_support():
+    if current_user.role != 'admin':
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    # Get chat history from session
+    chat_history = session.get('ai_chat_history', [])
+    
+    conn = get_db()
+    unread_count = conn.execute('''
+        SELECT COUNT(*) as count FROM notifications 
+        WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
+    ''', (current_user.id,)).fetchone()['count']
+    conn.close()
+    
+    return render_template('ai_support.html', 
+                         chat_history=chat_history,
+                         unread_count=unread_count)
+
+
+@app.route('/api/ai_query', methods=['POST'])
+@login_required
+@limiter.limit("10 per minute")
+def ai_query():
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    data = request.json
+    query = data.get('query', '').strip()
+    
+    if not query:
+        return jsonify({'error': 'Empty query'}), 400
+    
+    # Validate query length
+    if len(query) > 2000:
+        return jsonify({'error': 'Query too long (max 2000 characters)'}), 400
+    
+    # Get chat history from session
+    chat_history = session.get('ai_chat_history', [])
+    
+    # Build system context with knowledge base
+    system_context = build_system_context()
+    
+    # Call AI engine
+    try:
+        response = call_ai_engine(query, chat_history, system_context)
+        
+        # Filter sensitive data from response
+        response = filter_sensitive_data(response)
+        
+        # Update chat history
+        chat_history.append({'role': 'user', 'content': query})
+        chat_history.append({'role': 'assistant', 'content': response})
+        
+        # Keep only last 50 messages (25 exchanges)
+        if len(chat_history) > 50:
+            chat_history = chat_history[-50:]
+        
+        session['ai_chat_history'] = chat_history
+        session.modified = True
+        
+        return jsonify({'response': response})
+    except Exception as e:
+        app.logger.error(f"AI query error: {str(e)}")
+        return jsonify({'error': 'Sorry, I encountered an error processing your request. Please try again.'}), 500
+
+
+@app.route('/api/ai_clear_history', methods=['POST'])
+@login_required
+def ai_clear_history():
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    session['ai_chat_history'] = []
+    session.modified = True
+    
+    return jsonify({'success': True})
+
+
+def filter_sensitive_data(text):
+    """
+    Filter sensitive information from AI responses
+    """
+    import re
+    
+    # Filter API keys
+    text = re.sub(r'(OPENAI_API_KEY|ANTHROPIC_API_KEY|RESEND_API_KEY|SEMAPHORE_API_KEY|SECRET_KEY)\s*[=:]\s*[^\s]+', 
+                  r'\1=***FILTERED***', text, flags=re.IGNORECASE)
+    
+    # Filter password hashes
+    text = re.sub(r'password_hash\s*[=:]\s*[^\s]+', 'password_hash=***FILTERED***', text, flags=re.IGNORECASE)
+    
+    # Filter database connection strings
+    text = re.sub(r'(sqlite:///|postgresql://|mysql://)[^\s]+', r'\1***FILTERED***', text, flags=re.IGNORECASE)
+    
+    return text
+
 
 # SHARED ROUTES
 @app.route('/application/<int:id>')
