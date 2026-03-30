@@ -87,11 +87,20 @@
             color: var(--text-primary);
         }
         
+        body.dark-mode .table tbody td {
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        
         body.dark-mode .form-control,
         body.dark-mode .form-select {
             background-color: #1a1a1a;
             color: var(--text-primary);
             border-color: var(--border-color);
+        }
+        
+        body.dark-mode .form-control::placeholder {
+            color: #6b7280;
         }
         
         body.dark-mode .form-control:focus,
@@ -125,6 +134,11 @@
             color: var(--text-primary);
         }
         
+        body.dark-mode .user-menu-header {
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        
         body.dark-mode .ci-staff-item-compact {
             background-color: var(--bg-white);
             border-color: var(--border-color);
@@ -132,6 +146,118 @@
         
         body.dark-mode .ci-staff-item-compact:hover {
             background-color: #1a1a1a;
+        }
+        
+        /* Dark mode text colors for all elements */
+        body.dark-mode h1,
+        body.dark-mode h2,
+        body.dark-mode h3,
+        body.dark-mode h4,
+        body.dark-mode h5,
+        body.dark-mode h6 {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode p,
+        body.dark-mode span,
+        body.dark-mode div,
+        body.dark-mode label,
+        body.dark-mode small {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .text-muted {
+            color: var(--text-secondary) !important;
+        }
+        
+        body.dark-mode .stat-card h3 {
+            color: var(--primary-blue);
+        }
+        
+        body.dark-mode .stat-card p {
+            color: var(--text-secondary);
+        }
+        
+        body.dark-mode .content-card-header h5 {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .top-bar h2 {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .ci-staff-info h6 {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .ci-staff-info small {
+            color: var(--text-secondary);
+        }
+        
+        body.dark-mode .list-group-item {
+            background-color: var(--bg-white);
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode .list-group-item:hover {
+            background-color: #1a1a1a;
+        }
+        
+        body.dark-mode .alert {
+            background-color: var(--bg-white);
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode .modal-content {
+            background-color: var(--bg-white);
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .modal-header,
+        body.dark-mode .modal-footer {
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode .dropdown-menu {
+            background-color: var(--bg-white);
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode .dropdown-item {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .dropdown-item:hover {
+            background-color: #1a1a1a;
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .form-label {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .card-body {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .input-group-text {
+            background-color: #1a1a1a;
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode strong {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode a:not(.btn) {
+            color: var(--primary-blue);
+        }
+        
+        body.dark-mode a:not(.btn):hover {
+            color: var(--secondary-blue);
         }
         
         /* Dark mode transition */
