@@ -463,19 +463,31 @@ function collectChecklistData() {
     return true; // Allow form submission
 }
 
-// Photo preview functionality
+// Store accumulated files for interview photos
+let accumulatedInterviewPhotos = [];
+
+// Photo preview functionality - ACCUMULATE files instead of replacing
 document.getElementById('interview_photos')?.addEventListener('change', function(e) {
     const preview = document.getElementById('photo_preview');
+    const newFiles = Array.from(e.target.files);
+    
+    // Add new files to accumulated list
+    accumulatedInterviewPhotos = accumulatedInterviewPhotos.concat(newFiles);
+    
+    // Clear preview and rebuild with all accumulated files
     preview.innerHTML = '';
     
-    Array.from(e.target.files).forEach((file, index) => {
+    accumulatedInterviewPhotos.forEach((file, index) => {
         if (file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = function(e) {
                 const col = document.createElement('div');
-                col.className = 'col-md-3';
+                col.className = 'col-md-3 position-relative';
                 col.innerHTML = `
                     <div class="card">
+                        <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeInterviewPhoto(${index})" style="z-index: 10; padding: 2px 6px;">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
                         <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
                         <div class="card-body p-2">
                             <small class="text-muted">${file.name}</small>
@@ -487,7 +499,56 @@ document.getElementById('interview_photos')?.addEventListener('change', function
             reader.readAsDataURL(file);
         }
     });
+    
+    // Update the file input with accumulated files
+    updateInterviewPhotoInput();
 });
+
+// Function to remove a photo from the accumulated list
+function removeInterviewPhoto(index) {
+    accumulatedInterviewPhotos.splice(index, 1);
+    
+    // Rebuild preview
+    const preview = document.getElementById('photo_preview');
+    preview.innerHTML = '';
+    
+    accumulatedInterviewPhotos.forEach((file, idx) => {
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const col = document.createElement('div');
+                col.className = 'col-md-3 position-relative';
+                col.innerHTML = `
+                    <div class="card">
+                        <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeInterviewPhoto(${idx})" style="z-index: 10; padding: 2px 6px;">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                        <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                        <div class="card-body p-2">
+                            <small class="text-muted">${file.name}</small>
+                        </div>
+                    </div>
+                `;
+                preview.appendChild(col);
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    updateInterviewPhotoInput();
+}
+
+// Update the file input with accumulated files
+function updateInterviewPhotoInput() {
+    const input = document.getElementById('interview_photos');
+    const dataTransfer = new DataTransfer();
+    
+    accumulatedInterviewPhotos.forEach(file => {
+        dataTransfer.items.add(file);
+    });
+    
+    input.files = dataTransfer.files;
+}
 
 // Print checklist function
 function printChecklist() {

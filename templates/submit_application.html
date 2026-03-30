@@ -71,7 +71,9 @@
             </div>
             <div class="mb-3">
                 <label class="form-label">Loan Amount *</label>
-                <input type="number" name="loan_amount" class="form-control" step="0.01" required>
+                <input type="text" name="loan_amount" id="loan_amount" class="form-control" required placeholder="e.g., 14,000">
+                <input type="hidden" name="loan_amount_raw" id="loan_amount_raw">
+                <small class="text-muted">Enter amount with or without commas</small>
             </div>
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-images"></i> Upload Documents/Photos (Requirements/Papers)</label>
@@ -178,20 +180,56 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Document preview functionality
+// Loan amount formatting with commas
+const loanAmountInput = document.getElementById('loan_amount');
+const loanAmountRaw = document.getElementById('loan_amount_raw');
+
+loanAmountInput?.addEventListener('input', function(e) {
+    // Remove all non-digit characters except decimal point
+    let value = e.target.value.replace(/[^\d.]/g, '');
+    
+    // Ensure only one decimal point
+    const parts = value.split('.');
+    if (parts.length > 2) {
+        value = parts[0] + '.' + parts.slice(1).join('');
+    }
+    
+    // Store raw value for form submission
+    loanAmountRaw.value = value;
+    
+    // Format with commas for display
+    const [integerPart, decimalPart] = value.split('.');
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    e.target.value = decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
+});
+
+// Store accumulated files
+let accumulatedFiles = [];
+
+// Document preview functionality - ACCUMULATE files instead of replacing
 document.getElementById('documentUpload')?.addEventListener('change', function(e) {
     const preview = document.getElementById('document_preview');
+    const newFiles = Array.from(e.target.files);
+    
+    // Add new files to accumulated list
+    accumulatedFiles = accumulatedFiles.concat(newFiles);
+    
+    // Clear preview and rebuild with all accumulated files
     preview.innerHTML = '';
     
-    Array.from(e.target.files).forEach((file, index) => {
+    accumulatedFiles.forEach((file, index) => {
         const col = document.createElement('div');
-        col.className = 'col-md-3 col-6';
+        col.className = 'col-md-3 col-6 position-relative';
+        col.dataset.fileIndex = index;
         
         if (file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = function(e) {
                 col.innerHTML = `
                     <div class="card">
+                        <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${index})" style="z-index: 10; padding: 2px 6px;">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
                         <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
                         <div class="card-body p-2">
                             <small class="text-muted text-truncate d-block">${file.name}</small>
@@ -204,6 +242,9 @@ document.getElementById('documentUpload')?.addEventListener('change', function(e
         } else {
             col.innerHTML = `
                 <div class="card">
+                    <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${index})" style="z-index: 10; padding: 2px 6px;">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
                     <div class="card-body text-center" style="height: 150px; display: flex; align-items: center; justify-content: center; background: #f8f9fa;">
                         <div>
                             <i class="bi bi-file-pdf" style="font-size: 3rem; color: #dc3545;"></i>
@@ -215,6 +256,72 @@ document.getElementById('documentUpload')?.addEventListener('change', function(e
             preview.appendChild(col);
         }
     });
+    
+    // Update the file input with accumulated files
+    updateFileInput();
 });
+
+// Function to remove a file from the accumulated list
+function removeFile(index) {
+    accumulatedFiles.splice(index, 1);
+    
+    // Rebuild preview
+    const preview = document.getElementById('document_preview');
+    preview.innerHTML = '';
+    
+    accumulatedFiles.forEach((file, idx) => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 col-6 position-relative';
+        col.dataset.fileIndex = idx;
+        
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                col.innerHTML = `
+                    <div class="card">
+                        <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${idx})" style="z-index: 10; padding: 2px 6px;">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                        <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                        <div class="card-body p-2">
+                            <small class="text-muted text-truncate d-block">${file.name}</small>
+                        </div>
+                    </div>
+                `;
+                preview.appendChild(col);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            col.innerHTML = `
+                <div class="card">
+                    <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${idx})" style="z-index: 10; padding: 2px 6px;">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <div class="card-body text-center" style="height: 150px; display: flex; align-items: center; justify-content: center; background: #f8f9fa;">
+                        <div>
+                            <i class="bi bi-file-pdf" style="font-size: 3rem; color: #dc3545;"></i>
+                            <div class="mt-2"><small class="text-muted text-truncate d-block">${file.name}</small></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            preview.appendChild(col);
+        }
+    });
+    
+    updateFileInput();
+}
+
+// Update the file input with accumulated files
+function updateFileInput() {
+    const input = document.getElementById('documentUpload');
+    const dataTransfer = new DataTransfer();
+    
+    accumulatedFiles.forEach(file => {
+        dataTransfer.items.add(file);
+    });
+    
+    input.files = dataTransfer.files;
+}
 </script>
 {% endblock %}
