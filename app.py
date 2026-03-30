@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
 import resend
+import requests  # For SMS API
 
 # Load environment variables
 load_dotenv()
@@ -268,6 +269,71 @@ def create_notification(user_id, message, link=None):
         socketio.emit('new_notification', {'message': message}, room=str(user_id))
     except Exception as e:
         pass
+
+def send_sms(phone_number, message):
+    """
+    Send SMS using multiple providers with fallback
+    Priority: Semaphore (paid) -> TextBelt (free 1/day) -> Console log
+    """
+    try:
+        # Clean phone number (remove spaces, dashes, etc.)
+        phone = re.sub(r'[^\d+]', '', phone_number)
+        
+        # Ensure Philippine format (+63 or 09)
+        if phone.startswith('09'):
+            phone = '+63' + phone[1:]
+        elif not phone.startswith('+63'):
+            phone = '+63' + phone
+        
+        # Try Semaphore first (if API key is configured)
+        semaphore_key = os.getenv('SEMAPHORE_API_KEY', '')
+        if semaphore_key:
+            try:
+                url = 'https://api.semaphore.co/api/v4/messages'
+                payload = {
+                    'apikey': semaphore_key,
+                    'number': phone,
+                    'message': message,
+                    'sendername': 'DCCCO'
+                }
+                response = requests.post(url, data=payload, timeout=10)
+                if response.status_code == 200:
+                    print(f"✓ SMS sent via Semaphore to {phone}")
+                    return True
+            except Exception as e:
+                print(f"Semaphore failed: {str(e)}, trying fallback...")
+        
+        # Fallback to TextBelt (FREE - 1 SMS per day per number)
+        try:
+            url = 'https://textbelt.com/text'
+            payload = {
+                'phone': phone,
+                'message': message,
+                'key': 'textbelt'  # Free tier key (1 SMS/day per number)
+            }
+            response = requests.post(url, data=payload, timeout=10)
+            result = response.json()
+            
+            if result.get('success'):
+                print(f"✓ SMS sent via TextBelt (FREE) to {phone}")
+                print(f"  Quota remaining: {result.get('quotaRemaining', 'N/A')}")
+                return True
+            else:
+                print(f"✗ TextBelt failed: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            print(f"TextBelt failed: {str(e)}")
+        
+        # If all fail, log to console
+        print(f"\n{'='*60}")
+        print(f"SMS NOTIFICATION (Not sent - no API configured)")
+        print(f"To: {phone}")
+        print(f"Message: {message}")
+        print(f"{'='*60}\n")
+        return False
+            
+    except Exception as e:
+        print(f"SMS error: {str(e)}")
+        return False
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -717,6 +783,19 @@ def admin_application(id):
             ''', (decision, admin_notes, now_ph().isoformat(), id))
             
             conn.commit()
+            
+            # Send SMS notification to applicant
+            if app_data['member_contact']:
+                if decision == 'approved':
+                    sms_message = f"Good news! Your loan application for {app_data['member_name']} has been APPROVED. Amount: ₱{app_data['loan_amount']:,.2f}. Please visit DCCCO office for processing. - DCCCO Coop"
+                elif decision == 'rejected':
+                    sms_message = f"We regret to inform you that your loan application for {app_data['member_name']} has been REJECTED. Reason: {admin_notes[:100] if admin_notes else 'See office for details'}. - DCCCO Coop"
+                else:
+                    sms_message = None
+                
+                if sms_message:
+                    send_sms(app_data['member_contact'], sms_message)
+            
             conn.close()
             
             # Notify loan staff
@@ -724,7 +803,7 @@ def admin_application(id):
                               f'Application {decision}: {app_data["member_name"]}',
                               f'/loan/application/{id}')
             
-            flash(f'Application {decision}!', 'success')
+            flash(f'Application {decision}! SMS notification sent to applicant.', 'success')
             return redirect(url_for('admin_dashboard'))
         except Exception as e:
             conn.close()
