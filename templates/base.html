@@ -33,11 +33,100 @@
             --accent-yellow: #fbbf24;
             --light-bg: #f5f7fa;
             --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --text-primary: #1e3a5f;
+            --text-secondary: #6b7280;
+            --bg-white: #ffffff;
+            --border-color: #e5e7eb;
+        }
+        
+        /* Dark Mode Variables */
+        body.dark-mode {
+            --primary-blue: #60a5fa;
+            --secondary-blue: #3b82f6;
+            --accent-yellow: #fbbf24;
+            --light-bg: #1a1a1a;
+            --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+            --text-primary: #e5e7eb;
+            --text-secondary: #9ca3af;
+            --bg-white: #2d2d2d;
+            --border-color: #404040;
         }
         
         body {
             background-color: var(--light-bg);
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        
+        /* Apply dark mode colors to common elements */
+        body.dark-mode .card,
+        body.dark-mode .content-card,
+        body.dark-mode .stat-card,
+        body.dark-mode .top-bar {
+            background-color: var(--bg-white);
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .table {
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .table thead th {
+            background-color: #1a1a1a;
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .form-control,
+        body.dark-mode .form-select {
+            background-color: #1a1a1a;
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode .form-control:focus,
+        body.dark-mode .form-select:focus {
+            background-color: #1a1a1a;
+            color: var(--text-primary);
+            border-color: var(--primary-blue);
+        }
+        
+        body.dark-mode .btn-outline-secondary {
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode .btn-outline-secondary:hover {
+            background-color: var(--border-color);
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .user-menu-dropdown {
+            background-color: var(--bg-white);
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode .user-menu-item {
+            color: var(--text-secondary);
+        }
+        
+        body.dark-mode .user-menu-item:hover {
+            background-color: #1a1a1a;
+            color: var(--text-primary);
+        }
+        
+        body.dark-mode .ci-staff-item-compact {
+            background-color: var(--bg-white);
+            border-color: var(--border-color);
+        }
+        
+        body.dark-mode .ci-staff-item-compact:hover {
+            background-color: #1a1a1a;
+        }
+        
+        /* Dark mode transition */
+        * {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
         }
         
         /* Sidebar Layout */
@@ -877,6 +966,41 @@
     </script>
     
     <script>
+    // Dark Mode Toggle
+    document.addEventListener('DOMContentLoaded', function() {
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const darkModeIcon = document.getElementById('darkModeIcon');
+        const body = document.body;
+        
+        // Check for saved dark mode preference
+        const isDarkMode = localStorage.getItem('darkMode') === 'true';
+        if (isDarkMode) {
+            body.classList.add('dark-mode');
+            if (darkModeIcon) {
+                darkModeIcon.classList.remove('bi-moon-fill');
+                darkModeIcon.classList.add('bi-sun-fill');
+            }
+        }
+        
+        // Toggle dark mode
+        darkModeToggle?.addEventListener('click', function() {
+            body.classList.toggle('dark-mode');
+            const isDark = body.classList.contains('dark-mode');
+            
+            // Update icon
+            if (isDark) {
+                darkModeIcon.classList.remove('bi-moon-fill');
+                darkModeIcon.classList.add('bi-sun-fill');
+            } else {
+                darkModeIcon.classList.remove('bi-sun-fill');
+                darkModeIcon.classList.add('bi-moon-fill');
+            }
+            
+            // Save preference
+            localStorage.setItem('darkMode', isDark);
+        });
+    });
+    
     // User menu dropdown functionality - handles multiple dropdowns
     document.addEventListener('DOMContentLoaded', function() {
         console.log('Dropdown script loaded');

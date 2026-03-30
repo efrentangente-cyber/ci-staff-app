@@ -4,6 +4,9 @@
 <div class="top-bar">
     <h2>Admin Dashboard</h2>
     <div class="top-bar-actions">
+        <button class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode">
+            <i class="bi bi-moon-fill" id="darkModeIcon"></i>
+        </button>
         <a href="{{ url_for('notifications') }}" class="btn btn-outline-secondary notification-badge" style="position: relative;">
             <i class="bi bi-bell"></i>
             <span class="badge bg-danger" id="notif-count-topbar" style="position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; {% if not unread_count or unread_count == 0 %}display:none;{% endif %}">{{ unread_count if unread_count else '' }}</span>
