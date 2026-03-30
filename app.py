@@ -273,17 +273,23 @@ def create_notification(user_id, message, link=None):
 def send_sms(phone_number, message):
     """
     Send SMS using multiple providers with fallback
+    Supports INTERNATIONAL phone numbers
     Priority: Semaphore (paid) -> TextBelt (free 1/day) -> Console log
     """
     try:
         # Clean phone number (remove spaces, dashes, etc.)
         phone = re.sub(r'[^\d+]', '', phone_number)
         
-        # Ensure Philippine format (+63 or 09)
-        if phone.startswith('09'):
+        # Auto-format Philippine numbers (09xx -> +639xx)
+        if phone.startswith('09') and len(phone) == 11:
             phone = '+63' + phone[1:]
-        elif not phone.startswith('+63'):
-            phone = '+63' + phone
+        # Ensure + prefix for international format
+        elif not phone.startswith('+'):
+            # If no country code, assume Philippines
+            if len(phone) == 10:
+                phone = '+63' + phone
+            else:
+                phone = '+' + phone
         
         # Try Semaphore first (if API key is configured)
         semaphore_key = os.getenv('SEMAPHORE_API_KEY', '')
@@ -303,19 +309,19 @@ def send_sms(phone_number, message):
             except Exception as e:
                 print(f"Semaphore failed: {str(e)}, trying fallback...")
         
-        # Fallback to TextBelt (FREE - 1 SMS per day per number)
+        # Fallback to TextBelt (FREE - 1 SMS per day per number, INTERNATIONAL)
         try:
             url = 'https://textbelt.com/text'
             payload = {
                 'phone': phone,
                 'message': message,
-                'key': 'textbelt'  # Free tier key (1 SMS/day per number)
+                'key': 'textbelt'  # Free tier key (1 SMS/day per number, works internationally)
             }
             response = requests.post(url, data=payload, timeout=10)
             result = response.json()
             
             if result.get('success'):
-                print(f"✓ SMS sent via TextBelt (FREE) to {phone}")
+                print(f"✓ SMS sent via TextBelt (FREE, INTERNATIONAL) to {phone}")
                 print(f"  Quota remaining: {result.get('quotaRemaining', 'N/A')}")
                 return True
             else:

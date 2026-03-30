@@ -1,0 +1,601 @@
+{% extends "base.html" %}
+{% block title %}Daisy & Coco AI Support{% endblock %}
+{% block content %}
+<div class="top-bar">
+    <h2><i class="bi bi-robot"></i> Daisy & Coco AI Support</h2>
+    <div class="top-bar-actions">
+        <button class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode">
+            <i class="bi bi-moon-fill" id="darkModeIcon"></i>
+        </button>
+        <a href="{{ url_for('notifications') }}" class="btn btn-outline-secondary notification-badge" style="position: relative;">
+            <i class="bi bi-bell"></i>
+            <span class="badge bg-danger" id="notif-count-topbar" style="position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; {% if not unread_count or unread_count == 0 %}display:none;{% endif %}">{{ unread_count if unread_count else '' }}</span>
+        </a>
+        <div class="user-menu-container">
+            <button class="btn btn-outline-secondary user-menu-btn" type="button">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <div class="user-menu-dropdown">
+                <div class="user-menu-header">
+                    <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                </div>
+                <a class="user-menu-item" href="{{ url_for('change_password') }}">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+                <div class="user-menu-divider"></div>
+                <a class="user-menu-item text-danger" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-body" style="padding: 0;">
+        <!-- AI Support Chat Interface -->
+        <div class="ai-support-container">
+            <!-- Mascots Header -->
+            <div class="mascots-header">
+                <div class="mascot-intro">
+                    <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" alt="Daisy and Coco" class="mascot-image">
+                    <div class="mascot-text">
+                        <h4>👋 Hi! We're Daisy & Coco!</h4>
+                        <p>Your friendly AI support agents. Ask us anything about the DCCCO Loan Management System!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Help Buttons -->
+            <div class="quick-help-section">
+                <h6><i class="bi bi-lightning-fill"></i> Quick Help Topics:</h6>
+                <div class="quick-help-buttons">
+                    <button class="quick-help-btn" onclick="askQuestion('How do I approve a loan application?')">
+                        <i class="bi bi-check-circle"></i> Approve Loans
+                    </button>
+                    <button class="quick-help-btn" onclick="askQuestion('How do I manage users?')">
+                        <i class="bi bi-people"></i> Manage Users
+                    </button>
+                    <button class="quick-help-btn" onclick="askQuestion('How do I track CI staff?')">
+                        <i class="bi bi-geo-alt"></i> Track CI Staff
+                    </button>
+                    <button class="quick-help-btn" onclick="askQuestion('How do I view reports?')">
+                        <i class="bi bi-file-earmark-text"></i> View Reports
+                    </button>
+                    <button class="quick-help-btn" onclick="askQuestion('How does SMS notification work?')">
+                        <i class="bi bi-phone"></i> SMS Notifications
+                    </button>
+                    <button class="quick-help-btn" onclick="askQuestion('How do I change my password?')">
+                        <i class="bi bi-key"></i> Change Password
+                    </button>
+                </div>
+            </div>
+
+            <!-- Chat Messages Area -->
+            <div class="chat-messages" id="chatMessages">
+                <div class="ai-message">
+                    <div class="ai-avatar">
+                        <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" alt="Daisy & Coco">
+                    </div>
+                    <div class="message-bubble ai-bubble">
+                        <div class="agent-name">Daisy & Coco</div>
+                        <div class="message-text">
+                            Hello! 👋 We're here to help you with any questions about the system. 
+                            You can click the quick help buttons above or type your question below!
+                        </div>
+                        <div class="message-time">Just now</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input -->
+            <div class="chat-input-container">
+                <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                    <div class="ai-avatar-small">
+                        <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" alt="Daisy & Coco">
+                    </div>
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <span class="typing-text">Daisy & Coco are typing...</span>
+                </div>
+                <div class="input-wrapper">
+                    <input type="text" id="userInput" class="chat-input" placeholder="Ask Daisy & Coco anything..." onkeypress="handleKeyPress(event)">
+                    <button class="send-btn" onclick="sendMessage()">
+                        <i class="bi bi-send-fill"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.ai-support-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 200px);
+    min-height: 600px;
+}
+
+.mascots-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 20px;
+    color: white;
+    border-radius: 10px 10px 0 0;
+}
+
+.mascot-intro {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.mascot-image {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 4px solid white;
+    object-fit: cover;
+    animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.mascot-text h4 {
+    margin: 0 0 10px 0;
+    font-size: 24px;
+}
+
+.mascot-text p {
+    margin: 0;
+    opacity: 0.9;
+}
+
+.quick-help-section {
+    padding: 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.quick-help-section h6 {
+    margin: 0 0 15px 0;
+    color: #495057;
+}
+
+.quick-help-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+.quick-help-btn {
+    padding: 10px 15px;
+    background: white;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-align: left;
+    font-size: 14px;
+}
+
+.quick-help-btn:hover {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.quick-help-btn i {
+    margin-right: 8px;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    background: white;
+}
+
+.ai-message, .user-message {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.user-message {
+    flex-direction: row-reverse;
+}
+
+.ai-avatar, .user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.ai-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-avatar {
+    background: #667eea;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+}
+
+.message-bubble {
+    max-width: 70%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    position: relative;
+}
+
+.ai-bubble {
+    background: #f1f3f5;
+    border-bottom-left-radius: 4px;
+}
+
+.user-bubble {
+    background: #667eea;
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.agent-name {
+    font-weight: 600;
+    font-size: 12px;
+    color: #667eea;
+    margin-bottom: 4px;
+}
+
+.message-text {
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.message-time {
+    font-size: 11px;
+    color: #868e96;
+    margin-top: 4px;
+}
+
+.user-bubble .message-time {
+    color: rgba(255,255,255,0.7);
+}
+
+.chat-input-container {
+    padding: 20px;
+    background: white;
+    border-top: 1px solid #dee2e6;
+    border-radius: 0 0 10px 10px;
+}
+
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.ai-avatar-small {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+}
+
+.ai-avatar-small img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.typing-dots {
+    display: flex;
+    gap: 4px;
+}
+
+.typing-dots span {
+    width: 8px;
+    height: 8px;
+    background: #667eea;
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+}
+
+.typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typing {
+    0%, 60%, 100% {
+        transform: translateY(0);
+    }
+    30% {
+        transform: translateY(-10px);
+    }
+}
+
+.typing-text {
+    font-size: 13px;
+    color: #868e96;
+    font-style: italic;
+}
+
+.input-wrapper {
+    display: flex;
+    gap: 10px;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #e9ecef;
+    border-radius: 25px;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.chat-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.send-btn {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background: #667eea;
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.send-btn:hover {
+    background: #764ba2;
+    transform: scale(1.1);
+}
+
+.send-btn:active {
+    transform: scale(0.95);
+}
+
+/* Dark mode support */
+body.dark-mode .chat-messages,
+body.dark-mode .chat-input-container {
+    background: #2d2d2d;
+}
+
+body.dark-mode .ai-bubble {
+    background: #3a3a3a;
+    color: #e5e7eb;
+}
+
+body.dark-mode .quick-help-section {
+    background: #1a1a1a;
+}
+
+body.dark-mode .quick-help-btn {
+    background: #2d2d2d;
+    color: #e5e7eb;
+    border-color: #404040;
+}
+
+body.dark-mode .chat-input {
+    background: #1a1a1a;
+    color: #e5e7eb;
+    border-color: #404040;
+}
+
+body.dark-mode .typing-indicator {
+    background: #1a1a1a;
+}
+
+@media (max-width: 768px) {
+    .mascot-intro {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .quick-help-buttons {
+        grid-template-columns: 1fr;
+    }
+    
+    .message-bubble {
+        max-width: 85%;
+    }
+}
+</style>
+
+<script>
+// AI Knowledge Base
+const knowledgeBase = {
+    'approve': {
+        keywords: ['approve', 'approval', 'accept', 'loan application'],
+        response: "To approve a loan application:\n\n1. Go to Admin Dashboard\n2. Click on the application you want to review\n3. Review all details including CI report\n4. Add your admin notes (optional)\n5. Click 'Approve' button\n6. The applicant will receive an SMS notification automatically!\n\n✅ The loan staff will also be notified."
+    },
+    'reject': {
+        keywords: ['reject', 'rejection', 'decline', 'deny'],
+        response: "To reject a loan application:\n\n1. Go to Admin Dashboard\n2. Click on the application\n3. Review the details\n4. Add rejection reason in admin notes (required)\n5. Click 'Reject' button\n6. Applicant receives SMS with rejection reason\n\n⚠️ Make sure to provide a clear reason for rejection."
+    },
+    'users': {
+        keywords: ['manage users', 'add user', 'delete user', 'user management', 'staff'],
+        response: "To manage users:\n\n1. Click 'Manage Users' in sidebar\n2. View pending approvals at the top\n3. Approve/reject new user registrations\n4. See all active users below\n5. Deactivate users if needed\n\n👥 You can manage: Admin, Loan Staff, and CI Staff accounts."
+    },
+    'track': {
+        keywords: ['track', 'tracking', 'location', 'ci staff', 'gps'],
+        response: "To track CI Staff:\n\n1. Click 'CI Tracking' in sidebar\n2. View real-time map with CI staff locations\n3. See online/offline status\n4. Check last activity time\n5. View assigned applications\n\n📍 CI staff locations update every 30 seconds automatically!"
+    },
+    'sms': {
+        keywords: ['sms', 'text', 'notification', 'message', 'phone'],
+        response: "SMS Notifications:\n\n✅ Automatically sent when:\n- Application is approved\n- Application is rejected\n\n📱 Uses Semaphore API\n💰 Cost: ~₱0.50 per SMS\n\n⚙️ Configure in .env file:\nSEMAPHORE_API_KEY=your_key\n\nCheck your credits at semaphore.co"
+    },
+    'password': {
+        keywords: ['password', 'change password', 'reset password', 'forgot password'],
+        response: "To change your password:\n\n1. Click 'Change Password' in sidebar\n2. Enter current password\n3. Enter new password\n4. Confirm new password\n5. Click 'Update Password'\n\n🔒 Password must be at least 6 characters.\n\nForgot password? Use the 'Forgot Password' link on login page."
+    },
+    'dashboard': {
+        keywords: ['dashboard', 'home', 'overview', 'statistics'],
+        response: "Admin Dashboard features:\n\n📊 Statistics Cards:\n- Total applications\n- Pending reviews\n- Approved count\n\n👥 CI Staff Status:\n- See who's online\n- Current workload\n- Send messages\n\n📋 Applications Table:\n- Search and filter\n- View all applications\n- Quick actions\n\n🔄 Real-time updates via WebSocket!"
+    },
+    'dark': {
+        keywords: ['dark mode', 'theme', 'light mode', 'appearance'],
+        response: "To toggle Dark Mode:\n\n1. Click the moon/sun icon in top bar\n2. Your preference is saved automatically\n3. Works across all pages\n\n🌙 Dark mode reduces eye strain\n☀️ Light mode for bright environments\n\nYour choice persists even after logout!"
+    },
+    'default': {
+        keywords: [],
+        response: "I'm here to help! I can assist you with:\n\n• Approving/rejecting loan applications\n• Managing users and staff\n• Tracking CI staff locations\n• Understanding SMS notifications\n• Changing passwords\n• Using the dashboard\n• Dark mode settings\n\nJust ask me anything about the system! 😊"
+    }
+};
+
+function askQuestion(question) {
+    document.getElementById('userInput').value = question;
+    sendMessage();
+}
+
+function handleKeyPress(event) {
+    if (event.key === 'Enter') {
+        sendMessage();
+    }
+}
+
+function sendMessage() {
+    const input = document.getElementById('userInput');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Add user message
+    addUserMessage(message);
+    input.value = '';
+    
+    // Show typing indicator
+    showTypingIndicator();
+    
+    // Get AI response after delay
+    setTimeout(() => {
+        const response = getAIResponse(message);
+        hideTypingIndicator();
+        addAIMessage(response);
+    }, 1500 + Math.random() * 1000); // Random delay 1.5-2.5s
+}
+
+function addUserMessage(text) {
+    const chatMessages = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'user-message';
+    messageDiv.innerHTML = `
+        <div class="user-avatar">{{ current_user.name[0].upper() }}</div>
+        <div class="message-bubble user-bubble">
+            <div class="message-text">${escapeHtml(text)}</div>
+            <div class="message-time">${getCurrentTime()}</div>
+        </div>
+    `;
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+}
+
+function addAIMessage(text) {
+    const chatMessages = document.getElementById('chatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'ai-message';
+    messageDiv.innerHTML = `
+        <div class="ai-avatar">
+            <img src="{{ url_for('static', filename='images/daisy-coco.jpg') }}" alt="Daisy & Coco">
+        </div>
+        <div class="message-bubble ai-bubble">
+            <div class="agent-name">Daisy & Coco</div>
+            <div class="message-text">${formatResponse(text)}</div>
+            <div class="message-time">${getCurrentTime()}</div>
+        </div>
+    `;
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+}
+
+function getAIResponse(question) {
+    const lowerQuestion = question.toLowerCase();
+    
+    // Check each knowledge base entry
+    for (const [key, data] of Object.entries(knowledgeBase)) {
+        if (key === 'default') continue;
+        
+        for (const keyword of data.keywords) {
+            if (lowerQuestion.includes(keyword)) {
+                return data.response;
+            }
+        }
+    }
+    
+    // Default response
+    return knowledgeBase.default.response;
+}
+
+function formatResponse(text) {
+    // Convert newlines to <br>
+    return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function getCurrentTime() {
+    const now = new Date();
+    return now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function showTypingIndicator() {
+    document.getElementById('typingIndicator').style.display = 'flex';
+}
+
+function hideTypingIndicator() {
+    document.getElementById('typingIndicator').style.display = 'none';
+}
+
+function scrollToBottom() {
+    const chatMessages = document.getElementById('chatMessages');
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+</script>
+
+{% endblock %}
