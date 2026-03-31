@@ -1201,8 +1201,8 @@
     });
     
     // User menu dropdown functionality - handles multiple dropdowns
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('Dropdown script loaded');
+    function initUserMenuDropdowns() {
+        console.log('Initializing dropdown menus');
         
         // Find all user menu containers
         const menuContainers = document.querySelectorAll('.user-menu-container');
@@ -1215,7 +1215,12 @@
             console.log('Container', index, '- Button:', menuButton, 'Dropdown:', menuDropdown);
             
             if (menuButton && menuDropdown) {
-                menuButton.addEventListener('click', function(e) {
+                // Remove any existing listeners to prevent duplicates
+                const newButton = menuButton.cloneNode(true);
+                menuButton.parentNode.replaceChild(newButton, menuButton);
+                
+                newButton.addEventListener('click', function(e) {
+                    e.preventDefault();
                     e.stopPropagation();
                     console.log('Button clicked!');
                     
@@ -1241,7 +1246,14 @@
                 });
             }
         });
-    });
+    }
+    
+    // Initialize on DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initUserMenuDropdowns);
+    } else {
+        initUserMenuDropdowns();
+    }
     </script>
     
     <!-- CSRF Protection Script -->

@@ -324,12 +324,38 @@ function updateFileInput() {
     input.files = dataTransfer.files;
 }
 
-// Add form submission handler to show loading state
+// Add form submission handler with real-time progress feedback
 document.querySelector('form')?.addEventListener('submit', function(e) {
     const submitBtn = this.querySelector('button[type="submit"]');
+    const form = this;
+    
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting...';
+        
+        // Show different messages based on file count
+        const fileCount = accumulatedFiles.length;
+        if (fileCount > 0) {
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading files...';
+            
+            // Show progress overlay
+            const overlay = document.createElement('div');
+            overlay.id = 'upload-overlay';
+            overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center;';
+            overlay.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 12px; text-align: center; max-width: 400px;">
+                    <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+                    <h5 class="mb-2">Uploading Application</h5>
+                    <p class="text-muted mb-3">Uploading ${fileCount} file${fileCount > 1 ? 's' : ''}...</p>
+                    <div class="progress" style="height: 25px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%">Processing...</div>
+                    </div>
+                    <small class="text-muted d-block mt-2">Please wait, do not close this page</small>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        } else {
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting...';
+        }
     }
 });
 </script>
