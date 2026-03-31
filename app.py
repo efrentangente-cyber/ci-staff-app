@@ -6,9 +6,9 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_socketio import SocketIO, emit, join_room
 from flask_wtf.csrf import CSRFProtect
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from werkzeug.security import generate_password_hash, check_password_hash
+# from flask_limiter import Limiter  # Disabled
+# from flask_limiter.util import get_remote_address  # Disabled
+from werkzeug.security import generate_password_hash, check_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import sqlite3
 import os
@@ -53,13 +53,13 @@ csrf = CSRFProtect(app)
 # Import secure routing module
 from secure_routes import SecureRouter, require_token
 
-# Initialize Rate Limiter
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"
-)
+# Rate Limiter disabled - no restrictions
+# limiter = Limiter(
+#     app=app,
+#     key_func=get_remote_address,
+#     default_limits=["200 per day", "50 per hour"],
+#     storage_uri="memory://"
+# )
 
 # Configure Resend
 resend.api_key = os.getenv('RESEND_API_KEY')
@@ -1083,7 +1083,7 @@ def ai_support():
 
 @app.route('/api/ai_query', methods=['POST'])
 @login_required
-@limiter.limit("10 per minute")
+# @limiter.limit("10 per minute")  # Rate limiting disabled
 def ai_query():
     if current_user.role != 'admin':
         return jsonify({'error': 'Unauthorized'}), 403
