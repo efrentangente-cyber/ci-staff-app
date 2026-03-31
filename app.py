@@ -696,55 +696,69 @@ def submit_application():
         return redirect(url_for('index'))
     
     if request.method == 'POST':
-        member_name = request.form['member_name']
-        member_contact = request.form.get('member_contact')
-        member_address = request.form.get('member_address')
-        loan_amount = request.form.get('loan_amount')
-        needs_ci_value = request.form.get('needs_ci', '1')
-        
-        conn = get_db()
-        
-        # Check for duplicate member name
-        existing = conn.execute('''
-            SELECT id, member_name FROM loan_applications 
-            WHERE LOWER(member_name) = LOWER(?) 
-            AND status NOT IN ('rejected', 'approved')
-        ''', (member_name,)).fetchone()
-        
-        if existing:
-            conn.close()
-            flash(f'An active application for "{member_name}" already exists (ID: #{existing["id"]}). Please complete or reject the existing application first.', 'warning')
-            return redirect(url_for('submit_application'))
-        
-        # Check if specific CI staff was selected
-        specific_ci_id = None
-        if needs_ci_value.startswith('ci_'):
-            specific_ci_id = int(needs_ci_value.replace('ci_', ''))
-            needs_ci = 1
-        else:
-            needs_ci = int(needs_ci_value)
         try:
+            member_name = request.form['member_name']
+            member_contact = request.form.get('member_contact')
+            member_address = request.form.get('member_address')
+            loan_amount = request.form.get('loan_amount')
+            needs_ci_value = request.form.get('needs_ci', '1')
+            
+            print(f"DEBUG: Submitting application - Name: {member_name}, Amount: {loan_amount}")
+            
+            conn = get_db()
+            
+            # Check for duplicate member name
+            existing = conn.execute('''
+                SELECT id, member_name FROM loan_applications 
+                WHERE LOWER(member_name) = LOWER(?) 
+                AND status NOT IN ('rejected', 'approved')
+            ''', (member_name,)).fetchone()
+            
+            if existing:
+                conn.close()
+                flash(f'An active application for "{member_name}" already exists (ID: #{existing["id"]}). Please complete or reject the existing application first.', 'warning')
+                return redirect(url_for('submit_application'))
+            
+            # Check if specific CI staff was selected
+            specific_ci_id = None
+            if needs_ci_value.startswith('ci_'):
+                specific_ci_id = int(needs_ci_value.replace('ci_', ''))
+                needs_ci = 1
+            else:
+                needs_ci = int(needs_ci_value)
+        except Exception as e:
+            print(f"ERROR in form processing: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            flash(f'Error processing form data: {str(e)}', 'danger')
+            return redirect(url_for('submit_application'))
+        try:
+            print(f"DEBUG: Inserting application into database")
             cursor = conn.execute('''
                 INSERT INTO loan_applications 
                 (member_name, member_contact, member_address, loan_amount, needs_ci_interview, submitted_by)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (member_name, member_contact, member_address, loan_amount, needs_ci, current_user.id))
             app_id = cursor.lastrowid
+            print(f"DEBUG: Application created with ID: {app_id}")
             
             # Handle file uploads
             if 'documents' in request.files:
                 files = request.files.getlist('documents')
+                print(f"DEBUG: Processing {len(files)} files")
                 for file in files:
                     if file and file.filename:
                         # Validate file extension
                         if not allowed_file(file.filename):
+                            conn.rollback()
                             conn.close()
-                            flash('Invalid file type. Allowed: PNG, JPG, PDF, DOC, DOCX', 'danger')
+                            flash('Invalid file type. Allowed: PNG, JPG, JPEG, GIF, PDF, DOC, DOCX', 'danger')
                             return redirect(url_for('submit_application'))
                         
                         filename = sanitize_filename(file.filename)
                         unique_filename = f"{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
                         filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+                        print(f"DEBUG: Saving file to {filepath}")
                         file.save(filepath)
                         conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
                                    (app_id, filename, filepath, current_user.id))
@@ -754,6 +768,7 @@ def submit_application():
                 if specific_ci_id:
                     # Assign to specific CI staff
                     ci_staff_id = specific_ci_id
+                    print(f"DEBUG: Assigning to specific CI staff: {ci_staff_id}")
                 else:
                     # Auto-assign to CI staff with lowest workload
                     ci_staff = conn.execute('''
@@ -763,6 +778,7 @@ def submit_application():
                         LIMIT 1
                     ''').fetchone()
                     ci_staff_id = ci_staff['id'] if ci_staff else None
+                    print(f"DEBUG: Auto-assigned to CI staff: {ci_staff_id}")
                 
                 if ci_staff_id:
                     conn.execute('UPDATE loan_applications SET status=?, assigned_ci_staff=? WHERE id=?',
@@ -787,6 +803,7 @@ def submit_application():
                                       f'New loan application submitted: {member_name}',
                                       f'/admin/application/{app_id}')
             
+            print(f"DEBUG: Application submitted successfully")
             flash('Application submitted successfully!', 'success')
             
             # Emit WebSocket event for instant dashboard update
@@ -798,7 +815,12 @@ def submit_application():
             
             return redirect(url_for('loan_dashboard'))
         except Exception as e:
-            conn.close()
+            print(f"ERROR in database operations: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            if 'conn' in locals():
+                conn.rollback()
+                conn.close()
             flash(f'Error submitting application: {str(e)}', 'danger')
             return redirect(url_for('submit_application'))
     
