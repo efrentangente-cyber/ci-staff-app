@@ -62,23 +62,23 @@
     </div>
 </div>
 
-<div class="content-card">
+<div class="content-card mb-3">
     <div class="content-card-header">
         <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0">Assigned Applications</h5>
+            <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Pending Interviews</h5>
             <div class="input-group" style="max-width: 250px;">
-                <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Search..." onkeyup="searchApplications()">
+                <input type="text" class="form-control form-control-sm" id="searchInputPending" placeholder="Search..." onkeyup="searchApplications('pending')">
                 <button class="btn btn-sm btn-outline-secondary" type="button">
                     <i class="bi bi-search"></i>
                 </button>
             </div>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <span class="badge bg-secondary" id="totalCount">{{ applications|length }} Total</span>
+            <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'equalto', 'assigned_to_ci')|list|length }} Pending</span>
         </div>
     </div>
     <div class="content-card-body">
-        <table class="table table-hover" id="applicationsTable">
+        <table class="table table-hover" id="pendingTable">
             <thead>
                 <tr>
                     <th>Member Name</th>
@@ -89,17 +89,65 @@
             </thead>
             <tbody>
                 {% for app in applications %}
+                {% if app.status == 'assigned_to_ci' %}
                 <tr>
                     <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
                     <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
                     <td>{{ app.member_address }}</td>
                     <td>
-                        <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-{% if app.status == 'ci_completed' %}primary{% else %}warning{% endif %}">
-                            <i class="bi bi-{% if app.status == 'ci_completed' %}eye{% else %}pencil{% endif %}"></i>
-                            <span class="btn-text">{% if app.status == 'ci_completed' %}View{% else %}Start{% endif %}</span>
+                        <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-warning">
+                            <i class="bi bi-pencil"></i>
+                            <span class="btn-text">Start</span>
                         </a>
                     </td>
                 </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0"><i class="bi bi-check-circle"></i> Completed Interviews</h5>
+            <div class="input-group" style="max-width: 250px;">
+                <input type="text" class="form-control form-control-sm" id="searchInputCompleted" placeholder="Search..." onkeyup="searchApplications('completed')">
+                <button class="btn btn-sm btn-outline-secondary" type="button">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success" id="completedCount">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }} Completed</span>
+        </div>
+    </div>
+    <div class="content-card-body">
+        <table class="table table-hover" id="completedTable">
+            <thead>
+                <tr>
+                    <th>Member Name</th>
+                    <th>Date Submitted</th>
+                    <th>Location</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for app in applications %}
+                {% if app.status == 'ci_completed' %}
+                <tr>
+                    <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                    <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                    <td>{{ app.member_address }}</td>
+                    <td>
+                        <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-primary">
+                            <i class="bi bi-eye"></i>
+                            <span class="btn-text">View</span>
+                        </a>
+                    </td>
+                </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
         </table>
@@ -108,9 +156,9 @@
 
 <script>
 // Search applications
-function searchApplications() {
-    const searchValue = document.getElementById('searchInput').value.toLowerCase();
-    const table = document.getElementById('applicationsTable');
+function searchApplications(tableType) {
+    const searchValue = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Completed'}`).value.toLowerCase();
+    const table = document.getElementById(`${tableType === 'pending' ? 'pending' : 'completed'}Table`);
     const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
     let visibleCount = 0;
     
@@ -118,7 +166,6 @@ function searchApplications() {
         const cells = rows[i].getElementsByTagName('td');
         let found = false;
         
-        // Search in all cells
         for (let j = 0; j < cells.length; j++) {
             if (cells[j].textContent.toLowerCase().includes(searchValue)) {
                 found = true;
@@ -134,48 +181,7 @@ function searchApplications() {
         }
     }
     
-    // Update count badge
-    document.getElementById('totalCount').textContent = `${visibleCount} ${searchValue ? 'Found' : 'Total'}`;
-    
-    // Reset status filter when searching
-    if (searchValue) {
-        document.getElementById('statusFilter').value = 'all';
-    }
-}
-
-// Filter applications by status
-function filterApplications() {
-    const filterValue = document.getElementById('statusFilter').value;
-    const table = document.getElementById('applicationsTable');
-    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
-    let visibleCount = 0;
-    
-    for (let i = 0; i < rows.length; i++) {
-        const statusCell = rows[i].getElementsByTagName('td')[3]; // Status column
-        if (statusCell) {
-            const statusBadge = statusCell.querySelector('.badge');
-            const statusText = statusBadge ? statusBadge.textContent.trim().toLowerCase() : '';
-            
-            if (filterValue === 'all') {
-                rows[i].style.display = '';
-                visibleCount++;
-            } else {
-                let showRow = false;
-                
-                // Exact matching for each status
-                if (filterValue === 'assigned_to_ci' && statusText === 'assigned to ci') {
-                    showRow = true;
-                } else if (filterValue === 'ci_completed' && statusText === 'ci completed') {
-                    showRow = true;
-                }
-                
-                rows[i].style.display = showRow ? '' : 'none';
-                if (showRow) visibleCount++;
-            }
-        }
-    }
-    
-    document.getElementById('totalCount').textContent = `${visibleCount} ${filterValue === 'all' ? 'Total' : 'Filtered'}`;
+    document.getElementById(`${tableType === 'pending' ? 'pending' : 'completed'}Count`).textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Completed')}`;
 }
 </script>
 
