@@ -209,15 +209,23 @@
 </div>
 
 <script>
-// Search applications
+// Search applications - v2.0
 function searchApplications(tableType) {
-    const searchValue = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`).value.toLowerCase().trim();
+    console.log('Search called with:', tableType);
+    const searchInput = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
+    const searchValue = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    console.log('Search value:', searchValue);
+    
     const tbody = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}TableBody`);
     const noResults = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}NoResults`);
     
-    if (!tbody) return;
+    if (!tbody) {
+        console.error('tbody not found');
+        return;
+    }
     
     const rows = tbody.getElementsByTagName('tr');
+    console.log('Total rows:', rows.length);
     let visibleCount = 0;
     
     for (let i = 0; i < rows.length; i++) {
@@ -241,11 +249,15 @@ function searchApplications(tableType) {
         }
     }
     
+    console.log('Visible count:', visibleCount);
+    
     // Show/hide "No results" message
-    if (visibleCount === 0 && searchValue !== '') {
-        noResults.style.display = 'block';
-    } else {
-        noResults.style.display = 'none';
+    if (noResults) {
+        if (visibleCount === 0 && searchValue !== '') {
+            noResults.style.display = 'block';
+        } else {
+            noResults.style.display = 'none';
+        }
     }
     
     // Update count badge
