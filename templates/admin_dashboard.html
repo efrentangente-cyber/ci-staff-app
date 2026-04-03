@@ -357,7 +357,11 @@ function updateCIStaffStatus(userId, isOnline, userName) {
 function searchApplications(tableType) {
     const searchValue = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`).value.toLowerCase();
     const table = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}Table`);
-    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    const tbody = table.getElementsByTagName('tbody')[0];
+    
+    if (!tbody) return; // Exit if no tbody found
+    
+    const rows = tbody.getElementsByTagName('tr');
     let visibleCount = 0;
     
     for (let i = 0; i < rows.length; i++) {
@@ -379,7 +383,11 @@ function searchApplications(tableType) {
         }
     }
     
-    document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}Count`).textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Processed')}`;
+    const countBadge = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}Count`);
+    if (countBadge) {
+        countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Processed')}`;
+    }
+}
 }
 
 // Filter processed applications by status
