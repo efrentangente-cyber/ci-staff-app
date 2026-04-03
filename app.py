@@ -160,7 +160,7 @@ def sanitize_filename(filename):
     return filename
 
 class User(UserMixin):
-    def __init__(self, id, email, name, role, signature_path=None, backup_email=None, profile_photo=None):
+    def __init__(self, id, email, name, role, signature_path=None, backup_email=None, profile_photo=None, assigned_route=None):
         self.id = id
         self.email = email
         self.name = name
@@ -168,6 +168,7 @@ class User(UserMixin):
         self.signature_path = signature_path
         self.backup_email = backup_email
         self.profile_photo = profile_photo
+        self.assigned_route = assigned_route
 
 def send_verification_email(to_email, code, user_name):
     """Send verification code email using Resend"""
@@ -552,7 +553,8 @@ def load_user(user_id):
     if row:
         backup_email = row['backup_email'] if 'backup_email' in row.keys() else None
         profile_photo = row['profile_photo'] if 'profile_photo' in row.keys() else None
-        return User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], backup_email, profile_photo)
+        assigned_route = row['assigned_route'] if 'assigned_route' in row.keys() else None
+        return User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], backup_email, profile_photo, assigned_route)
     return None
 
 # Add security headers to prevent caching of authenticated pages
@@ -770,15 +772,55 @@ def submit_application():
                     ci_staff_id = specific_ci_id
                     print(f"DEBUG: Assigning to specific CI staff: {ci_staff_id}")
                 else:
-                    # Auto-assign to CI staff with lowest workload
-                    ci_staff = conn.execute('''
-                        SELECT id FROM users 
-                        WHERE role='ci_staff' AND is_approved=1
-                        ORDER BY current_workload ASC 
-                        LIMIT 1
-                    ''').fetchone()
-                    ci_staff_id = ci_staff['id'] if ci_staff else None
-                    print(f"DEBUG: Auto-assigned to CI staff: {ci_staff_id}")
+                    # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route
+                    ci_staff_id = None
+                    
+                    # Parse address to find matching route
+                    if member_address:
+                        address_lower = member_address.lower()
+                        
+                        # Define route matching logic
+                        route_matches = {
+                            'route_1_bayawan_kalumboyan': ['kalumboyan', 'kalamtukan', 'malabugas', 'bugay', 'nangka'],
+                            'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
+                            'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
+                            'route_4_bayawan_santa_catalina': ['santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon', 'milagrosa', 'obat', 'talalak'],
+                            'route_5_bayawan_center': ['ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon', 'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba', 'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol']
+                        }
+                        
+                        # Find matching route
+                        matched_route = None
+                        for route_id, keywords in route_matches.items():
+                            for keyword in keywords:
+                                if keyword in address_lower:
+                                    matched_route = route_id
+                                    break
+                            if matched_route:
+                                break
+                        
+                        # Find CI staff assigned to this route
+                        if matched_route:
+                            ci_staff = conn.execute('''
+                                SELECT id FROM users 
+                                WHERE role='ci_staff' AND is_approved=1 AND assigned_route=?
+                                LIMIT 1
+                            ''', (matched_route,)).fetchone()
+                            ci_staff_id = ci_staff['id'] if ci_staff else None
+                            print(f"DEBUG: Route-based assignment - Route: {matched_route}, CI: {ci_staff_id}")
+                        else:
+                            print(f"DEBUG: No matching route found for address: {member_address}")
+                    
+                    # Fallback to workload-based if no route match
+                    if not ci_staff_id:
+                        print(f"DEBUG: Falling back to workload-based assignment")
+                        ci_staff = conn.execute('''
+                            SELECT id FROM users 
+                            WHERE role='ci_staff' AND is_approved=1
+                            ORDER BY current_workload ASC 
+                            LIMIT 1
+                        ''').fetchone()
+                        ci_staff_id = ci_staff['id'] if ci_staff else None
+                        print(f"DEBUG: Workload-based assignment - CI: {ci_staff_id}")
                 
                 if ci_staff_id:
                     conn.execute('UPDATE loan_applications SET status=?, assigned_ci_staff=? WHERE id=?',
@@ -1876,6 +1918,7 @@ def signup():
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
         signature_data = request.form.get('signature_data')
+        assigned_route = request.form.get('assigned_route')  # Get assigned route
         
         # Validation
         if not all([name, email, role, password, confirm_password]):
@@ -1884,6 +1927,11 @@ def signup():
         
         if not signature_data:
             flash('Signature is required', 'danger')
+            return redirect(url_for('signup'))
+        
+        # Validate route for CI staff
+        if role == 'ci_staff' and not assigned_route:
+            flash('Please select your assigned route', 'danger')
             return redirect(url_for('signup'))
         
         if password != confirm_password:
@@ -1924,9 +1972,9 @@ def signup():
         try:
             password_hash = generate_password_hash(password)
             conn.execute('''
-                INSERT INTO users (email, password_hash, name, role, signature_path, is_approved, created_at)
-                VALUES (?, ?, ?, ?, ?, 0, ?)
-            ''', (email, password_hash, name, role, signature_path, now_ph().strftime('%Y-%m-%d %H:%M:%S')))
+                INSERT INTO users (email, password_hash, name, role, signature_path, assigned_route, is_approved, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+            ''', (email, password_hash, name, role, signature_path, assigned_route, now_ph().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
             
             # Notify admin
@@ -1958,7 +2006,7 @@ def manage_users():
     
     # Get pending users
     pending_users = conn.execute('''
-        SELECT id, name, email, role, created_at, approval_type
+        SELECT id, name, email, role, assigned_route, created_at, approval_type
         FROM users
         WHERE is_approved = 0
         ORDER BY created_at DESC
@@ -1966,7 +2014,7 @@ def manage_users():
     
     # Get active users
     active_users = conn.execute('''
-        SELECT id, name, email, role, created_at
+        SELECT id, name, email, role, assigned_route, created_at
         FROM users
         WHERE is_approved = 1
         ORDER BY name ASC
@@ -2056,6 +2104,40 @@ def deactivate_user(user_id):
     conn.close()
     
     flash(f'User {user["name"]} deactivated.', 'warning')
+    return redirect(url_for('manage_users'))
+
+@app.route('/update_ci_route', methods=['POST'])
+@login_required
+def update_ci_route():
+    if current_user.role != 'admin':
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    user_id = request.form.get('user_id')
+    assigned_route = request.form.get('assigned_route')
+    
+    if not user_id or not assigned_route:
+        flash('Invalid request', 'danger')
+        return redirect(url_for('manage_users'))
+    
+    conn = get_db()
+    user = conn.execute('SELECT * FROM users WHERE id=? AND role="ci_staff"', (user_id,)).fetchone()
+    
+    if not user:
+        flash('CI staff not found', 'danger')
+        conn.close()
+        return redirect(url_for('manage_users'))
+    
+    conn.execute('UPDATE users SET assigned_route=? WHERE id=?', (assigned_route, user_id))
+    conn.commit()
+    conn.close()
+    
+    # Notify the CI staff
+    create_notification(int(user_id), 
+                      f'Your assigned route has been updated',
+                      '/ci/dashboard')
+    
+    flash(f'Route assigned successfully to {user["name"]}!', 'success')
     return redirect(url_for('manage_users'))
 
 # PASSWORD CHANGE & RESET ROUTES

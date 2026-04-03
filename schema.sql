@@ -20,6 +20,7 @@ CREATE TABLE users (
     password_reset_token TEXT,
     password_reset_expires TEXT,
     approval_type TEXT,
+    assigned_route TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 

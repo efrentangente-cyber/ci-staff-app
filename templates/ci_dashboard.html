@@ -31,6 +31,22 @@
     </div>
 </div>
 
+{% if current_user.assigned_route %}
+<div class="alert alert-info mb-3">
+    <i class="bi bi-map"></i> <strong>Your Assigned Route:</strong> 
+    {% if current_user.assigned_route == 'route_1_bayawan_kalumboyan' %}Bayawan → Kalumboyan → Border
+    {% elif current_user.assigned_route == 'route_2_bayawan_basay' %}Bayawan → Candumao → Basay → Border
+    {% elif current_user.assigned_route == 'route_3_bayawan_sipalay' %}Bayawan → Sipalay
+    {% elif current_user.assigned_route == 'route_4_bayawan_santa_catalina' %}Bayawan → Santa Catalina
+    {% elif current_user.assigned_route == 'route_5_bayawan_center' %}Bayawan City Center
+    {% else %}{{ current_user.assigned_route }}{% endif %}
+</div>
+{% else %}
+<div class="alert alert-warning mb-3">
+    <i class="bi bi-exclamation-triangle"></i> <strong>No route assigned</strong> - Please contact admin to assign your route
+</div>
+{% endif %}
+
 <div class="stats-grid">
     <div class="stat-card blue">
         <div class="stat-card-icon blue">
