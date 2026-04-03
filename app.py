@@ -785,7 +785,8 @@ def submit_application():
                             'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
                             'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
                             'route_4_bayawan_santa_catalina': ['santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon', 'milagrosa', 'obat', 'talalak'],
-                            'route_5_bayawan_center': ['ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon', 'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba', 'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol']
+                            'route_5_bayawan_center': ['ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon', 'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba', 'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol'],
+                            'route_6_bayawan_omod': ['omod', 'tamisu']
                         }
                         
                         # Find matching route
@@ -798,13 +799,14 @@ def submit_application():
                             if matched_route:
                                 break
                         
-                        # Find CI staff assigned to this route
+                        # Find CI staff assigned to this route (check if route is in their comma-separated list)
                         if matched_route:
                             ci_staff = conn.execute('''
-                                SELECT id FROM users 
-                                WHERE role='ci_staff' AND is_approved=1 AND assigned_route=?
+                                SELECT id, assigned_route FROM users 
+                                WHERE role='ci_staff' AND is_approved=1 
+                                AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
                                 LIMIT 1
-                            ''', (matched_route,)).fetchone()
+                            ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
                             ci_staff_id = ci_staff['id'] if ci_staff else None
                             print(f"DEBUG: Route-based assignment - Route: {matched_route}, CI: {ci_staff_id}")
                         else:
@@ -1918,7 +1920,10 @@ def signup():
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
         signature_data = request.form.get('signature_data')
-        assigned_route = request.form.get('assigned_route')  # Get assigned route
+        assigned_routes = request.form.getlist('assigned_routes')  # Get multiple routes
+        
+        # Join routes with comma
+        assigned_route = ','.join(assigned_routes) if assigned_routes else None
         
         # Validation
         if not all([name, email, role, password, confirm_password]):
@@ -1931,7 +1936,7 @@ def signup():
         
         # Validate route for CI staff
         if role == 'ci_staff' and not assigned_route:
-            flash('Please select your assigned route', 'danger')
+            flash('Please select at least one route', 'danger')
             return redirect(url_for('signup'))
         
         if password != confirm_password:

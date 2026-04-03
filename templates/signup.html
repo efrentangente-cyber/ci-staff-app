@@ -110,21 +110,47 @@
             </div>
             
             <div class="mb-3" id="route_selection" style="display: none;">
-                <label class="form-label"><i class="bi bi-map"></i> Assigned Route *</label>
-                <select class="form-select" name="assigned_route" id="assigned_route" onchange="showRouteCoverage()">
-                    <option value="">Select Your Route</option>
-                    <option value="route_1_bayawan_kalumboyan">Route 1: Bayawan → Kalumboyan → Border</option>
-                    <option value="route_2_bayawan_basay">Route 2: Bayawan → Candumao → Basay → Border</option>
-                    <option value="route_3_bayawan_sipalay">Route 3: Bayawan → Sipalay</option>
-                    <option value="route_4_bayawan_santa_catalina">Route 4: Bayawan → Santa Catalina</option>
-                    <option value="route_5_bayawan_center">Route 5: Bayawan City Center</option>
-                </select>
-                <small class="text-muted">Select the route you will cover for credit investigations</small>
+                <label class="form-label"><i class="bi bi-map"></i> Assigned Routes * (Select all that apply)</label>
+                <div class="border rounded p-3" style="background: #f8f9fa;">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_1_bayawan_kalumboyan" id="route1" onchange="updateRouteCoverage()">
+                        <label class="form-check-label" for="route1">Route 1: Bayawan → Kalumboyan → Border</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_2_bayawan_basay" id="route2" onchange="updateRouteCoverage()">
+                        <label class="form-check-label" for="route2">Route 2: Bayawan → Candumao → Basay → Border</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_3_bayawan_sipalay" id="route3" onchange="updateRouteCoverage()">
+                        <label class="form-check-label" for="route3">Route 3: Bayawan → Sipalay</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_4_bayawan_santa_catalina" id="route4" onchange="updateRouteCoverage()">
+                        <label class="form-check-label" for="route4">Route 4: Bayawan → Santa Catalina</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_5_bayawan_center" id="route5" onchange="updateRouteCoverage()">
+                        <label class="form-check-label" for="route5">Route 5: Bayawan City Center</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_6_bayawan_omod" id="route6" onchange="updateRouteCoverage()">
+                        <label class="form-check-label" for="route6">Route 6: Bayawan → Omod → Border</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_7_bayawan_tayawan" id="route7" onchange="updateRouteCoverage()">
+                        <label class="form-check-label" for="route7">Route 7: Bayawan → Tayawan → Border</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_8_bayawan_mabinay" id="route8" onchange="updateRouteCoverage()">
+                        <label class="form-check-label" for="route8">Route 8: Bayawan → Mabinay</label>
+                    </div>
+                </div>
+                <small class="text-muted">Select all routes you will cover for credit investigations</small>
                 
                 <!-- Route Coverage Details -->
                 <div id="route_coverage" class="mt-2 p-3 border rounded" style="display: none; background: #f8f9fa;">
-                    <strong class="text-primary">Coverage Area:</strong>
-                    <p id="route_details" class="mb-0 mt-2 small"></p>
+                    <strong class="text-primary">Selected Routes Coverage:</strong>
+                    <div id="route_details" class="mb-0 mt-2 small"></div>
                 </div>
             </div>
             
@@ -168,24 +194,27 @@
     function toggleRouteSelection() {
         const role = document.getElementById('role').value;
         const routeSelection = document.getElementById('route_selection');
-        const routeSelect = document.getElementById('assigned_route');
+        const routeCheckboxes = document.querySelectorAll('input[name="assigned_routes"]');
         
         if (role === 'ci_staff') {
             routeSelection.style.display = 'block';
-            routeSelect.required = true;
+            // At least one route must be selected
+            routeCheckboxes.forEach(cb => cb.required = false); // We'll validate manually
         } else {
             routeSelection.style.display = 'none';
-            routeSelect.required = false;
-            routeSelect.value = '';
+            routeCheckboxes.forEach(cb => {
+                cb.checked = false;
+                cb.required = false;
+            });
             document.getElementById('route_coverage').style.display = 'none';
         }
     }
     
-    // Show route coverage details
-    function showRouteCoverage() {
-        const routeSelect = document.getElementById('assigned_route');
+    // Show route coverage details for selected routes
+    function updateRouteCoverage() {
         const routeCoverage = document.getElementById('route_coverage');
         const routeDetails = document.getElementById('route_details');
+        const selectedCheckboxes = document.querySelectorAll('input[name="assigned_routes"]:checked');
         
         const routeInfo = {
             'route_1_bayawan_kalumboyan': {
@@ -194,29 +223,67 @@
             },
             'route_2_bayawan_basay': {
                 name: 'Route 2: Bayawan → Candumao → Basay → Border',
-                barangays: 'All Basay barangays: Actin, Bal-os, Bongalonan, Cabalayongan, Cabatuanan, Linantayan, Maglinao, Nagbo-alao, Olandao, Poblacion'
+                barangays: 'All Basay barangays'
             },
             'route_3_bayawan_sipalay': {
                 name: 'Route 3: Bayawan → Sipalay',
-                barangays: 'All Sipalay barangays: Cabadiangan, Camindangan, Canturay, Cartagena, Gil Montilla, Mambaroto, Maricalum, Nauhang, Poblacion I, II, III, San Jose'
+                barangays: 'All Sipalay barangays'
             },
             'route_4_bayawan_santa_catalina': {
                 name: 'Route 4: Bayawan → Santa Catalina',
-                barangays: 'All Santa Catalina barangays: Alangilan, Amio, Buenavista, Caigangan, Caranoche, Cawitan, Fatima, Kabulacan, Mabuhay, Manalongon, Mansagomayon, Milagrosa, Nagbalaye, Nagbinlod, Obat, Poblacion, San Francisco, San Jose, San Miguel, San Pedro, Santo Rosario, Talalak'
+                barangays: 'All Santa Catalina barangays'
             },
             'route_5_bayawan_center': {
                 name: 'Route 5: Bayawan City Center',
-                barangays: 'Ali-is, Banaybanay, Banga, Boyco, Cansumalig, Dawis, Manduao, Mandu-ao, Maninihon, Minaba, Narra, Pagatban, Poblacion, San Isidro, San Jose, San Miguel, San Roque, Suba, Tabuan, Tayawan, Tinago, Ubos, Villareal, Villasol'
+                barangays: 'Bayawan City center barangays'
+            },
+            'route_6_bayawan_omod': {
+                name: 'Route 6: Bayawan → Omod → Border',
+                barangays: 'Omod, Tamisu'
+            },
+            'route_7_bayawan_tayawan': {
+                name: 'Route 7: Bayawan → Tayawan → Border',
+                barangays: 'Tayawan'
+            },
+            'route_8_bayawan_mabinay': {
+                name: 'Route 8: Bayawan → Mabinay',
+                barangays: 'Mabinay municipality'
             }
         };
         
-        if (routeSelect.value && routeInfo[routeSelect.value]) {
-            const info = routeInfo[routeSelect.value];
-            routeDetails.innerHTML = `<strong>${info.name}</strong><br><br><strong>Barangays:</strong> ${info.barangays}`;
+        if (selectedCheckboxes.length > 0) {
+            let html = '<ul class="mb-0">';
+            selectedCheckboxes.forEach(cb => {
+                const info = routeInfo[cb.value];
+                if (info) {
+                    html += `<li><strong>${info.name}:</strong> ${info.barangays}</li>`;
+                }
+            });
+            html += '</ul>';
+            routeDetails.innerHTML = html;
             routeCoverage.style.display = 'block';
         } else {
             routeCoverage.style.display = 'none';
         }
+    }
+    
+    // Validate at least one route is selected before submit
+    function validateSignup() {
+        const role = document.getElementById('role').value;
+        if (role === 'ci_staff') {
+            const selectedRoutes = document.querySelectorAll('input[name="assigned_routes"]:checked');
+            if (selectedRoutes.length === 0) {
+                alert('Please select at least one route for CI staff.');
+                return false;
+            }
+        }
+        
+        if (!hasSignature) {
+            alert('Please provide your signature before registering.');
+            return false;
+        }
+        document.getElementById('signature_data').value = canvas.toDataURL();
+        return true;
     }
     
     // Signature Pad
@@ -273,6 +340,15 @@
     }
 
     function validateSignup() {
+        const role = document.getElementById('role').value;
+        if (role === 'ci_staff') {
+            const selectedRoutes = document.querySelectorAll('input[name="assigned_routes"]:checked');
+            if (selectedRoutes.length === 0) {
+                alert('Please select at least one route for CI staff.');
+                return false;
+            }
+        }
+        
         if (!hasSignature) {
             alert('Please provide your signature before registering.');
             return false;

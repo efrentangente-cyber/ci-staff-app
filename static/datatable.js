@@ -238,14 +238,16 @@ let dataTable;
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
-    if (document.getElementById('applicationsTable')) {
+    const applicationsTable = document.getElementById('applicationsTable');
+    if (applicationsTable) {
         dataTable = new DataTable('applicationsTable', { rowsPerPage: 15 });
     }
 });
 
 // Search function
-function searchApplications() {
-    const searchValue = document.getElementById('searchInput').value;
+function searchApplications(query) {
+    const searchInput = document.getElementById('searchInput');
+    const searchValue = searchInput ? searchInput.value : (query || '');
     if (dataTable) {
         dataTable.search(searchValue);
     }
@@ -253,7 +255,8 @@ function searchApplications() {
 
 // Filter function
 function filterApplications() {
-    const filterValue = document.getElementById('statusFilter').value;
+    const filterSelect = document.getElementById('statusFilter');
+    const filterValue = filterSelect ? filterSelect.value : 'all';
     if (dataTable) {
         dataTable.filter(filterValue);
     }

@@ -58,6 +58,31 @@ const routeMapping = {
             "Suba", "Tabuan", "Tayawan", "Tinago", "Ubos", "Villareal", "Villasol"
         ],
         municipalities: ["Bayawan", "Bayawan City"]
+    },
+    
+    // Route 6: Bayawan → Omod → Border
+    "route_6_bayawan_omod": {
+        name: "Bayawan → Omod → Border",
+        barangays: [
+            "Omod", "Tamisu"
+        ],
+        municipalities: []
+    },
+    
+    // Route 7: Bayawan → Tayawan → Border
+    "route_7_bayawan_tayawan": {
+        name: "Bayawan → Tayawan → Border",
+        barangays: [
+            "Tayawan"
+        ],
+        municipalities: []
+    },
+    
+    // Route 8: Bayawan → Mabinay
+    "route_8_bayawan_mabinay": {
+        name: "Bayawan → Mabinay",
+        barangays: [],
+        municipalities: ["Mabinay"]
     }
 };
 

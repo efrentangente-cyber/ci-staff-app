@@ -39,6 +39,7 @@
     {% elif current_user.assigned_route == 'route_3_bayawan_sipalay' %}Bayawan → Sipalay
     {% elif current_user.assigned_route == 'route_4_bayawan_santa_catalina' %}Bayawan → Santa Catalina
     {% elif current_user.assigned_route == 'route_5_bayawan_center' %}Bayawan City Center
+    {% elif current_user.assigned_route == 'route_6_bayawan_omod' %}Bayawan → Omod → Border
     {% else %}{{ current_user.assigned_route }}{% endif %}
 </div>
 {% else %}

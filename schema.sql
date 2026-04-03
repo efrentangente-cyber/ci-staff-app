@@ -20,7 +20,7 @@ CREATE TABLE users (
     password_reset_token TEXT,
     password_reset_expires TEXT,
     approval_type TEXT,
-    assigned_route TEXT,
+    assigned_route TEXT,  -- Can store multiple routes as comma-separated: "route_1,route_2,route_3"
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
