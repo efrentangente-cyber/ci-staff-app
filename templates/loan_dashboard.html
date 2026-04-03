@@ -93,7 +93,7 @@
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="pendingTableBody">
                     {% for app in applications %}
                     {% if app.status in ['submitted', 'assigned_to_ci', 'ci_completed'] %}
                     <tr>
@@ -127,6 +127,10 @@
                     {% endfor %}
                 </tbody>
             </table>
+            <div id="pendingNoResults" class="text-center text-muted py-4" style="display: none;">
+                <i class="bi bi-search" style="font-size: 48px;"></i>
+                <p class="mt-2">No records found</p>
+            </div>
         </div>
     </div>
 </div>
@@ -164,7 +168,7 @@
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="processedTableBody">
                     {% for app in applications %}
                     {% if app.status in ['approved', 'rejected'] %}
                     <tr>
@@ -196,6 +200,10 @@
                     {% endfor %}
                 </tbody>
             </table>
+            <div id="processedNoResults" class="text-center text-muted py-4" style="display: none;">
+                <i class="bi bi-search" style="font-size: 48px;"></i>
+                <p class="mt-2">No records found</p>
+            </div>
         </div>
     </div>
 </div>
@@ -203,11 +211,11 @@
 <script>
 // Search applications
 function searchApplications(tableType) {
-    const searchValue = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`).value.toLowerCase();
-    const table = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}Table`);
-    const tbody = table.getElementsByTagName('tbody')[0];
+    const searchValue = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`).value.toLowerCase().trim();
+    const tbody = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}TableBody`);
+    const noResults = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}NoResults`);
     
-    if (!tbody) return; // Exit if no tbody found
+    if (!tbody) return;
     
     const rows = tbody.getElementsByTagName('tr');
     let visibleCount = 0;
@@ -216,14 +224,16 @@ function searchApplications(tableType) {
         const cells = rows[i].getElementsByTagName('td');
         let found = false;
         
+        // Search through all cells
         for (let j = 0; j < cells.length; j++) {
-            if (cells[j].textContent.toLowerCase().includes(searchValue)) {
+            const cellText = cells[j].textContent.toLowerCase();
+            if (cellText.includes(searchValue)) {
                 found = true;
                 break;
             }
         }
         
-        if (found) {
+        if (found || searchValue === '') {
             rows[i].style.display = '';
             visibleCount++;
         } else {
@@ -231,9 +241,21 @@ function searchApplications(tableType) {
         }
     }
     
+    // Show/hide "No results" message
+    if (visibleCount === 0 && searchValue !== '') {
+        noResults.style.display = 'block';
+    } else {
+        noResults.style.display = 'none';
+    }
+    
+    // Update count badge
     const countBadge = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}Count`);
     if (countBadge) {
-        countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Processed')}`;
+        if (searchValue === '') {
+            countBadge.textContent = `${visibleCount} ${tableType === 'pending' ? 'Pending' : 'Processed'}`;
+        } else {
+            countBadge.textContent = `${visibleCount} Found`;
+        }
     }
 }
 
