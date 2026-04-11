@@ -97,17 +97,20 @@
     <div class="col-12 mb-3">
         <div class="content-card">
             <div class="content-card-header">
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center justify-content-between w-100 flex-wrap gap-3">
                     <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Pending Applications</h5>
-                    <div class="input-group" style="max-width: 250px;">
-                        <input type="text" class="form-control form-control-sm" id="searchInputPending" placeholder="Search..." onkeyup="searchApplications('pending')">
-                        <button class="btn btn-sm btn-outline-secondary" type="button">
-                            <i class="bi bi-search"></i>
-                        </button>
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="search-container">
+                            <div class="search-input-wrapper" id="searchWrapperPending">
+                                <i class="bi bi-search search-icon"></i>
+                                <input type="text" class="form-control" id="searchInputPending" placeholder="Search by name, email, or status..." onkeyup="searchApplications('pending')" oninput="toggleClearButton('pending')">
+                                <button class="clear-search" onclick="clearSearch('pending')" title="Clear search">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'in', ['submitted', 'assigned_to_ci', 'ci_completed'])|list|length }} Pending</span>
                     </div>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'in', ['submitted', 'assigned_to_ci', 'ci_completed'])|list|length }} Pending</span>
                 </div>
             </div>
             <div class="content-card-body">
@@ -157,19 +160,21 @@
     <div class="col-12">
         <div class="content-card">
             <div class="content-card-header">
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center justify-content-between w-100 flex-wrap gap-3">
                     <h5 class="mb-0"><i class="bi bi-check-circle"></i> Processed Applications</h5>
-                    <div class="input-group" style="max-width: 250px;">
-                        <input type="text" class="form-control form-control-sm" id="searchInputProcessed" placeholder="Search..." onkeyup="searchApplications('processed')">
-                        <button class="btn btn-sm btn-outline-secondary" type="button">
-                            <i class="bi bi-search"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <select class="form-select form-select-sm" id="statusFilter" onchange="filterProcessed()" style="width: auto;">
-                        <option value="all">All Status</option>
-                        <option value="approved">Approved</option>
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="search-container">
+                            <div class="search-input-wrapper" id="searchWrapperProcessed">
+                                <i class="bi bi-search search-icon"></i>
+                                <input type="text" class="form-control" id="searchInputProcessed" placeholder="Search by name, email, or status..." onkeyup="searchApplications('processed')" oninput="toggleClearButton('processed')">
+                                <button class="clear-search" onclick="clearSearch('processed')" title="Clear search">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <select class="form-select form-select-sm" id="statusFilter" onchange="filterProcessed()" style="width: auto;">
+                            <option value="all">All Status</option>
+                            <option value="approved">Approved</option>
                         <option value="rejected">Rejected</option>
                     </select>
                     <span class="badge bg-secondary" id="processedCount">{{ applications|selectattr('status', 'in', ['approved', 'rejected'])|list|length }} Processed</span>

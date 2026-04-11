@@ -16,6 +16,14 @@
                 <small class="text-muted">{{ other_user.role.replace('_', ' ').title() }}</small>
             </div>
         </div>
+        <div class="call-buttons ms-auto">
+            <button class="btn btn-outline-primary btn-sm" onclick="startVoiceCall('{{ app_id }}_{{ other_user.id }}', '{{ current_user.name }}')" title="Voice Call">
+                <i class="bi bi-telephone-fill"></i>
+            </button>
+            <button class="btn btn-outline-primary btn-sm" onclick="startVideoCall('{{ app_id }}_{{ other_user.id }}', '{{ current_user.name }}')" title="Video Call">
+                <i class="bi bi-camera-video-fill"></i>
+            </button>
+        </div>
     </div>
 
     <!-- Messages Area -->
@@ -35,12 +43,42 @@
 
     <!-- Message Input -->
     <div class="message-input-area">
-        <input type="text" class="form-control" id="messageInput" placeholder="Type a message...">
+        <button class="btn btn-outline-secondary" id="voiceBtn" onclick="toggleVoiceRecording()" title="Voice Message">
+            <i class="bi bi-mic-fill"></i>
+        </button>
+        <span id="recordingTimer" style="display: none; color: red; font-weight: bold; margin: 0 10px;">0:00</span>
+        <input type="text" class="form-control" id="messageInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
         <button class="btn btn-primary" onclick="sendMessage()">
             <i class="bi bi-send-fill"></i>
         </button>
     </div>
 </div>
+
+<!-- Call Modal -->
+<div id="callModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center;">
+    <div style="width: 90%; max-width: 1200px; height: 80%; background: white; border-radius: 10px; overflow: hidden; position: relative;">
+        <button onclick="endCall()" style="position: absolute; top: 10px; right: 10px; z-index: 10000; background: red; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">
+            <i class="bi bi-telephone-x-fill"></i> End Call
+        </button>
+        <div id="jitsiContainer" style="width: 100%; height: 100%;"></div>
+    </div>
+</div>
+
+<!-- Jitsi Meet API -->
+<script src='https://meet.jit.si/external_api.js'></script>
+<script src="{{ url_for('static', filename='video-call.js') }}"></script>
+<script src="{{ url_for('static', filename='voice-recorder.js') }}"></script>
+
+<script>
+const APP_ID = {{ app_id }};
+
+function toggleVoiceRecording() {
+    if (isRecording) {
+        stopVoiceRecording();
+    } else {
+        startVoiceRecording();
+    }
+}
 
 <style>
 .chat-container {
@@ -160,9 +198,41 @@
     justify-content: center;
 }
 
+#voiceBtn.recording {
+    background: red;
+    color: white;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.call-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.call-buttons .btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
 @media (max-width: 768px) {
     .message-bubble {
         max-width: 80%;
+    }
+    
+    .call-buttons .btn {
+        width: 35px;
+        height: 35px;
+        font-size: 0.9rem;
     }
 }
 </style>
