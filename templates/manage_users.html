@@ -169,16 +169,18 @@
                                     {% elif user.assigned_route == 'route_3_bayawan_sipalay' %}Bayawan → Sipalay
                                     {% elif user.assigned_route == 'route_4_bayawan_santa_catalina' %}Bayawan → Santa Catalina
                                     {% elif user.assigned_route == 'route_5_bayawan_center' %}Bayawan Center
+                                    {% elif user.assigned_route == 'route_6_bayawan_omod' %}Bayawan → Omod
+                                    {% elif user.assigned_route == 'route_7_bayawan_tayawan' %}Bayawan → Tayawan
+                                    {% elif user.assigned_route == 'route_8_bayawan_mabinay' %}Bayawan → Mabinay
                                     {% else %}{{ user.assigned_route }}{% endif %}
                                 </small>
                                 <button class="btn btn-sm btn-outline-secondary" onclick="editRoute({{ user.id }}, '{{ user.assigned_route or '' }}', '{{ user.name }}')">
                                     <i class="bi bi-pencil"></i>
                                 </button>
                                 {% else %}
-                                <small class="text-danger">Not Assigned</small>
-                                <button class="btn btn-sm btn-warning" onclick="editRoute({{ user.id }}, '', '{{ user.name }}')">
-                                    <i class="bi bi-plus"></i> Assign
-                                </button>
+                                <a href="javascript:void(0)" class="text-primary" onclick="editRoute({{ user.id }}, '', '{{ user.name }}')">
+                                    <i class="bi bi-plus-circle"></i> Add Route
+                                </a>
                                 {% endif %}
                             {% else %}
                             <small class="text-muted">N/A</small>

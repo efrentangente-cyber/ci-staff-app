@@ -630,3 +630,36 @@ body {
     height: 1rem;
     border-width: 0.15em;
 }
+
+
+/* ============================================
+   SEARCH INPUT GROUP FIX
+   ============================================ */
+.input-group {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+}
+
+.input-group .form-control {
+    flex: 1 1 auto !important;
+    width: 1% !important;
+}
+
+.input-group .btn {
+    flex: 0 0 auto !important;
+    margin-left: -1px !important;
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+}
+
+.input-group .form-control {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+
+/* Ensure search button stays inline on mobile */
+@media (max-width: 576px) {
+    .input-group {
+        max-width: 100% !important;
+    }
+}
