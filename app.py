@@ -703,6 +703,7 @@ def submit_application():
             member_contact = request.form.get('member_contact')
             member_address = request.form.get('member_address')
             loan_amount = request.form.get('loan_amount')
+            loan_type = request.form.get('loan_type')
             needs_ci_value = request.form.get('needs_ci', '1')
             
             print(f"DEBUG: Submitting application - Name: {member_name}, Amount: {loan_amount}")
@@ -738,9 +739,9 @@ def submit_application():
             print(f"DEBUG: Inserting application into database")
             cursor = conn.execute('''
                 INSERT INTO loan_applications 
-                (member_name, member_contact, member_address, loan_amount, needs_ci_interview, submitted_by)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (member_name, member_contact, member_address, loan_amount, needs_ci, current_user.id))
+                (member_name, member_contact, member_address, loan_amount, loan_type, needs_ci_interview, submitted_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (member_name, member_contact, member_address, loan_amount, loan_type, needs_ci, current_user.id))
             app_id = cursor.lastrowid
             print(f"DEBUG: Application created with ID: {app_id}")
             
