@@ -114,8 +114,12 @@
                     </div>
                 </div>
                 <div class="chat-actions">
-                    <button class="icon-btn"><i class="bi bi-telephone-fill"></i></button>
-                    <button class="icon-btn"><i class="bi bi-camera-video-fill"></i></button>
+                    <button class="icon-btn" onclick="startVoiceCall(currentChatUserId, '{{ current_user.name }}')" title="Voice Call">
+                        <i class="bi bi-telephone-fill"></i>
+                    </button>
+                    <button class="icon-btn" onclick="startVideoCall(currentChatUserId, '{{ current_user.name }}')" title="Video Call">
+                        <i class="bi bi-camera-video-fill"></i>
+                    </button>
                     <button class="icon-btn"><i class="bi bi-info-circle-fill"></i></button>
                 </div>
             </div>
@@ -127,13 +131,19 @@
 
             <!-- Message Input -->
             <div class="message-input-container">
-                <button class="icon-btn"><i class="bi bi-plus-circle-fill"></i></button>
-                <button class="icon-btn"><i class="bi bi-image-fill"></i></button>
-                <button class="icon-btn"><i class="bi bi-mic-fill"></i></button>
-                <button class="icon-btn"><i class="bi bi-emoji-smile-fill"></i></button>
+                <button class="icon-btn" title="More options"><i class="bi bi-plus-circle-fill"></i></button>
+                <button class="icon-btn" onclick="document.getElementById('imageInput').click()" title="Send image">
+                    <i class="bi bi-image-fill"></i>
+                </button>
+                <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="handleImageSelect(event)">
+                <button class="icon-btn" id="voiceMsgBtn" onclick="toggleVoiceRecording()" title="Voice message">
+                    <i class="bi bi-mic-fill"></i>
+                </button>
+                <span id="recordingTimer" style="display: none; color: #ef4444; font-weight: bold; margin: 0 8px; font-size: 14px;">0:00</span>
+                <button class="icon-btn" title="Emoji"><i class="bi bi-emoji-smile-fill"></i></button>
                 
                 <div class="input-wrapper">
-                    <input type="text" id="messageInput" placeholder="Aa" />
+                    <input type="text" id="messageInput" placeholder="Aa" onkeypress="if(event.key==='Enter') sendMessage()" />
                 </div>
                 
                 <button class="send-btn" onclick="sendMessage()">
@@ -1105,6 +1115,164 @@ function fmtTime(ts) {
     return new Date(utc).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
 }
 
+// ============================================
+// IMAGE ATTACHMENT FUNCTIONALITY
+// ============================================
+function handleImageSelect(event) {
+    const file = event.target.files[0];
+    if (!file || !currentChatUserId) return;
+    
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('receiver_id', currentChatUserId);
+    
+    // Show loading indicator
+    const container = document.getElementById('messagesContainer');
+    const loadingHtml = `
+        <div class="message-group sent" id="imageLoading">
+            <div class="message-bubbles">
+                <div class="message-bubble">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    Sending image...
+                </div>
+            </div>
+        </div>
+    `;
+    container.insertAdjacentHTML('beforeend', loadingHtml);
+    container.scrollTop = container.scrollHeight;
+    
+    fetch('/api/send_image_message', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('imageLoading')?.remove();
+        if (data.success) {
+            location.reload(); // Reload to show the image
+        }
+    })
+    .catch(() => {
+        document.getElementById('imageLoading')?.remove();
+        alert('Failed to send image');
+    });
+    
+    event.target.value = ''; // Reset input
+}
+
+// ============================================
+// VOICE RECORDING FUNCTIONALITY
+// ============================================
+let mediaRecorder;
+let audioChunks = [];
+let isRecording = false;
+let timerInterval;
+let seconds = 0;
+
+async function toggleVoiceRecording() {
+    if (!currentChatUserId) {
+        alert('Please select a conversation first');
+        return;
+    }
+    
+    if (isRecording) {
+        stopVoiceRecording();
+    } else {
+        startVoiceRecording();
+    }
+}
+
+async function startVoiceRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            await sendVoiceMessage(audioBlob);
+            stream.getTracks().forEach(track => track.stop());
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        updateRecordingUI(true);
+    } catch (error) {
+        alert('Microphone access denied. Please allow microphone access in your browser settings.');
+    }
+}
+
+function stopVoiceRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+        updateRecordingUI(false);
+    }
+}
+
+function updateRecordingUI(recording) {
+    const btn = document.getElementById('voiceMsgBtn');
+    const timer = document.getElementById('recordingTimer');
+    
+    if (recording) {
+        btn.innerHTML = '<i class="bi bi-stop-circle-fill"></i>';
+        btn.style.background = '#ef4444';
+        btn.style.color = 'white';
+        timer.style.display = 'block';
+        startTimer();
+    } else {
+        btn.innerHTML = '<i class="bi bi-mic-fill"></i>';
+        btn.style.background = '';
+        btn.style.color = '';
+        timer.style.display = 'none';
+        stopTimer();
+    }
+}
+
+function startTimer() {
+    seconds = 0;
+    timerInterval = setInterval(() => {
+        seconds++;
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        document.getElementById('recordingTimer').textContent = 
+            `${mins}:${secs.toString().padStart(2, '0')}`;
+    }, 1000);
+}
+
+function stopTimer() {
+    clearInterval(timerInterval);
+    seconds = 0;
+}
+
+async function sendVoiceMessage(audioBlob) {
+    const formData = new FormData();
+    formData.append('voice', audioBlob, 'voice-message.webm');
+    formData.append('receiver_id', currentChatUserId);
+    
+    try {
+        const response = await fetch('/api/send_voice_message', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error sending voice message:', error);
+        alert('Failed to send voice message');
+    }
+}
 // Format all conv-time spans on load
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.conv-time[data-time]').forEach(el => {
@@ -1114,3 +1282,113 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 {% endblock %}
+
+
+<!-- Call Modal -->
+<div id="callModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center;">
+    <div style="width: 95%; max-width: 1400px; height: 90%; background: #1f2937; border-radius: 12px; overflow: hidden; position: relative; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+        <button onclick="endCall()" style="position: absolute; top: 20px; right: 20px; z-index: 10000; background: #ef4444; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+            <i class="bi bi-telephone-x-fill"></i> End Call
+        </button>
+        <div id="jitsiContainer" style="width: 100%; height: 100%;"></div>
+    </div>
+</div>
+
+<!-- Jitsi Meet API -->
+<script src='https://meet.jit.si/external_api.js'></script>
+<script>
+// ============================================
+// VIDEO/VOICE CALL FUNCTIONALITY
+// ============================================
+let jitsiAPI = null;
+
+function startVideoCall(userId, userName) {
+    if (!userId) {
+        alert('Please select a conversation first');
+        return;
+    }
+    
+    const domain = 'meet.jit.si';
+    const roomName = `dccco_video_${Math.min({{ current_user.id }}, userId)}_${Math.max({{ current_user.id }}, userId)}`;
+    
+    const options = {
+        roomName: roomName,
+        width: '100%',
+        height: '100%',
+        parentNode: document.querySelector('#jitsiContainer'),
+        userInfo: {
+            displayName: userName
+        },
+        configOverwrite: {
+            startWithAudioMuted: false,
+            startWithVideoMuted: false,
+            enableWelcomePage: false,
+            prejoinPageEnabled: false
+        },
+        interfaceConfigOverwrite: {
+            TOOLBAR_BUTTONS: [
+                'microphone', 'camera', 'closedcaptions', 'desktop',
+                'fullscreen', 'fodeviceselection', 'hangup',
+                'chat', 'recording', 'settings', 'videoquality',
+                'filmstrip', 'stats', 'shortcuts', 'tileview'
+            ],
+            SHOW_JITSI_WATERMARK: false,
+            SHOW_WATERMARK_FOR_GUESTS: false
+        }
+    };
+    
+    jitsiAPI = new JitsiMeetExternalAPI(domain, options);
+    document.getElementById('callModal').style.display = 'flex';
+    
+    jitsiAPI.addEventListener('videoConferenceLeft', () => {
+        endCall();
+    });
+}
+
+function startVoiceCall(userId, userName) {
+    if (!userId) {
+        alert('Please select a conversation first');
+        return;
+    }
+    
+    const domain = 'meet.jit.si';
+    const roomName = `dccco_voice_${Math.min({{ current_user.id }}, userId)}_${Math.max({{ current_user.id }}, userId)}`;
+    
+    const options = {
+        roomName: roomName,
+        width: '100%',
+        height: '100%',
+        parentNode: document.querySelector('#jitsiContainer'),
+        userInfo: {
+            displayName: userName
+        },
+        configOverwrite: {
+            startWithAudioMuted: false,
+            startWithVideoMuted: true,
+            enableWelcomePage: false,
+            prejoinPageEnabled: false
+        },
+        interfaceConfigOverwrite: {
+            TOOLBAR_BUTTONS: [
+                'microphone', 'hangup', 'chat', 'settings'
+            ],
+            SHOW_JITSI_WATERMARK: false,
+            SHOW_WATERMARK_FOR_GUESTS: false
+        }
+    };
+    
+    jitsiAPI = new JitsiMeetExternalAPI(domain, options);
+    document.getElementById('callModal').style.display = 'flex';
+    
+    jitsiAPI.addEventListener('videoConferenceLeft', () => {
+        endCall();
+    });
+}
+
+function endCall() {
+    if (jitsiAPI) {
+        jitsiAPI.dispose();
+        jitsiAPI = null;
+    }
+    document.getElementById('callModal').style.display = 'none';
+}

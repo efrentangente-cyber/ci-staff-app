@@ -1438,6 +1438,71 @@ def send_direct_message():
     
     return jsonify({'success': True, 'message_id': msg_id})
 
+@app.route('/api/send_image_message', methods=['POST'])
+@login_required
+def send_image_message():
+    receiver_id = request.form.get('receiver_id')
+    
+    if not receiver_id or 'image' not in request.files:
+        return jsonify({'success': False, 'error': 'Missing data'})
+    
+    file = request.files['image']
+    if not file or not file.filename:
+        return jsonify({'success': False, 'error': 'No file'})
+    
+    # Save image
+    filename = secure_filename(file.filename)
+    unique_filename = f"dm_img_{current_user.id}_{uuid.uuid4().hex[:8]}_{filename}"
+    filepath = os.path.join('message_attachments', unique_filename)
+    
+    # Create folder if not exists
+    os.makedirs('message_attachments', exist_ok=True)
+    file.save(filepath)
+    
+    # Save to database
+    conn = get_db()
+    cursor = conn.execute('''
+        INSERT INTO direct_messages (sender_id, receiver_id, message, message_type, file_path, file_name)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (current_user.id, receiver_id, '[Image]', 'image', filepath, filename))
+    msg_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True, 'message_id': msg_id})
+
+@app.route('/api/send_voice_message', methods=['POST'])
+@login_required
+def send_voice_message():
+    receiver_id = request.form.get('receiver_id')
+    
+    if not receiver_id or 'voice' not in request.files:
+        return jsonify({'success': False, 'error': 'Missing data'})
+    
+    file = request.files['voice']
+    if not file:
+        return jsonify({'success': False, 'error': 'No file'})
+    
+    # Save voice message
+    unique_filename = f"voice_dm_{current_user.id}_{uuid.uuid4().hex[:8]}.webm"
+    filepath = os.path.join('voice_messages', unique_filename)
+    
+    # Create folder if not exists
+    os.makedirs('voice_messages', exist_ok=True)
+    file.save(filepath)
+    
+    # Save to database
+    conn = get_db()
+    cursor = conn.execute('''
+        INSERT INTO direct_messages (sender_id, receiver_id, message, message_type, file_path)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (current_user.id, receiver_id, '[Voice Message]', 'voice', filepath))
+    msg_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True, 'message_id': msg_id})
+
 @app.route('/api/edit_direct_message', methods=['POST'])
 @login_required
 def edit_direct_message():

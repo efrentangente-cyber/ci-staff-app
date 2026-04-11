@@ -97,14 +97,14 @@
     <div class="col-12 mb-3">
         <div class="content-card">
             <div class="content-card-header">
-                    <div class="d-flex align-items-center justify-content-between w-100 flex-wrap gap-3">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                         <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Pending Applications</h5>
-                        <div class="d-flex align-items-center gap-3">
+                        <div class="d-flex align-items-center gap-2">
                             <div class="search-container">
                                 <div class="search-input-wrapper" id="searchWrapperPending">
                                     <i class="bi bi-search search-icon"></i>
-                                    <input type="text" class="form-control" id="searchInputPending" placeholder="Search here" onkeyup="searchApplications('pending')" oninput="toggleClearButton('pending')">
-                                    <button class="clear-search" onclick="clearSearch('pending')" title="Clear">
+                                    <input type="text" id="searchInputPending" placeholder="Search here" onkeyup="searchApplications('pending')" oninput="toggleClearButton('pending')">
+                                    <button class="clear-search" onclick="clearSearch('pending')">
                                         <i class="bi bi-x-lg"></i>
                                     </button>
                                 </div>
@@ -160,14 +160,14 @@
     <div class="col-12">
         <div class="content-card">
             <div class="content-card-header">
-                <div class="d-flex align-items-center justify-content-between w-100 flex-wrap gap-3">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <h5 class="mb-0"><i class="bi bi-check-circle"></i> Processed Applications</h5>
-                    <div class="d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-2">
                         <div class="search-container">
                             <div class="search-input-wrapper" id="searchWrapperProcessed">
                                 <i class="bi bi-search search-icon"></i>
-                                <input type="text" class="form-control" id="searchInputProcessed" placeholder="Search here" onkeyup="searchApplications('processed')" oninput="toggleClearButton('processed')">
-                                <button class="clear-search" onclick="clearSearch('processed')" title="Clear">
+                                <input type="text" id="searchInputProcessed" placeholder="Search here" onkeyup="searchApplications('processed')" oninput="toggleClearButton('processed')">
+                                <button class="clear-search" onclick="clearSearch('processed')">
                                     <i class="bi bi-x-lg"></i>
                                 </button>
                             </div>
