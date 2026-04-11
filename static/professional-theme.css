@@ -633,11 +633,12 @@ body {
 
 
 /* ============================================
-   PROFESSIONAL SEARCH BAR
+   PROFESSIONAL SEARCH BAR - Clean Design
    ============================================ */
 .search-container {
     position: relative;
-    max-width: 350px;
+    max-width: 400px;
+    width: 100%;
 }
 
 .search-input-wrapper {
@@ -646,9 +647,10 @@ body {
     align-items: center;
     background: white;
     border: 2px solid var(--gray-300);
-    border-radius: var(--radius-lg);
+    border-radius: 8px;
     transition: all var(--transition);
     overflow: hidden;
+    padding: 8px 15px;
 }
 
 .search-input-wrapper:focus-within {
@@ -657,21 +659,25 @@ body {
 }
 
 .search-input-wrapper .search-icon {
-    position: absolute;
-    left: 12px;
-    color: var(--gray-400);
-    font-size: 1rem;
-    pointer-events: none;
-    z-index: 1;
+    color: var(--primary-color);
+    font-size: 1.5rem;
+    margin-right: 12px;
+    flex-shrink: 0;
 }
 
 .search-input-wrapper input {
     flex: 1;
     border: none !important;
-    padding: 10px 45px 10px 40px !important;
-    font-size: 0.9rem;
+    padding: 8px 0 !important;
+    font-size: 1rem;
     background: transparent;
     box-shadow: none !important;
+    color: var(--gray-700);
+}
+
+.search-input-wrapper input::placeholder {
+    color: var(--gray-400);
+    font-size: 1rem;
 }
 
 .search-input-wrapper input:focus {
@@ -680,25 +686,21 @@ body {
 }
 
 .search-input-wrapper .clear-search {
-    position: absolute;
-    right: 10px;
-    background: var(--gray-200);
+    background: transparent;
     border: none;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
+    color: var(--gray-400);
+    cursor: pointer;
+    padding: 4px;
     display: none;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    color: var(--gray-600);
     transition: all var(--transition-fast);
-    z-index: 1;
+    margin-left: 8px;
+    font-size: 1.2rem;
 }
 
 .search-input-wrapper .clear-search:hover {
-    background: var(--gray-300);
-    color: var(--gray-800);
+    color: var(--gray-700);
 }
 
 .search-input-wrapper.has-value .clear-search {
@@ -732,5 +734,13 @@ body {
 @media (max-width: 576px) {
     .search-container {
         max-width: 100% !important;
+    }
+    
+    .search-input-wrapper input {
+        font-size: 0.9rem;
+    }
+    
+    .search-input-wrapper .search-icon {
+        font-size: 1.3rem;
     }
 }

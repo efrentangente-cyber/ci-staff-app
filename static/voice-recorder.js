@@ -76,7 +76,7 @@ function stopTimer() {
 async function sendVoiceMessage(audioBlob) {
     const formData = new FormData();
     formData.append('voice', audioBlob, 'voice-message.webm');
-    formData.append('app_id', APP_ID);
+    formData.append('receiver_id', OTHER_USER_ID);
     
     try {
         const response = await fetch('/send_voice_message', {

@@ -17,10 +17,10 @@
             </div>
         </div>
         <div class="call-buttons ms-auto">
-            <button class="btn btn-outline-primary btn-sm" onclick="startVoiceCall('{{ app_id }}_{{ other_user.id }}', '{{ current_user.name }}')" title="Voice Call">
+            <button class="btn btn-outline-primary btn-sm" onclick="startVoiceCall('user_{{ other_user.id }}', '{{ current_user.name }}')" title="Voice Call">
                 <i class="bi bi-telephone-fill"></i>
             </button>
-            <button class="btn btn-outline-primary btn-sm" onclick="startVideoCall('{{ app_id }}_{{ other_user.id }}', '{{ current_user.name }}')" title="Video Call">
+            <button class="btn btn-outline-primary btn-sm" onclick="startVideoCall('user_{{ other_user.id }}', '{{ current_user.name }}')" title="Video Call">
                 <i class="bi bi-camera-video-fill"></i>
             </button>
         </div>
@@ -70,7 +70,7 @@
 <script src="{{ url_for('static', filename='voice-recorder.js') }}"></script>
 
 <script>
-const APP_ID = {{ app_id }};
+const OTHER_USER_ID = {{ other_user.id }};
 
 function toggleVoiceRecording() {
     if (isRecording) {
