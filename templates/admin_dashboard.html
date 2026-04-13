@@ -175,9 +175,10 @@
                         <select class="form-select form-select-sm" id="statusFilter" onchange="filterProcessed()" style="width: auto;">
                             <option value="all">All Status</option>
                             <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
-                    </select>
-                    <span class="badge bg-secondary" id="processedCount">{{ applications|selectattr('status', 'in', ['approved', 'rejected'])|list|length }} Processed</span>
+                            <option value="rejected">Rejected</option>
+                        </select>
+                        <span class="badge bg-secondary" id="processedCount">{{ applications|selectattr('status', 'in', ['approved', 'rejected'])|list|length }} Processed</span>
+                    </div>
                 </div>
             </div>
             <div class="content-card-body">
