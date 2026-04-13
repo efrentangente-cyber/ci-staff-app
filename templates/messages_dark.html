@@ -140,7 +140,120 @@
                     <i class="bi bi-mic-fill"></i>
                 </button>
                 <span id="recordingTimer" style="display: none; color: #ef4444; font-weight: bold; margin: 0 8px; font-size: 14px;">0:00</span>
-                <button class="icon-btn" title="Emoji"><i class="bi bi-emoji-smile-fill"></i></button>
+                <button class="icon-btn" onclick="toggleEmojiPicker()" title="Emoji">
+                    <i class="bi bi-emoji-smile-fill"></i>
+                </button>
+                <div id="emojiPicker" style="display: none; position: absolute; bottom: 70px; right: 80px; background: white; border-radius: 12px; padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; max-width: 320px;">
+                    <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; max-height: 200px; overflow-y: auto;">
+                        <button onclick="insertEmoji('😀')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😀</button>
+                        <button onclick="insertEmoji('😃')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😃</button>
+                        <button onclick="insertEmoji('😄')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😄</button>
+                        <button onclick="insertEmoji('😁')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😁</button>
+                        <button onclick="insertEmoji('😆')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😆</button>
+                        <button onclick="insertEmoji('😅')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😅</button>
+                        <button onclick="insertEmoji('🤣')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤣</button>
+                        <button onclick="insertEmoji('😂')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😂</button>
+                        <button onclick="insertEmoji('🙂')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🙂</button>
+                        <button onclick="insertEmoji('😉')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😉</button>
+                        <button onclick="insertEmoji('😊')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😊</button>
+                        <button onclick="insertEmoji('😇')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😇</button>
+                        <button onclick="insertEmoji('🥰')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🥰</button>
+                        <button onclick="insertEmoji('😍')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😍</button>
+                        <button onclick="insertEmoji('🤩')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤩</button>
+                        <button onclick="insertEmoji('😘')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😘</button>
+                        <button onclick="insertEmoji('😋')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😋</button>
+                        <button onclick="insertEmoji('😛')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😛</button>
+                        <button onclick="insertEmoji('😜')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😜</button>
+                        <button onclick="insertEmoji('🤪')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤪</button>
+                        <button onclick="insertEmoji('😝')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😝</button>
+                        <button onclick="insertEmoji('🤗')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤗</button>
+                        <button onclick="insertEmoji('🤔')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤔</button>
+                        <button onclick="insertEmoji('🤐')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤐</button>
+                        <button onclick="insertEmoji('😐')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😐</button>
+                        <button onclick="insertEmoji('😑')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😑</button>
+                        <button onclick="insertEmoji('😏')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😏</button>
+                        <button onclick="insertEmoji('🙄')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🙄</button>
+                        <button onclick="insertEmoji('😬')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😬</button>
+                        <button onclick="insertEmoji('😌')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😌</button>
+                        <button onclick="insertEmoji('😔')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😔</button>
+                        <button onclick="insertEmoji('😴')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😴</button>
+                        <button onclick="insertEmoji('😷')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😷</button>
+                        <button onclick="insertEmoji('🤒')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤒</button>
+                        <button onclick="insertEmoji('🤕')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤕</button>
+                        <button onclick="insertEmoji('🤢')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤢</button>
+                        <button onclick="insertEmoji('🥵')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🥵</button>
+                        <button onclick="insertEmoji('🥶')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🥶</button>
+                        <button onclick="insertEmoji('😵')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😵</button>
+                        <button onclick="insertEmoji('🤯')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤯</button>
+                        <button onclick="insertEmoji('😎')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😎</button>
+                        <button onclick="insertEmoji('🤓')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤓</button>
+                        <button onclick="insertEmoji('😕')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😕</button>
+                        <button onclick="insertEmoji('😟')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😟</button>
+                        <button onclick="insertEmoji('🙁')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🙁</button>
+                        <button onclick="insertEmoji('😮')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😮</button>
+                        <button onclick="insertEmoji('😲')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😲</button>
+                        <button onclick="insertEmoji('😳')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😳</button>
+                        <button onclick="insertEmoji('🥺')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🥺</button>
+                        <button onclick="insertEmoji('😢')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😢</button>
+                        <button onclick="insertEmoji('😭')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😭</button>
+                        <button onclick="insertEmoji('😱')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😱</button>
+                        <button onclick="insertEmoji('😖')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😖</button>
+                        <button onclick="insertEmoji('😞')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😞</button>
+                        <button onclick="insertEmoji('😩')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😩</button>
+                        <button onclick="insertEmoji('😤')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😤</button>
+                        <button onclick="insertEmoji('😡')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😡</button>
+                        <button onclick="insertEmoji('😠')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">😠</button>
+                        <button onclick="insertEmoji('💀')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💀</button>
+                        <button onclick="insertEmoji('💩')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💩</button>
+                        <button onclick="insertEmoji('👻')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👻</button>
+                        <button onclick="insertEmoji('👽')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👽</button>
+                        <button onclick="insertEmoji('🤖')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤖</button>
+                        <button onclick="insertEmoji('❤️')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">❤️</button>
+                        <button onclick="insertEmoji('🧡')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🧡</button>
+                        <button onclick="insertEmoji('💛')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💛</button>
+                        <button onclick="insertEmoji('💚')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💚</button>
+                        <button onclick="insertEmoji('💙')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💙</button>
+                        <button onclick="insertEmoji('💜')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💜</button>
+                        <button onclick="insertEmoji('🖤')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🖤</button>
+                        <button onclick="insertEmoji('🤍')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤍</button>
+                        <button onclick="insertEmoji('💯')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💯</button>
+                        <button onclick="insertEmoji('💥')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💥</button>
+                        <button onclick="insertEmoji('💫')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💫</button>
+                        <button onclick="insertEmoji('💬')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💬</button>
+                        <button onclick="insertEmoji('💭')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💭</button>
+                        <button onclick="insertEmoji('👋')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👋</button>
+                        <button onclick="insertEmoji('🤚')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤚</button>
+                        <button onclick="insertEmoji('✋')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">✋</button>
+                        <button onclick="insertEmoji('👌')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👌</button>
+                        <button onclick="insertEmoji('✌️')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">✌️</button>
+                        <button onclick="insertEmoji('🤞')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤞</button>
+                        <button onclick="insertEmoji('🤘')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤘</button>
+                        <button onclick="insertEmoji('🤙')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🤙</button>
+                        <button onclick="insertEmoji('👈')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👈</button>
+                        <button onclick="insertEmoji('👉')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👉</button>
+                        <button onclick="insertEmoji('👆')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👆</button>
+                        <button onclick="insertEmoji('👇')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👇</button>
+                        <button onclick="insertEmoji('👍')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👍</button>
+                        <button onclick="insertEmoji('👎')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👎</button>
+                        <button onclick="insertEmoji('✊')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">✊</button>
+                        <button onclick="insertEmoji('👊')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👊</button>
+                        <button onclick="insertEmoji('👏')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👏</button>
+                        <button onclick="insertEmoji('🙌')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🙌</button>
+                        <button onclick="insertEmoji('🙏')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🙏</button>
+                        <button onclick="insertEmoji('💪')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">💪</button>
+                        <button onclick="insertEmoji('👀')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👀</button>
+                        <button onclick="insertEmoji('👂')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👂</button>
+                        <button onclick="insertEmoji('👃')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">👃</button>
+                        <button onclick="insertEmoji('🔥')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🔥</button>
+                        <button onclick="insertEmoji('⭐')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">⭐</button>
+                        <button onclick="insertEmoji('✨')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">✨</button>
+                        <button onclick="insertEmoji('🎉')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🎉</button>
+                        <button onclick="insertEmoji('🎊')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🎊</button>
+                        <button onclick="insertEmoji('🎈')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🎈</button>
+                        <button onclick="insertEmoji('🎁')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🎁</button>
+                        <button onclick="insertEmoji('🏆')" style="border: none; background: none; font-size: 24px; cursor: pointer; padding: 4px;">🏆</button>
+                    </div>
+                </div>
                 
                 <div class="input-wrapper">
                     <input type="text" id="messageInput" placeholder="Aa" onkeypress="if(event.key==='Enter') sendMessage()" />
@@ -794,13 +907,24 @@
 const socket = io({
     transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
     reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionAttempts: 5
+    reconnectionDelay: 500,  // Faster reconnection for instant messaging
+    reconnectionAttempts: 10,  // More attempts
+    timeout: 10000,
+    upgrade: true,
+    rememberUpgrade: true
 });
 let currentChatUserId = null;
 let onlineUsers = new Set();
 
-socket.emit('join', {room: 'user_{{ current_user.id }}'});
+// Connection status logging
+socket.on('connect', function() {
+    console.log('✅ Messages Socket.IO connected');
+    socket.emit('join', {room: 'user_{{ current_user.id }}'});
+});
+
+socket.on('disconnect', function(reason) {
+    console.log('❌ Messages Socket.IO disconnected:', reason);
+});
 
 // Listen for online/offline events
 socket.on('user_online', function(data) {
@@ -941,7 +1065,7 @@ function loadChat(userId, userName, userRole) {
             data.messages.forEach(msg => {
                 if (!msg.is_deleted) {
                     const isSent = msg.sender_id == {{ current_user.id }};
-                    addMessageToChat(msg.message, msg.sender_name, msg.sent_at, isSent, msg.id, msg.is_edited);
+                    addMessageToChat(msg.message, msg.sender_name, msg.sent_at, isSent, msg.id, msg.is_edited, msg.message_type, msg.file_path);
                 }
             });
             
@@ -992,23 +1116,46 @@ function sendMessage() {
       }).catch(() => {});
 }
 
-function addMessageToChat(message, sender, timestamp, isSent, messageId, isEdited) {
+function addMessageToChat(message, sender, timestamp, isSent, messageId, isEdited, messageType, filePath) {
     const container = document.getElementById('messagesContainer');
-    // Timestamps are stored as UTC - add Z so browser converts to local time
     const ts = (timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T'));
     const utcStr = ts.endsWith('Z') ? ts : ts + 'Z';
     const d = new Date(utcStr);
     const time = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
     const editedLabel = isEdited ? '<span class="edited-label">(edited)</span>' : '';
     
+    let messageContent = '';
+    
+    // Handle different message types
+    if (messageType === 'image' && filePath) {
+        const filename = filePath.split('/').pop().split('\\').pop();
+        messageContent = `
+            <div class="image-message" onclick="openImageModal('/serve_message_file/${filename}')">
+                <img src="/serve_message_file/${filename}" alt="Image" style="max-width: 300px; max-height: 300px; border-radius: 12px; cursor: pointer;">
+            </div>
+        `;
+    } else if (messageType === 'voice' && filePath) {
+        const filename = filePath.split('/').pop().split('\\').pop();
+        messageContent = `
+            <div class="voice-message">
+                <i class="bi bi-play-circle-fill" style="font-size: 24px; margin-right: 8px;"></i>
+                <audio controls style="max-width: 250px;">
+                    <source src="/serve_message_file/${filename}" type="audio/webm">
+                </audio>
+            </div>
+        `;
+    } else {
+        messageContent = `<span class="message-text">${message.trim()}</span>`;
+    }
+    
     const messageHtml = `
         <div class="message-group ${isSent ? 'sent' : 'received'}" data-message-id="${messageId}">
             ${!isSent ? `<img class="message-avatar" src="https://ui-avatars.com/api/?name=${sender}&background=random&color=fff" alt="Avatar">` : ''}
             <div class="message-bubbles">
                 <div class="message-bubble">
-                    <span class="message-text">${message.trim()}</span>
+                    ${messageContent}
                     ${editedLabel}
-                    ${isSent ? `
+                    ${isSent && messageType === 'text' ? `
                     <div class="message-actions">
                         <button class="msg-action-btn" onclick="editDirectMessage(${messageId}, '${message.replace(/'/g, "\\'")}')">
                             <i class="bi bi-pencil"></i>
@@ -1026,6 +1173,23 @@ function addMessageToChat(message, sender, timestamp, isSent, messageId, isEdite
     
     container.insertAdjacentHTML('beforeend', messageHtml);
     container.scrollTop = container.scrollHeight;
+}
+
+// Image modal viewer
+function openImageModal(imageSrc) {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+    modal.innerHTML = `
+        <div style="position: relative; max-width: 90%; max-height: 90%;">
+            <button onclick="this.parentElement.parentElement.remove()" style="position: absolute; top: -40px; right: 0; background: white; border: none; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; font-size: 20px;">×</button>
+            <img src="${imageSrc}" style="max-width: 100%; max-height: 90vh; border-radius: 8px;">
+            <a href="${imageSrc}" download style="position: absolute; bottom: -50px; left: 50%; transform: translateX(-50%); background: #1e3a5f; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none;">
+                <i class="bi bi-download"></i> Download
+            </a>
+        </div>
+    `;
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
 }
 
 function editDirectMessage(messageId, currentText) {
@@ -1278,6 +1442,35 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.conv-time[data-time]').forEach(el => {
         el.textContent = fmtTime(el.getAttribute('data-time'));
     });
+});
+
+// ============================================
+// EMOJI PICKER FUNCTIONALITY
+// ============================================
+function toggleEmojiPicker() {
+    const picker = document.getElementById('emojiPicker');
+    if (picker.style.display === 'none' || !picker.style.display) {
+        picker.style.display = 'block';
+    } else {
+        picker.style.display = 'none';
+    }
+}
+
+function insertEmoji(emoji) {
+    const input = document.getElementById('messageInput');
+    input.value += emoji;
+    input.focus();
+    document.getElementById('emojiPicker').style.display = 'none';
+}
+
+// Close emoji picker when clicking outside
+document.addEventListener('click', function(event) {
+    const picker = document.getElementById('emojiPicker');
+    const emojiBtn = event.target.closest('[onclick*="toggleEmojiPicker"]');
+    
+    if (!picker.contains(event.target) && !emojiBtn) {
+        picker.style.display = 'none';
+    }
 });
 </script>
 

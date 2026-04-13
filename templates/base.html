@@ -1003,20 +1003,46 @@
     
     {% if current_user.is_authenticated %}
     <script>
+        // Initialize Socket.IO with optimized settings for real-time delivery
         const socket = io({
             transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
             reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionAttempts: 5
+            reconnectionDelay: 500,  // Faster reconnection (was 1000)
+            reconnectionAttempts: 10,  // More attempts (was 5)
+            timeout: 10000,
+            upgrade: true,
+            rememberUpgrade: true
         });
         
-        // Handle system notifications - only for non-message notifications
+        // Connection status logging (for debugging)
+        socket.on('connect', function() {
+            console.log('✅ Socket.IO connected - Real-time enabled');
+            // Immediately join user's personal room for notifications
+            socket.emit('join', {room: 'user_{{ current_user.id }}'});
+        });
+        
+        socket.on('connect_error', function(error) {
+            console.warn('⚠️ Socket.IO connection error:', error);
+        });
+        
+        socket.on('disconnect', function(reason) {
+            console.log('❌ Socket.IO disconnected:', reason);
+        });
+        
+        socket.on('reconnect', function(attemptNumber) {
+            console.log('🔄 Socket.IO reconnected after', attemptNumber, 'attempts');
+        });
+        
+        // Handle system notifications - INSTANT UPDATE
         socket.on('new_notification', function(data) {
+            console.log('🔔 New notification received:', data);
+            
             // Only show on alerts if it's NOT a direct message notification
             if (!data.is_direct_message) {
                 const badge = document.getElementById('notif-count');
                 const mobileBadge = document.getElementById('notif-count-mobile');
                 const topbarBadge = document.getElementById('notif-count-topbar');
+                
                 if (badge) {
                     const current = parseInt(badge.textContent) || 0;
                     badge.textContent = current + 1;
@@ -1032,28 +1058,52 @@
                     topbarBadge.textContent = current + 1;
                     topbarBadge.style.display = 'inline';
                 }
+                
+                // Optional: Show browser notification
+                if (Notification.permission === 'granted') {
+                    new Notification('DCCCO Notification', {
+                        body: data.message,
+                        icon: '/static/favicon.png'
+                    });
+                }
             }
         });
 
-        // On page load, fetch unread message count and show on Messages badge
-        // (badge is already rendered server-side via message_unread_count)
-        // Only update via socket events below
-        
-        // Handle direct messages - update Messages badge only
+        // Handle direct messages - INSTANT UPDATE
         socket.on('new_direct_message', function(data) {
+            console.log('💬 New message received:', data);
+            
             if (data.receiver_id == {{ current_user.id }}) {
                 // Update desktop badge
                 const badge = document.getElementById('message-count');
-                const current = parseInt(badge.textContent) || 0;
-                badge.textContent = current + 1;
-                badge.style.display = 'inline';
+                if (badge) {
+                    const current = parseInt(badge.textContent) || 0;
+                    badge.textContent = current + 1;
+                    badge.style.display = 'inline';
+                }
+                
                 // Update mobile bottom nav badge
                 const mobileBadge = document.getElementById('message-count-mobile');
-                const currentMobile = parseInt(mobileBadge.textContent) || 0;
-                mobileBadge.textContent = currentMobile + 1;
-                mobileBadge.style.display = 'inline';
+                if (mobileBadge) {
+                    const currentMobile = parseInt(mobileBadge.textContent) || 0;
+                    mobileBadge.textContent = currentMobile + 1;
+                    mobileBadge.style.display = 'inline';
+                }
+                
+                // Optional: Show browser notification
+                if (Notification.permission === 'granted') {
+                    new Notification('New Message from ' + data.sender_name, {
+                        body: data.message,
+                        icon: '/static/favicon.png'
+                    });
+                }
             }
         });
+        
+        // Request notification permission on page load
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
         
         {% if current_user.role == 'ci_staff' %}
         // Auto-track CI staff location every 5 minutes

@@ -112,9 +112,11 @@ socketio = SocketIO(
     cors_allowed_origins="*",  # Allow all origins - authentication handles security
     async_mode='threading',   # Use threading for instant emit
     ping_timeout=60,
-    ping_interval=25,
+    ping_interval=10,  # Faster ping (was 25) for quicker detection
     logger=False,
-    engineio_logger=False
+    engineio_logger=False,
+    always_connect=True,  # Maintain persistent connections
+    manage_session=False  # Let Flask-Login handle sessions
 )
 
 # Track online users
@@ -1587,6 +1589,12 @@ def serve_signature(filename):
 def serve_upload(filename):
     """Serve uploaded files"""
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/serve_message_file/<path:filename>')
+@login_required
+def serve_message_file(filename):
+    """Serve message media files (images and voice messages)"""
+    return send_from_directory('voice_messages', filename)
 
 @app.route('/api/send_message', methods=['POST'])
 @login_required

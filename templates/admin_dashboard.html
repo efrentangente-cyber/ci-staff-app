@@ -393,6 +393,25 @@ function searchApplications(tableType) {
         countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Processed')}`;
     }
 }
+
+// Toggle clear button visibility
+function toggleClearButton(tableType) {
+    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
+    const wrapper = document.getElementById(`searchWrapper${tableType === 'pending' ? 'Pending' : 'Processed'}`);
+    
+    if (input.value.length > 0) {
+        wrapper.classList.add('has-value');
+    } else {
+        wrapper.classList.remove('has-value');
+    }
+}
+
+// Clear search input
+function clearSearch(tableType) {
+    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
+    input.value = '';
+    toggleClearButton(tableType);
+    searchApplications(tableType);
 }
 
 // Filter processed applications by status

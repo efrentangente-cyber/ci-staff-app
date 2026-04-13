@@ -81,17 +81,20 @@
 
 <div class="content-card mb-3">
     <div class="content-card-header">
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Pending Interviews</h5>
-            <div class="input-group" style="max-width: 250px;">
-                <input type="text" class="form-control form-control-sm" id="searchInputPending" placeholder="Search..." onkeyup="searchApplications('pending')">
-                <button class="btn btn-sm btn-outline-secondary" type="button">
-                    <i class="bi bi-search"></i>
-                </button>
+            <div class="d-flex align-items-center gap-2">
+                <div class="search-container">
+                    <div class="search-input-wrapper" id="searchWrapperPending">
+                        <i class="bi bi-search search-icon"></i>
+                        <input type="text" id="searchInputPending" placeholder="Search here" onkeyup="searchApplications('pending')" oninput="toggleClearButton('pending')">
+                        <button class="clear-search" onclick="clearSearch('pending')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'equalto', 'assigned_to_ci')|list|length }} Pending</span>
             </div>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-            <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'equalto', 'assigned_to_ci')|list|length }} Pending</span>
         </div>
     </div>
     <div class="content-card-body">
@@ -127,17 +130,20 @@
 
 <div class="content-card">
     <div class="content-card-header">
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
             <h5 class="mb-0"><i class="bi bi-check-circle"></i> Completed Interviews</h5>
-            <div class="input-group" style="max-width: 250px;">
-                <input type="text" class="form-control form-control-sm" id="searchInputCompleted" placeholder="Search..." onkeyup="searchApplications('completed')">
-                <button class="btn btn-sm btn-outline-secondary" type="button">
-                    <i class="bi bi-search"></i>
-                </button>
+            <div class="d-flex align-items-center gap-2">
+                <div class="search-container">
+                    <div class="search-input-wrapper" id="searchWrapperCompleted">
+                        <i class="bi bi-search search-icon"></i>
+                        <input type="text" id="searchInputCompleted" placeholder="Search here" onkeyup="searchApplications('completed')" oninput="toggleClearButton('completed')">
+                        <button class="clear-search" onclick="clearSearch('completed')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <span class="badge bg-success" id="completedCount">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }} Completed</span>
             </div>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-            <span class="badge bg-success" id="completedCount">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }} Completed</span>
         </div>
     </div>
     <div class="content-card-body">
@@ -207,6 +213,25 @@ function searchApplications(tableType) {
         countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Completed')}`;
     }
 }
+
+// Toggle clear button visibility
+function toggleClearButton(tableType) {
+    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Completed'}`);
+    const wrapper = document.getElementById(`searchWrapper${tableType === 'pending' ? 'Pending' : 'Completed'}`);
+    
+    if (input.value.length > 0) {
+        wrapper.classList.add('has-value');
+    } else {
+        wrapper.classList.remove('has-value');
+    }
+}
+
+// Clear search input
+function clearSearch(tableType) {
+    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Completed'}`);
+    input.value = '';
+    toggleClearButton(tableType);
+    searchApplications(tableType);
 }
 </script>
 

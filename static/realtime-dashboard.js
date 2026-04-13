@@ -17,20 +17,32 @@ if (window.location.pathname.includes('/admin/dashboard')) {
 const socket = io({
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionAttempts: 5
+    reconnectionDelay: 500,  // Faster reconnection
+    reconnectionAttempts: 10,  // More attempts
+    timeout: 10000,
+    upgrade: true,
+    rememberUpgrade: true
 });
 
-// Listen for new application submissions
+// Connection status logging
+socket.on('connect', function() {
+    console.log('✅ Dashboard Socket.IO connected - Real-time updates enabled');
+});
+
+socket.on('disconnect', function(reason) {
+    console.log('❌ Dashboard Socket.IO disconnected:', reason);
+});
+
+// Listen for new application submissions - INSTANT UPDATE
 socket.on('new_application', function(data) {
-    console.log('New application received via WebSocket:', data);
+    console.log('🆕 New application received via WebSocket:', data);
     // Immediately refresh the table
     refreshApplications();
 });
 
-// Listen for application updates
+// Listen for application updates - INSTANT UPDATE
 socket.on('application_updated', function(data) {
-    console.log('Application updated via WebSocket:', data);
+    console.log('🔄 Application updated via WebSocket:', data);
     // Immediately refresh the table
     refreshApplications();
 });
