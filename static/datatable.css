@@ -84,9 +84,9 @@
     max-height: calc(100vh - 320px);
     min-height: 300px;
     overflow-y: auto;
-    overflow-x: hidden;
+    overflow-x: auto;
     position: relative;
-    padding-right: 8px;
+    padding-right: 0;
 }
 
 .table-responsive::-webkit-scrollbar {
@@ -110,7 +110,8 @@
 
 /* Ensure table doesn't overlap scrollbar */
 .table {
-    margin-right: 8px;
+    margin-right: 0;
+    margin-bottom: 0;
 }
 
 /* Pagination */
