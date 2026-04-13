@@ -1594,7 +1594,18 @@ def serve_upload(filename):
 @login_required
 def serve_message_file(filename):
     """Serve message media files (images and voice messages)"""
-    return send_from_directory('voice_messages', filename)
+    # Check if file exists in message_attachments folder (for images)
+    message_attachments_path = os.path.join('message_attachments', filename)
+    if os.path.exists(message_attachments_path):
+        return send_from_directory('message_attachments', filename)
+    
+    # Otherwise check voice_messages folder
+    voice_messages_path = os.path.join('voice_messages', filename)
+    if os.path.exists(voice_messages_path):
+        return send_from_directory('voice_messages', filename)
+    
+    # File not found
+    return "File not found", 404
 
 @app.route('/api/send_message', methods=['POST'])
 @login_required
