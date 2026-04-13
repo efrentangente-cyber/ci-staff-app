@@ -4,18 +4,16 @@
 .table {
     font-size: 0.8rem;
     margin-bottom: 0;
-    table-layout: fixed;
     width: 100%;
 }
 
 .table thead th {
-    background-color: #f8f9fa;
+    background-color: #1e3a5f;
+    color: white;
     border-bottom: 2px solid #dee2e6;
     font-weight: 600;
     padding: 0.6rem 0.4rem;
     white-space: nowrap;
-    background-color: #1e3a5f;
-    color: white;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -36,26 +34,6 @@
 .table tbody tr:hover {
     background-color: transparent;
     cursor: default;
-}
-
-/* Column widths for better fit */
-.table thead th:nth-child(1) { width: 20%; } /* Member Name (ID + Name) */
-.table thead th:nth-child(2) { width: 13%; } /* Loan Amount / Date Submitted */
-.table thead th:nth-child(3) { width: 16%; } /* Status / Location */
-.table thead th:nth-child(4) { width: 15%; } /* Staff */
-.table thead th:nth-child(5) { width: 15%; } /* CI Staff / Submitted By */
-.table thead th:nth-child(6) { width: 12%; } /* Submitted */
-.table thead th:nth-child(7) { width: 9%; text-align: center; }  /* Actions */
-
-/* For 4-column tables (CI Dashboard) */
-.table thead th:nth-child(1):last-child ~ th:nth-child(4),
-.table tbody td:nth-child(1):last-child ~ td:nth-child(4) {
-    width: auto;
-}
-
-/* Center align Actions column content */
-.table tbody td:last-child {
-    text-align: center;
 }
 
 /* Sortable headers */
@@ -81,12 +59,8 @@
 
 /* Fixed table header on scroll */
 .table-responsive {
-    max-height: calc(100vh - 320px);
-    min-height: 300px;
-    overflow-y: auto;
-    overflow-x: auto;
+    overflow: auto;
     position: relative;
-    padding-right: 0;
 }
 
 .table-responsive::-webkit-scrollbar {
