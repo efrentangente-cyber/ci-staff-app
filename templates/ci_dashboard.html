@@ -98,33 +98,35 @@
         </div>
     </div>
     <div class="content-card-body">
-        <table class="table table-hover" id="pendingTable">
-            <thead>
-                <tr>
-                    <th>Member Name</th>
-                    <th>Date Submitted</th>
-                    <th>Location</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for app in applications %}
-                {% if app.status == 'assigned_to_ci' %}
-                <tr>
-                    <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
-                    <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
-                    <td>{{ app.member_address }}</td>
-                    <td>
-                        <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-warning">
-                            <i class="bi bi-pencil"></i>
-                            <span class="btn-text">Start</span>
-                        </a>
-                    </td>
-                </tr>
-                {% endif %}
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-hover" id="pendingTable">
+                <thead>
+                    <tr>
+                        <th>Member Name</th>
+                        <th>Date Submitted</th>
+                        <th>Location</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for app in applications %}
+                    {% if app.status == 'assigned_to_ci' %}
+                    <tr>
+                        <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                        <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                        <td>{{ app.member_address }}</td>
+                        <td>
+                            <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-warning">
+                                <i class="bi bi-pencil"></i>
+                                <span class="btn-text">Start</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -147,33 +149,35 @@
         </div>
     </div>
     <div class="content-card-body">
-        <table class="table table-hover" id="completedTable">
-            <thead>
-                <tr>
-                    <th>Member Name</th>
-                    <th>Date Submitted</th>
-                    <th>Location</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for app in applications %}
-                {% if app.status == 'ci_completed' %}
-                <tr>
-                    <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
-                    <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
-                    <td>{{ app.member_address }}</td>
-                    <td>
-                        <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-primary">
-                            <i class="bi bi-eye"></i>
-                            <span class="btn-text">View</span>
-                        </a>
-                    </td>
-                </tr>
-                {% endif %}
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table table-hover" id="completedTable">
+                <thead>
+                    <tr>
+                        <th>Member Name</th>
+                        <th>Date Submitted</th>
+                        <th>Location</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for app in applications %}
+                    {% if app.status == 'ci_completed' %}
+                    <tr>
+                        <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                        <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                        <td>{{ app.member_address }}</td>
+                        <td>
+                            <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-eye"></i>
+                                <span class="btn-text">View</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
