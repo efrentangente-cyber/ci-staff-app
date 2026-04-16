@@ -296,10 +296,68 @@ def setup_production_users():
                 ''', (email, password_hash, name, role))
         
         conn.commit()
-        conn.close()
         print("✓ Production users setup complete")
+        
+        # Setup default loan types if table is empty
+        count = conn.execute('SELECT COUNT(*) as count FROM loan_types').fetchone()
+        if count['count'] == 0:
+            print("Setting up default loan types...")
+            loan_types = [
+                ('Personal Loan', 'For personal expenses', 1),
+                ('Business Loan', 'For business capital', 1),
+                ('Emergency Loan', 'For urgent needs', 1),
+                ('Educational Loan', 'For education expenses', 1),
+                ('Medical Loan', 'For medical expenses', 1),
+                ('Housing Loan', 'For housing needs', 1),
+                ('Agricultural Loan', 'For farming needs', 1),
+                ('Motorcycle Loan', 'For motorcycle purchase', 1),
+                ('Appliance Loan', 'For appliance purchase', 1),
+                ('Salary Loan', 'Short-term salary advance', 1),
+                ('Pension Loan', 'For pensioners', 1),
+                ('Livelihood Loan', 'For small business', 1),
+                ('Calamity Loan', 'For disaster relief', 1),
+                ('Multi-Purpose Loan', 'For various purposes', 1),
+                ('Refinancing Loan', 'To refinance existing loan', 1),
+                ('Consolidation Loan', 'To consolidate debts', 1),
+                ('Vehicle Loan', 'For vehicle purchase', 1),
+                ('Equipment Loan', 'For equipment purchase', 1)
+            ]
+            
+            for loan_name, description, is_active in loan_types:
+                conn.execute('''
+                    INSERT INTO loan_types (loan_name, description, is_active)
+                    VALUES (?, ?, ?)
+                ''', (loan_name, description, is_active))
+            
+            conn.commit()
+            print(f"✓ Created {len(loan_types)} default loan types")
+        
+        # Setup default system settings if table is empty
+        count = conn.execute('SELECT COUNT(*) as count FROM system_settings').fetchone()
+        if count['count'] == 0:
+            print("Setting up default system settings...")
+            settings = [
+                ('company_name', 'DCCCO Multipurpose Cooperative', 'Company name displayed in the system'),
+                ('max_loan_amount', '500000', 'Maximum loan amount allowed'),
+                ('min_loan_amount', '5000', 'Minimum loan amount allowed'),
+                ('default_interest_rate', '12', 'Default annual interest rate (%)'),
+                ('ci_required_threshold', '50000', 'Loan amount threshold requiring CI')
+            ]
+            
+            for key, value, description in settings:
+                conn.execute('''
+                    INSERT INTO system_settings (setting_key, setting_value, description)
+                    VALUES (?, ?, ?)
+                ''', (key, value, description))
+            
+            conn.commit()
+            print(f"✓ Created {len(settings)} default system settings")
+        
+        conn.close()
     except Exception as e:
-        print(f"Setup users error: {e}")
+        print(f"Setup error: {e}")
+        import traceback
+        traceback.print_exc()
 
 setup_production_users()
 
