@@ -17,35 +17,75 @@ if (window.location.pathname.includes('/admin/dashboard')) {
 const socket = io({
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionDelay: 500,  // Faster reconnection
-    reconnectionAttempts: 10,  // More attempts
-    timeout: 10000,
+    reconnectionDelay: 100,  // Immediate reconnection
+    reconnectionAttempts: Infinity,  // Never stop trying
+    timeout: 5000,
     upgrade: true,
-    rememberUpgrade: true
+    rememberUpgrade: true,
+    forceNew: false
 });
 
 // Connection status logging
 socket.on('connect', function() {
     console.log('✅ Dashboard Socket.IO connected - Real-time updates enabled');
+    console.log('🔄 Fetching latest data...');
+    refreshApplications(); // Immediately fetch latest data on connect
 });
 
 socket.on('disconnect', function(reason) {
     console.log('❌ Dashboard Socket.IO disconnected:', reason);
+    if (reason === 'io server disconnect') {
+        // Server disconnected, try to reconnect
+        socket.connect();
+    }
+});
+
+socket.on('connect_error', function(error) {
+    console.log('⚠️ Connection error:', error);
+});
+
+socket.on('reconnect', function(attemptNumber) {
+    console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+    refreshApplications(); // Fetch latest data after reconnection
 });
 
 // Listen for new application submissions - INSTANT UPDATE
 socket.on('new_application', function(data) {
-    console.log('🆕 New application received via WebSocket:', data);
+    console.log('🆕 NEW APPLICATION:', data);
+    // Show toast notification
+    showToast('New Application', `${data.member_name} submitted a loan application`, 'success');
     // Immediately refresh the table
     refreshApplications();
 });
 
 // Listen for application updates - INSTANT UPDATE
 socket.on('application_updated', function(data) {
-    console.log('🔄 Application updated via WebSocket:', data);
+    console.log('🔄 APPLICATION UPDATED:', data);
+    // Show toast notification
+    const statusText = data.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    showToast('Application Updated', `${data.member_name} - ${statusText}`, 'info');
     // Immediately refresh the table
     refreshApplications();
 });
+
+// Toast notification function
+function showToast(title, message, type = 'info') {
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : type === 'info' ? 'info' : 'warning'} alert-dismissible fade show`;
+    toast.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+    toast.innerHTML = `
+        <strong>${title}</strong><br>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(toast);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        toast.remove();
+    }, 5000);
+}
 
 function refreshApplications() {
     if (!currentDashboard) return;
@@ -207,8 +247,10 @@ function updateDashboardStats(applications) {
     }
 }
 
-// Fallback: Auto-refresh every 5 seconds (in case WebSocket fails)
+// Fallback: Auto-refresh every 2 seconds (in case WebSocket fails)
+// This ensures data is always up-to-date even if WebSocket connection drops
 if (currentDashboard) {
-    setInterval(refreshApplications, 5000);
-    console.log(`Real-time WebSocket updates enabled for ${currentDashboard} dashboard`);
+    setInterval(refreshApplications, 2000); // Reduced from 5 seconds to 2 seconds
+    console.log(`⚡ Real-time WebSocket updates enabled for ${currentDashboard} dashboard`);
+    console.log(`🔄 Fallback polling every 2 seconds for maximum reliability`);
 }

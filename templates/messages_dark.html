@@ -33,7 +33,6 @@
         <div class="conversations-header">
             <h4>Chats</h4>
             <div class="header-actions">
-                <button class="icon-btn" title="Options"><i class="bi bi-three-dots"></i></button>
                 <button class="icon-btn" data-bs-toggle="modal" data-bs-target="#newChatModal" title="New Chat">
                     <i class="bi bi-pencil-square"></i>
                 </button>
@@ -120,7 +119,6 @@
                     <button class="icon-btn" onclick="startVideoCall(currentChatUserId, '{{ current_user.name }}')" title="Video Call">
                         <i class="bi bi-camera-video-fill"></i>
                     </button>
-                    <button class="icon-btn"><i class="bi bi-info-circle-fill"></i></button>
                 </div>
             </div>
 
@@ -131,7 +129,6 @@
 
             <!-- Message Input -->
             <div class="message-input-container">
-                <button class="icon-btn" title="More options"><i class="bi bi-plus-circle-fill"></i></button>
                 <button class="icon-btn" onclick="document.getElementById('imageInput').click()" title="Send image">
                     <i class="bi bi-image-fill"></i>
                 </button>

@@ -783,7 +783,19 @@ def update_application_status(app_id):
     conn = get_db()
     conn.execute('UPDATE loan_applications SET status=? WHERE id=?', (new_status, app_id))
     conn.commit()
+    
+    # Get application details for real-time update
+    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (app_id,)).fetchone()
     conn.close()
+    
+    # Emit real-time update to all connected dashboards
+    socketio.emit('application_updated', {
+        'id': app_id,
+        'status': new_status,
+        'member_name': app_data['member_name'] if app_data else '',
+        'loan_amount': float(app_data['loan_amount']) if app_data else 0,
+        'timestamp': now_ph().isoformat()
+    }, broadcast=True)
     
     return jsonify({'success': True})
 
@@ -808,7 +820,20 @@ def update_ci_staff_assignment(app_id):
         conn.execute('UPDATE loan_applications SET assigned_ci_staff=NULL WHERE id=?', (app_id,))
     
     conn.commit()
+    
+    # Get application details for real-time update
+    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (app_id,)).fetchone()
     conn.close()
+    
+    # Emit real-time update to all connected dashboards
+    socketio.emit('application_updated', {
+        'id': app_id,
+        'status': 'assigned_to_ci' if ci_staff_id else app_data['status'],
+        'member_name': app_data['member_name'] if app_data else '',
+        'loan_amount': float(app_data['loan_amount']) if app_data else 0,
+        'ci_staff_id': ci_staff_id,
+        'timestamp': now_ph().isoformat()
+    }, broadcast=True)
     
     return jsonify({'success': True})
 
@@ -1104,6 +1129,18 @@ def ci_application(id):
             
             conn.commit()
             
+            # Get updated application data
+            updated_app = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
+            
+            # Emit real-time update to all connected dashboards
+            socketio.emit('application_updated', {
+                'id': id,
+                'status': 'ci_completed',
+                'member_name': updated_app['member_name'] if updated_app else '',
+                'loan_amount': float(updated_app['loan_amount']) if updated_app else 0,
+                'timestamp': now_ph().isoformat()
+            }, broadcast=True)
+            
             # Notify admin
             admin = conn.execute('SELECT id FROM users WHERE role="admin" LIMIT 1').fetchone()
             conn.close()
@@ -1203,6 +1240,15 @@ def admin_application(id):
             ''', (decision, admin_notes, now_ph().isoformat(), id))
             
             conn.commit()
+            
+            # Emit real-time update to all connected dashboards
+            socketio.emit('application_updated', {
+                'id': id,
+                'status': decision,
+                'member_name': app_data['member_name'],
+                'loan_amount': float(app_data['loan_amount']),
+                'timestamp': now_ph().isoformat()
+            }, broadcast=True)
             
             # Send SMS notification to applicant
             if app_data['member_contact']:

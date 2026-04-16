@@ -285,6 +285,11 @@
             color: #ffffff;
         }
         
+        body.dark-mode .sidebar-nav a.active {
+            background: rgba(255,255,255,0.2);
+            font-weight: 600;
+        }
+        
         body.dark-mode .bottom-nav {
             background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
             border-top: 3px solid #fbbf24;
@@ -399,6 +404,11 @@
             background: rgba(255,255,255,0.1);
             border-left: 4px solid var(--accent-yellow);
             padding-left: 21px;
+        }
+        
+        .sidebar-nav a.active {
+            background: rgba(255,255,255,0.15);
+            font-weight: 600;
         }
         
         .sidebar-nav i {
@@ -923,7 +933,7 @@
                 <div class="sidebar-email">{{ current_user.role.replace('_', ' ').title() }}</div>
             </div>
             <nav class="sidebar-nav">
-                <a href="{% if current_user.role == 'admin' %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
+                <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
                     <i class="bi bi-house-door"></i> Home
                 </a>
                 {% if current_user.role == 'loan_staff' %}
@@ -935,7 +945,7 @@
                     <i class="bi bi-messenger"></i> Messages
                     <span class="badge bg-danger" id="message-count" {% if not message_unread_count or message_unread_count == 0 %}style="display:none;"{% endif %}>{{ message_unread_count if message_unread_count else '' }}</span>
                 </a>
-                {% if current_user.role == 'admin' %}
+                {% if current_user.role in ['admin', 'loan_officer'] %}
                 <a href="{{ url_for('ci_tracking') }}">
                     <i class="bi bi-geo-alt"></i> CI Tracking
                 </a>
@@ -962,7 +972,7 @@
         
         <!-- Bottom Navigation (Mobile Portrait) -->
         <nav class="bottom-nav">
-            <a href="{% if current_user.role == 'admin' %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
+            <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
                 <i class="bi bi-house-door-fill"></i>
                 <span>Home</span>
             </a>
@@ -971,7 +981,7 @@
                 <span>Messages</span>
                 <span class="badge bg-danger" id="message-count-mobile" {% if not message_unread_count or message_unread_count == 0 %}style="display:none;"{% endif %}>{{ message_unread_count if message_unread_count else '' }}</span>
             </a>
-            {% if current_user.role == 'admin' %}
+            {% if current_user.role in ['admin', 'loan_officer'] %}
             <a href="{{ url_for('ci_tracking') }}">
                 <i class="bi bi-geo-alt-fill"></i>
                 <span>Track</span>
@@ -1326,6 +1336,55 @@
     {% endif %}
     
     <script src="{{ url_for('static', filename='datatable.js') }}"></script>
+    
+    <!-- Sidebar Navigation Script -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Get current page path
+        const currentPath = window.location.pathname;
+        
+        // Get all sidebar navigation links
+        const sidebarLinks = document.querySelectorAll('.sidebar-nav a');
+        
+        // Add active class to current page link
+        sidebarLinks.forEach(link => {
+            const linkPath = new URL(link.href).pathname;
+            
+            // Check if this link matches the current page
+            if (linkPath === currentPath) {
+                link.classList.add('active');
+            }
+            
+            // Special handling for dashboard links (home)
+            if (currentPath.includes('/dashboard') && link.textContent.trim().includes('Home')) {
+                link.classList.add('active');
+            }
+        });
+        
+        // Save and restore sidebar scroll position
+        const sidebar = document.querySelector('.sidebar-nav');
+        if (sidebar) {
+            // Restore scroll position from sessionStorage
+            const savedScrollPos = sessionStorage.getItem('sidebarScrollPos');
+            if (savedScrollPos) {
+                sidebar.scrollTop = parseInt(savedScrollPos);
+            }
+            
+            // Save scroll position before page unload
+            window.addEventListener('beforeunload', function() {
+                sessionStorage.setItem('sidebarScrollPos', sidebar.scrollTop);
+            });
+            
+            // Save scroll position when clicking any link
+            sidebarLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    sessionStorage.setItem('sidebarScrollPos', sidebar.scrollTop);
+                });
+            });
+        }
+    });
+    </script>
+    
     {% block scripts %}{% endblock %}
 </body>
 </html>
