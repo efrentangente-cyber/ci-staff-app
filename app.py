@@ -569,10 +569,35 @@ def add_security_headers(response):
         response.headers['Expires'] = '0'
     return response
 
+# Helper functions for role-based access control
+def is_admin():
+    """Check if current user is super admin"""
+    return current_user.is_authenticated and current_user.role == 'admin'
+
+def is_loan_officer():
+    """Check if current user is loan officer"""
+    return current_user.is_authenticated and current_user.role == 'loan_officer'
+
+def is_admin_or_loan_officer():
+    """Check if current user is admin or loan officer"""
+    return current_user.is_authenticated and current_user.role in ['admin', 'loan_officer']
+
+def require_admin():
+    """Decorator to require admin role"""
+    if not is_admin():
+        flash('Unauthorized - Admin access required', 'danger')
+        return redirect(url_for('index'))
+
+def require_admin_or_loan_officer():
+    """Decorator to require admin or loan officer role"""
+    if not is_admin_or_loan_officer():
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+
 @app.route('/')
 def index():
     if current_user.is_authenticated:
-        if current_user.role == 'admin':
+        if current_user.role in ['admin', 'loan_officer']:
             return redirect(url_for('admin_dashboard'))
         elif current_user.role == 'loan_staff':
             return redirect(url_for('loan_dashboard'))
@@ -940,13 +965,32 @@ def ci_application(id):
     if request.method == 'POST':
         ci_notes = request.form.get('ci_notes')
         checklist_data = request.form.get('checklist_data')
+        ci_signature = request.form.get('ci_signature')  # Get base64 signature from form
+        ci_latitude = request.form.get('ci_latitude')
+        ci_longitude = request.form.get('ci_longitude')
+        
+        # Validate signature is present
+        if not ci_signature:
+            flash('Signature is required. Please sign before submitting.', 'danger')
+            documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=?', (id,)).fetchall()
+            messages = conn.execute('''
+                SELECT m.*, u.name as sender_name 
+                FROM messages m
+                JOIN users u ON m.sender_id = u.id
+                WHERE m.loan_application_id=?
+                ORDER BY m.sent_at ASC
+            ''', (id,)).fetchall()
+            unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
+                                        (current_user.id,)).fetchone()['count']
+            conn.close()
+            return render_template('ci_application.html', application=app_data, documents=documents, messages=messages, unread_count=unread_count)
         
         try:
             conn.execute('''
                 UPDATE loan_applications 
-                SET status=?, ci_notes=?, ci_checklist_data=?, ci_signature=?, ci_completed_at=?
+                SET status=?, ci_notes=?, ci_checklist_data=?, ci_signature=?, ci_completed_at=?, ci_latitude=?, ci_longitude=?
                 WHERE id=?
-            ''', ('ci_completed', ci_notes, checklist_data, current_user.name, now_ph().isoformat(), id))
+            ''', ('ci_completed', ci_notes, checklist_data, ci_signature, now_ph().isoformat(), ci_latitude, ci_longitude, id))
             
             # Handle interview photo uploads
             if 'interview_photos' in request.files:
@@ -1000,7 +1044,7 @@ def ci_application(id):
 @app.route('/admin/dashboard')
 @login_required
 def admin_dashboard():
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     conn = get_db()
@@ -1032,7 +1076,7 @@ def admin_dashboard():
 @app.route('/admin/application/<int:id>', methods=['GET','POST'])
 @login_required
 def admin_application(id):
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
@@ -1109,7 +1153,7 @@ def admin_application(id):
 @app.route('/application/<int:id>')
 @login_required
 def view_application(id):
-    if current_user.role == 'admin':
+    if current_user.role in ['admin', 'loan_officer']:
         return redirect(url_for('admin_application', id=id))
     elif current_user.role == 'ci_staff':
         return redirect(url_for('ci_application', id=id))
@@ -1266,7 +1310,7 @@ def notifications():
 @app.route('/ci-tracking')
 @login_required
 def ci_tracking():
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
         flash('Access denied', 'danger')
         return redirect(url_for('index'))
     
@@ -1851,7 +1895,7 @@ def handle_join(data):
 
 @socketio.on('join_tracking')
 def handle_join_tracking(data):
-    if current_user.is_authenticated and current_user.role == 'admin':
+    if current_user.is_authenticated and current_user.role in ['admin', 'loan_officer']:
         join_room('admin_tracking')
 
 # Flutter Mobile App API Endpoints
@@ -1987,7 +2031,7 @@ def signup():
 @app.route('/manage_users')
 @login_required
 def manage_users():
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
@@ -2021,7 +2065,7 @@ def manage_users():
 @app.route('/approve_user/<int:user_id>', methods=['POST'])
 @login_required
 def approve_user(user_id):
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
@@ -2048,7 +2092,7 @@ def approve_user(user_id):
 @app.route('/reject_user/<int:user_id>', methods=['POST'])
 @login_required
 def reject_user(user_id):
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
@@ -2071,7 +2115,7 @@ def reject_user(user_id):
 @app.route('/deactivate_user/<int:user_id>', methods=['POST'])
 @login_required
 def deactivate_user(user_id):
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
@@ -2128,6 +2172,397 @@ def update_ci_route():
     
     flash(f'Route assigned successfully to {user["name"]}!', 'success')
     return redirect(url_for('manage_users'))
+
+# REPORT GENERATION ROUTES
+@app.route('/reports')
+@login_required
+def reports():
+    """Reports dashboard page"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    ci_staff = conn.execute('SELECT id, name FROM users WHERE role="ci_staff" ORDER BY name').fetchall()
+    conn.close()
+    
+    return render_template('reports.html', ci_staff=ci_staff)
+
+@app.route('/system_settings')
+@login_required
+def system_settings():
+    """System configuration page (admin only)"""
+    if current_user.role != 'admin':
+        flash('Unauthorized - Admin access required', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    
+    # Get all system settings
+    settings = conn.execute('SELECT * FROM system_settings ORDER BY setting_key').fetchall()
+    
+    # Get system statistics
+    stats = {
+        'total_users': conn.execute('SELECT COUNT(*) as count FROM users WHERE is_approved=1').fetchone()['count'],
+        'total_applications': conn.execute('SELECT COUNT(*) as count FROM loan_applications').fetchone()['count'],
+        'pending_ci': conn.execute('SELECT COUNT(*) as count FROM loan_applications WHERE status="assigned_to_ci"').fetchone()['count'],
+        'approved_loans': conn.execute('SELECT COUNT(*) as count FROM loan_applications WHERE status="approved"').fetchone()['count'],
+        'total_loan_amount': conn.execute('SELECT COALESCE(SUM(loan_amount), 0) as total FROM loan_applications WHERE status="approved"').fetchone()['total']
+    }
+    
+    conn.close()
+    
+    return render_template('system_settings.html', settings=settings, stats=stats)
+
+@app.route('/update_system_settings', methods=['POST'])
+@login_required
+def update_system_settings():
+    """Update system settings (admin only)"""
+    if current_user.role != 'admin':
+        flash('Unauthorized - Admin access required', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    
+    # Get all settings
+    settings = conn.execute('SELECT id FROM system_settings').fetchall()
+    
+    # Update each setting
+    for setting in settings:
+        setting_id = setting['id']
+        new_value = request.form.get(f'setting_{setting_id}')
+        if new_value is not None:
+            conn.execute('UPDATE system_settings SET setting_value=? WHERE id=?', (new_value, setting_id))
+    
+    conn.commit()
+    conn.close()
+    
+    flash('System settings updated successfully!', 'success')
+    return redirect(url_for('system_settings'))
+
+@app.route('/generate_report/<report_type>', methods=['POST'])
+@login_required
+def generate_report(report_type):
+    """Generate PDF reports with date range filters"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from io import BytesIO
+    
+    # Get date range from form
+    from_date = request.form.get('from_date')
+    to_date = request.form.get('to_date')
+    
+    # Create PDF buffer
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#1e3a5f'),
+        spaceAfter=12,
+        alignment=TA_CENTER
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.grey,
+        spaceAfter=20,
+        alignment=TA_CENTER
+    )
+    
+    conn = get_db()
+    
+    if report_type == 'applications':
+        # Application List Report
+        status_filter = request.form.get('status_filter', 'all')
+        
+        # Title
+        elements.append(Paragraph('DCCCO - Loan Application Report', title_style))
+        elements.append(Paragraph(f'Period: {from_date} to {to_date}', subtitle_style))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Query data
+        if status_filter == 'all':
+            apps = conn.execute('''
+                SELECT la.id, la.member_name, la.loan_amount, la.loan_type, la.status, 
+                       la.submitted_at, u.name as submitted_by_name
+                FROM loan_applications la
+                LEFT JOIN users u ON la.submitted_by = u.id
+                WHERE DATE(la.submitted_at) BETWEEN ? AND ?
+                ORDER BY la.submitted_at DESC
+            ''', (from_date, to_date)).fetchall()
+        else:
+            apps = conn.execute('''
+                SELECT la.id, la.member_name, la.loan_amount, la.loan_type, la.status, 
+                       la.submitted_at, u.name as submitted_by_name
+                FROM loan_applications la
+                LEFT JOIN users u ON la.submitted_by = u.id
+                WHERE DATE(la.submitted_at) BETWEEN ? AND ? AND la.status = ?
+                ORDER BY la.submitted_at DESC
+            ''', (from_date, to_date, status_filter)).fetchall()
+        
+        # Create table
+        data = [['ID', 'Member Name', 'Amount', 'Type', 'Status', 'Submitted By', 'Date']]
+        for app in apps:
+            data.append([
+                str(app['id']),
+                app['member_name'][:20],
+                f"₱{app['loan_amount']:,.0f}",
+                (app['loan_type'] or 'N/A')[:15],
+                app['status'],
+                (app['submitted_by_name'] or 'N/A')[:15],
+                app['submitted_at'][:10] if app['submitted_at'] else 'N/A'
+            ])
+        
+        table = Table(data, colWidths=[0.5*inch, 1.5*inch, 1*inch, 1.2*inch, 1*inch, 1.2*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a5f')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 0.3*inch))
+        elements.append(Paragraph(f'Total Applications: {len(apps)}', styles['Normal']))
+        
+    elif report_type == 'ci_reports':
+        # CI Reports
+        ci_staff_filter = request.form.get('ci_staff_filter', 'all')
+        
+        elements.append(Paragraph('DCCCO - Credit Investigation Report', title_style))
+        elements.append(Paragraph(f'Period: {from_date} to {to_date}', subtitle_style))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        if ci_staff_filter == 'all':
+            cis = conn.execute('''
+                SELECT la.id, la.member_name, la.loan_amount, la.ci_completed_at,
+                       u.name as ci_staff_name, la.ci_latitude, la.ci_longitude
+                FROM loan_applications la
+                LEFT JOIN users u ON la.assigned_ci_staff = u.id
+                WHERE la.status = 'ci_completed' 
+                AND DATE(la.ci_completed_at) BETWEEN ? AND ?
+                ORDER BY la.ci_completed_at DESC
+            ''', (from_date, to_date)).fetchall()
+        else:
+            cis = conn.execute('''
+                SELECT la.id, la.member_name, la.loan_amount, la.ci_completed_at,
+                       u.name as ci_staff_name, la.ci_latitude, la.ci_longitude
+                FROM loan_applications la
+                LEFT JOIN users u ON la.assigned_ci_staff = u.id
+                WHERE la.status = 'ci_completed' 
+                AND DATE(la.ci_completed_at) BETWEEN ? AND ?
+                AND la.assigned_ci_staff = ?
+                ORDER BY la.ci_completed_at DESC
+            ''', (from_date, to_date, ci_staff_filter)).fetchall()
+        
+        data = [['ID', 'Member Name', 'Amount', 'CI Staff', 'Completed Date', 'Location']]
+        for ci in cis:
+            location = 'N/A'
+            if ci['ci_latitude'] and ci['ci_longitude']:
+                location = f"{ci['ci_latitude'][:8]}, {ci['ci_longitude'][:8]}"
+            
+            data.append([
+                str(ci['id']),
+                ci['member_name'][:25],
+                f"₱{ci['loan_amount']:,.0f}",
+                (ci['ci_staff_name'] or 'N/A')[:20],
+                ci['ci_completed_at'][:10] if ci['ci_completed_at'] else 'N/A',
+                location
+            ])
+        
+        table = Table(data, colWidths=[0.5*inch, 1.8*inch, 1*inch, 1.5*inch, 1.2*inch, 1.5*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10b981')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 0.3*inch))
+        elements.append(Paragraph(f'Total CI Completed: {len(cis)}', styles['Normal']))
+        
+    elif report_type == 'user_reports':
+        # User Reports
+        role_filter = request.form.get('role_filter', 'all')
+        
+        elements.append(Paragraph('DCCCO - User Activity Report', title_style))
+        elements.append(Paragraph(f'Period: {from_date} to {to_date}', subtitle_style))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        if role_filter == 'all':
+            users = conn.execute('''
+                SELECT u.id, u.name, u.email, u.role, u.created_at,
+                       COUNT(DISTINCT la.id) as app_count
+                FROM users u
+                LEFT JOIN loan_applications la ON 
+                    (u.id = la.submitted_by OR u.id = la.assigned_ci_staff)
+                    AND DATE(la.submitted_at) BETWEEN ? AND ?
+                WHERE u.is_approved = 1
+                GROUP BY u.id
+                ORDER BY app_count DESC, u.name
+            ''', (from_date, to_date)).fetchall()
+        else:
+            users = conn.execute('''
+                SELECT u.id, u.name, u.email, u.role, u.created_at,
+                       COUNT(DISTINCT la.id) as app_count
+                FROM users u
+                LEFT JOIN loan_applications la ON 
+                    (u.id = la.submitted_by OR u.id = la.assigned_ci_staff)
+                    AND DATE(la.submitted_at) BETWEEN ? AND ?
+                WHERE u.is_approved = 1 AND u.role = ?
+                GROUP BY u.id
+                ORDER BY app_count DESC, u.name
+            ''', (from_date, to_date, role_filter)).fetchall()
+        
+        data = [['ID', 'Name', 'Email', 'Role', 'Applications', 'Joined']]
+        for user in users:
+            data.append([
+                str(user['id']),
+                user['name'][:20],
+                user['email'][:25],
+                user['role'],
+                str(user['app_count']),
+                user['created_at'][:10] if user['created_at'] else 'N/A'
+            ])
+        
+        table = Table(data, colWidths=[0.5*inch, 1.5*inch, 2*inch, 1*inch, 1*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3b82f6')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 0.3*inch))
+        elements.append(Paragraph(f'Total Users: {len(users)}', styles['Normal']))
+        
+    elif report_type == 'transaction_summary':
+        # Transaction Summary
+        group_by = request.form.get('group_by', 'status')
+        
+        elements.append(Paragraph('DCCCO - Transaction Summary Report', title_style))
+        elements.append(Paragraph(f'Period: {from_date} to {to_date}', subtitle_style))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        if group_by == 'status':
+            summary = conn.execute('''
+                SELECT status, COUNT(*) as count, SUM(loan_amount) as total_amount
+                FROM loan_applications
+                WHERE DATE(submitted_at) BETWEEN ? AND ?
+                GROUP BY status
+                ORDER BY count DESC
+            ''', (from_date, to_date)).fetchall()
+            
+            data = [['Status', 'Count', 'Total Amount']]
+            for row in summary:
+                data.append([
+                    row['status'],
+                    str(row['count']),
+                    f"₱{row['total_amount']:,.2f}" if row['total_amount'] else '₱0.00'
+                ])
+                
+        elif group_by == 'loan_type':
+            summary = conn.execute('''
+                SELECT loan_type, COUNT(*) as count, SUM(loan_amount) as total_amount
+                FROM loan_applications
+                WHERE DATE(submitted_at) BETWEEN ? AND ?
+                GROUP BY loan_type
+                ORDER BY count DESC
+            ''', (from_date, to_date)).fetchall()
+            
+            data = [['Loan Type', 'Count', 'Total Amount']]
+            for row in summary:
+                data.append([
+                    row['loan_type'] or 'N/A',
+                    str(row['count']),
+                    f"₱{row['total_amount']:,.2f}" if row['total_amount'] else '₱0.00'
+                ])
+                
+        else:  # month
+            summary = conn.execute('''
+                SELECT strftime('%Y-%m', submitted_at) as month, 
+                       COUNT(*) as count, SUM(loan_amount) as total_amount
+                FROM loan_applications
+                WHERE DATE(submitted_at) BETWEEN ? AND ?
+                GROUP BY month
+                ORDER BY month DESC
+            ''', (from_date, to_date)).fetchall()
+            
+            data = [['Month', 'Count', 'Total Amount']]
+            for row in summary:
+                data.append([
+                    row['month'] or 'N/A',
+                    str(row['count']),
+                    f"₱{row['total_amount']:,.2f}" if row['total_amount'] else '₱0.00'
+                ])
+        
+        table = Table(data, colWidths=[3*inch, 1.5*inch, 2*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f59e0b')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ]))
+        elements.append(table)
+        
+        # Add grand total
+        total = conn.execute('''
+            SELECT COUNT(*) as count, SUM(loan_amount) as total_amount
+            FROM loan_applications
+            WHERE DATE(submitted_at) BETWEEN ? AND ?
+        ''', (from_date, to_date)).fetchone()
+        
+        elements.append(Spacer(1, 0.3*inch))
+        elements.append(Paragraph(f'<b>Grand Total:</b> {total["count"]} applications, ₱{total["total_amount"]:,.2f}', styles['Normal']))
+    
+    conn.close()
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    # Return PDF
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'DCCCO_{report_type}_{from_date}_to_{to_date}.pdf'
+    )
 
 # PASSWORD CHANGE & RESET ROUTES
 @app.route('/change_password', methods=['GET', 'POST'])
@@ -2455,7 +2890,7 @@ def reset_password(token):
 @app.route('/api/admin/applications')
 @login_required
 def api_admin_applications():
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
         return jsonify({'error': 'Unauthorized'}), 403
     
     conn = get_db()
@@ -2508,6 +2943,120 @@ def api_ci_applications():
     conn.close()
     
     return jsonify([dict(app) for app in applications])
+
+# LOAN TYPES MANAGEMENT ROUTES
+@app.route('/admin/loan-types')
+@login_required
+def manage_loan_types():
+    if current_user.role != 'admin':
+        flash('Unauthorized - Admin access required', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    loan_types = conn.execute('SELECT * FROM loan_types ORDER BY name ASC').fetchall()
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
+                                (current_user.id,)).fetchone()['count']
+    conn.close()
+    
+    return render_template('manage_loan_types.html', loan_types=loan_types, unread_count=unread_count)
+
+@app.route('/api/loan-types')
+@login_required
+def get_loan_types():
+    """Get all active loan types for dropdowns"""
+    conn = get_db()
+    loan_types = conn.execute('SELECT id, name FROM loan_types WHERE is_active=1 ORDER BY name ASC').fetchall()
+    conn.close()
+    return jsonify([{'id': lt['id'], 'name': lt['name']} for lt in loan_types])
+
+@app.route('/api/loan-types/add', methods=['POST'])
+@login_required
+def add_loan_type():
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    
+    if not name:
+        return jsonify({'success': False, 'error': 'Name is required'}), 400
+    
+    conn = get_db()
+    try:
+        conn.execute('INSERT INTO loan_types (name, description) VALUES (?, ?)', (name, description))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Loan type added successfully'})
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Loan type already exists'}), 400
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/loan-types/update/<int:id>', methods=['POST'])
+@login_required
+def update_loan_type(id):
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    description = data.get('description', '').strip()
+    
+    if not name:
+        return jsonify({'success': False, 'error': 'Name is required'}), 400
+    
+    conn = get_db()
+    try:
+        conn.execute('UPDATE loan_types SET name=?, description=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', 
+                    (name, description, id))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Loan type updated successfully'})
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Loan type name already exists'}), 400
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/loan-types/toggle/<int:id>', methods=['POST'])
+@login_required
+def toggle_loan_type(id):
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    conn = get_db()
+    loan_type = conn.execute('SELECT is_active FROM loan_types WHERE id=?', (id,)).fetchone()
+    
+    if not loan_type:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Loan type not found'}), 404
+    
+    new_status = 0 if loan_type['is_active'] == 1 else 1
+    conn.execute('UPDATE loan_types SET is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', (new_status, id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True, 'message': 'Loan type status updated', 'is_active': new_status})
+
+@app.route('/api/loan-types/delete/<int:id>', methods=['POST'])
+@login_required
+def delete_loan_type(id):
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    conn = get_db()
+    try:
+        conn.execute('DELETE FROM loan_types WHERE id=?', (id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Loan type deleted successfully'})
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     import os

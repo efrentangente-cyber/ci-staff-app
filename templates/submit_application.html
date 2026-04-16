@@ -77,26 +77,9 @@
             </div>
             <div class="mb-3">
                 <label class="form-label">Loan Type *</label>
-                <select name="loan_type" class="form-select" required>
+                <select name="loan_type" id="loanTypeSelect" class="form-select" required>
                     <option value="">-- Select Loan Type --</option>
-                    <option value="Agricultural with Chattel">Agricultural with Chattel</option>
-                    <option value="Agricultural with REM">Agricultural with REM</option>
-                    <option value="Agricultural w/o Collateral">Agricultural w/o Collateral</option>
-                    <option value="Business with Chattel">Business with Chattel</option>
-                    <option value="Business with REM">Business with REM</option>
-                    <option value="Business w/o Collateral">Business w/o Collateral</option>
-                    <option value="Multipurpose with Chattel">Multipurpose with Chattel</option>
-                    <option value="Multipurpose with REM">Multipurpose with REM</option>
-                    <option value="Multipurpose w/o Collateral">Multipurpose w/o Collateral</option>
-                    <option value="Salary ATM - Dim">Salary ATM - Dim</option>
-                    <option value="Salary MOA - Dim">Salary MOA - Dim</option>
-                    <option value="Car Loan - Dim (surplus)">Car Loan - Dim (surplus)</option>
-                    <option value="Car Loan (Brand New) - Dim">Car Loan (Brand New) - Dim</option>
-                    <option value="Back-to-back Loan">Back-to-back Loan</option>
-                    <option value="Pension Loan">Pension Loan</option>
-                    <option value="Hospitalization Loan">Hospitalization Loan</option>
-                    <option value="Petty Cash Loan">Petty Cash Loan</option>
-                    <option value="Incentive Loan">Incentive Loan</option>
+                    <!-- Loan types loaded dynamically from database -->
                 </select>
             </div>
             <div class="mb-3">
@@ -382,5 +365,26 @@ document.querySelector('form')?.addEventListener('submit', function(e) {
         }
     }
 });
+
+// Load loan types from database
+async function loadLoanTypes() {
+    try {
+        const response = await fetch('/api/loan-types');
+        const loanTypes = await response.json();
+        
+        const select = document.getElementById('loanTypeSelect');
+        loanTypes.forEach(lt => {
+            const option = document.createElement('option');
+            option.value = lt.name;
+            option.textContent = lt.name;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading loan types:', error);
+    }
+}
+
+// Load loan types on page load
+loadLoanTypes();
 </script>
 {% endblock %}

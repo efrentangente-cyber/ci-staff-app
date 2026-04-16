@@ -14,3 +14,4 @@ pytz
 requests>=2.31.0
 openai>=1.0.0
 anthropic>=0.18.0
+reportlab>=4.0.0

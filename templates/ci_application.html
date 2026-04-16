@@ -381,6 +381,13 @@
                     <!-- Hidden field to store checklist data -->
                     <input type="hidden" name="checklist_data" id="checklist_data">
                     
+                    <!-- Hidden fields for GPS location -->
+                    <input type="hidden" name="ci_latitude" id="ci_latitude">
+                    <input type="hidden" name="ci_longitude" id="ci_longitude">
+                    
+                    <!-- Location tracking status -->
+                    <div id="locationStatus" class="mb-3"></div>
+                    
                     <div class="mb-3">
                         <label class="form-label fw-bold">Interview Notes *</label>
                         <textarea name="ci_notes" class="form-control" rows="6" required placeholder="Provide your interview notes and observations here...">{{ application.ci_notes if application.ci_notes else '' }}</textarea>
@@ -394,19 +401,32 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label fw-bold"><i class="bi bi-pen"></i> CI Staff Signature</label>
-                        <div class="border rounded p-3" style="background: #f8f9fa;">
-                            <div style="text-align: center;">
-                                {% if current_user.signature_path %}
-                                <div style="margin-bottom: 5px;">
-                                    <img src="{{ url_for('serve_signature', filename=current_user.signature_path.split('/')[-1].split('\\')[-1]) }}" alt="Signature" style="max-width: 300px; height: auto;">
-                                </div>
-                                {% endif %}
-                                <div style="border-top: 2px solid #000; padding-top: 5px; margin: 0 auto; max-width: 300px;">
-                                    <strong>{{ current_user.name }}</strong>
-                                </div>
-                                <small class="text-muted">CI Staff</small>
+                        <label class="form-label fw-bold"><i class="bi bi-pen"></i> CI Staff Signature *</label>
+                        <input type="hidden" name="ci_signature" id="ci_signature" required>
+                        
+                        <div id="signaturePreview" class="border rounded p-3 mb-3" style="background: #f8f9fa; text-align: center; min-height: 150px; display: flex; align-items: center; justify-content: center;">
+                            {% if application.ci_signature %}
+                            <div>
+                                <img src="{{ application.ci_signature }}" style="max-width: 300px; border: 2px solid #10b981; border-radius: 8px; padding: 10px; background: white;">
+                                <p style="color: #10b981; margin-top: 10px;">
+                                    <i class="bi bi-check-circle-fill"></i> Signature captured
+                                </p>
                             </div>
+                            {% else %}
+                            <p class="text-muted">
+                                <i class="bi bi-pen"></i> No signature yet. Click button below to sign.
+                            </p>
+                            {% endif %}
+                        </div>
+                        
+                        <button type="button" class="btn btn-primary btn-lg w-100" onclick="openSignaturePad()">
+                            <i class="bi bi-pen-fill"></i> Open Signature Pad
+                        </button>
+                        
+                        <div class="mt-2" style="text-align: center;">
+                            <small class="text-muted">
+                                <strong>{{ current_user.name }}</strong> - CI Staff
+                            </small>
                         </div>
                     </div>
                     
@@ -426,7 +446,14 @@
 
 {% endblock %}
 {% block scripts %}
+<script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
+<script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
 <script>
+// Load existing signature if available
+{% if application.ci_signature %}
+document.getElementById('ci_signature').value = '{{ application.ci_signature }}';
+{% endif %}
+
 // Collect all checklist data before submit
 function collectChecklistData() {
     

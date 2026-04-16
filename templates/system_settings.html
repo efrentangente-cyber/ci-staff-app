@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}System Settings{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2><i class="bi bi-gear"></i> System Configuration</h2>
+    <p class="text-muted">Manage system-wide settings and configurations</p>
+    
+    {% if current_user.role != 'admin' %}
+    <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle"></i> Only super admins can access system settings.
+    </div>
+    {% else %}
+    
+    <div class="row g-4">
+        <!-- System Settings Card -->
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-sliders"></i> System Settings</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('update_system_settings') }}">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Setting</th>
+                                    <th>Value</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for setting in settings %}
+                                <tr>
+                                    <td><strong>{{ setting.setting_key }}</strong></td>
+                                    <td>
+                                        <input type="text" 
+                                               name="setting_{{ setting.id }}" 
+                                               class="form-control form-control-sm" 
+                                               value="{{ setting.setting_value }}"
+                                               style="max-width: 300px;">
+                                    </td>
+                                    <td><small class="text-muted">{{ setting.description }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Save Settings
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions Card -->
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('manage_loan_types') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-tags"></i> Manage Loan Types
+                        </a>
+                        <a href="{{ url_for('manage_users') }}" class="btn btn-outline-info">
+                            <i class="bi bi-people"></i> Manage Users
+                        </a>
+                        <a href="{{ url_for('reports') }}" class="btn btn-outline-warning">
+                            <i class="bi bi-file-earmark-bar-graph"></i> Generate Reports
+                        </a>
+                        <a href="{{ url_for('ci_tracking') }}" class="btn btn-outline-success">
+                            <i class="bi bi-geo-alt"></i> CI Tracking
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- System Info Card -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> System Info</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Total Users:</strong> {{ stats.total_users }}</p>
+                    <p><strong>Total Applications:</strong> {{ stats.total_applications }}</p>
+                    <p><strong>Pending CI:</strong> {{ stats.pending_ci }}</p>
+                    <p><strong>Approved Loans:</strong> {{ stats.approved_loans }}</p>
+                    <p><strong>Total Loan Amount:</strong> ₱{{ '{:,.2f}'.format(stats.total_loan_amount) }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Application Status Management -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-list-check"></i> Application Status Management</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Current application statuses in the system:</p>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6>Submitted</h6>
+                                    <p class="text-muted mb-0">Initial submission</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6>Assigned to CI</h6>
+                                    <p class="text-muted mb-0">Awaiting investigation</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6>CI Completed</h6>
+                                    <p class="text-muted mb-0">Awaiting admin decision</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6>Approved/Rejected</h6>
+                                    <p class="text-muted mb-0">Final decision</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% endif %}
+</div>
+{% endblock %}

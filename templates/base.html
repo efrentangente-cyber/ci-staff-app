@@ -942,6 +942,17 @@
                 <a href="{{ url_for('manage_users') }}">
                     <i class="bi bi-people"></i> Manage Users
                 </a>
+                <a href="{{ url_for('reports') }}">
+                    <i class="bi bi-file-earmark-bar-graph"></i> Reports
+                </a>
+                {% if current_user.role == 'admin' %}
+                <a href="{{ url_for('system_settings') }}">
+                    <i class="bi bi-gear"></i> System Settings
+                </a>
+                <a href="{{ url_for('manage_loan_types') }}">
+                    <i class="bi bi-tags"></i> Loan Types
+                </a>
+                {% endif %}
                 {% endif %}
                 <a href="{{ url_for('change_password') }}">
                     <i class="bi bi-key"></i> Change Password

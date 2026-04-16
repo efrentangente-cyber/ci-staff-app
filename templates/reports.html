@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <h2><i class="bi bi-file-earmark-bar-graph"></i> Dynamic Reports</h2>
+    <p class="text-muted">Generate reports with custom date ranges</p>
+    
+    <div class="row g-4">
+        <!-- Application List Report -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-file-text"></i> Application List Report</h5>
+                </div>
+                <div class="card-body">
+                    <p>Generate a comprehensive list of loan applications within a date range.</p>
+                    <form action="{{ url_for('generate_report', report_type='applications') }}" method="POST" target="_blank">
+                        <div class="mb-3">
+                            <label class="form-label">From Date</label>
+                            <input type="date" name="from_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">To Date</label>
+                            <input type="date" name="to_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Status Filter</label>
+                            <select name="status_filter" class="form-select">
+                                <option value="all">All Statuses</option>
+                                <option value="submitted">Submitted</option>
+                                <option value="assigned_to_ci">Assigned to CI</option>
+                                <option value="ci_completed">CI Completed</option>
+                                <option value="approved">Approved</option>
+                                <option value="rejected">Rejected</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-file-pdf"></i> Generate PDF
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- CI Reports -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> CI Reports</h5>
+                </div>
+                <div class="card-body">
+                    <p>Generate reports of completed credit investigations.</p>
+                    <form action="{{ url_for('generate_report', report_type='ci_reports') }}" method="POST" target="_blank">
+                        <div class="mb-3">
+                            <label class="form-label">From Date</label>
+                            <input type="date" name="from_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">To Date</label>
+                            <input type="date" name="to_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">CI Staff Filter</label>
+                            <select name="ci_staff_filter" class="form-select">
+                                <option value="all">All CI Staff</option>
+                                {% for staff in ci_staff %}
+                                <option value="{{ staff.id }}">{{ staff.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-file-pdf"></i> Generate PDF
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- User Reports -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-people"></i> User Reports</h5>
+                </div>
+                <div class="card-body">
+                    <p>Generate reports of user activities and performance.</p>
+                    <form action="{{ url_for('generate_report', report_type='user_reports') }}" method="POST" target="_blank">
+                        <div class="mb-3">
+                            <label class="form-label">From Date</label>
+                            <input type="date" name="from_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">To Date</label>
+                            <input type="date" name="to_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Role Filter</label>
+                            <select name="role_filter" class="form-select">
+                                <option value="all">All Roles</option>
+                                <option value="admin">Admin</option>
+                                <option value="loan_officer">Loan Officer</option>
+                                <option value="loan_staff">Loan Staff</option>
+                                <option value="ci_staff">CI Staff</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-info w-100">
+                            <i class="bi bi-file-pdf"></i> Generate PDF
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Transaction Summary -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Transaction Summary</h5>
+                </div>
+                <div class="card-body">
+                    <p>Generate summary of loan transactions and statistics.</p>
+                    <form action="{{ url_for('generate_report', report_type='transaction_summary') }}" method="POST" target="_blank">
+                        <div class="mb-3">
+                            <label class="form-label">From Date</label>
+                            <input type="date" name="from_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">To Date</label>
+                            <input type="date" name="to_date" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Group By</label>
+                            <select name="group_by" class="form-select">
+                                <option value="status">Status</option>
+                                <option value="loan_type">Loan Type</option>
+                                <option value="month">Month</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-warning w-100">
+                            <i class="bi bi-file-pdf"></i> Generate PDF
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
