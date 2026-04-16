@@ -2039,27 +2039,17 @@ def signup():
     if request.method == 'POST':
         name = request.form.get('name')
         email = request.form.get('email')
-        role = request.form.get('role')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
         signature_data = request.form.get('signature_data')
-        assigned_routes = request.form.getlist('assigned_routes')  # Get multiple routes
-        
-        # Join routes with comma
-        assigned_route = ','.join(assigned_routes) if assigned_routes else None
         
         # Validation
-        if not all([name, email, role, password, confirm_password]):
+        if not all([name, email, password, confirm_password]):
             flash('All fields are required', 'danger')
             return redirect(url_for('signup'))
         
         if not signature_data:
             flash('Signature is required', 'danger')
-            return redirect(url_for('signup'))
-        
-        # Validate route for CI staff
-        if role == 'ci_staff' and not assigned_route:
-            flash('Please select at least one route', 'danger')
             return redirect(url_for('signup'))
         
         if password != confirm_password:
@@ -2070,10 +2060,6 @@ def signup():
         is_valid, message = validate_password_strength(password)
         if not is_valid:
             flash(message, 'danger')
-            return redirect(url_for('signup'))
-        
-        if role not in ['ci_staff', 'loan_staff']:
-            flash('Invalid role selected', 'danger')
             return redirect(url_for('signup'))
         
         conn = get_db()
@@ -2096,13 +2082,13 @@ def signup():
             with open(signature_path, 'wb') as f:
                 f.write(signature_bytes)
         
-        # Create new user (not approved yet)
+        # Create new user (not approved yet, no role assigned - admin will assign)
         try:
             password_hash = generate_password_hash(password)
             conn.execute('''
                 INSERT INTO users (email, password_hash, name, role, signature_path, assigned_route, is_approved, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, 0, ?)
-            ''', (email, password_hash, name, role, signature_path, assigned_route, now_ph().strftime('%Y-%m-%d %H:%M:%S')))
+                VALUES (?, ?, ?, NULL, ?, NULL, 0, ?)
+            ''', (email, password_hash, name, signature_path, now_ph().strftime('%Y-%m-%d %H:%M:%S')))
             conn.commit()
             
             # Notify admin
@@ -2111,10 +2097,10 @@ def signup():
             
             if admin:
                 create_notification(admin['id'], 
-                                  f'New staff registration: {name} ({role.replace("_", " ").title()})',
+                                  f'New staff registration: {name} - Role and route assignment required',
                                   '/manage_users')
             
-            flash('Registration successful! Please wait for admin approval.', 'success')
+            flash('Registration successful! Please wait for admin to assign your role and approve your account.', 'success')
             return redirect(url_for('login'))
         except Exception as e:
             conn.close()

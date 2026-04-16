@@ -77,10 +77,11 @@
             </div>
             <div class="mb-3">
                 <label class="form-label">Loan Type *</label>
-                <select name="loan_type" id="loanTypeSelect" class="form-select" required>
-                    <option value="">-- Select Loan Type --</option>
+                <input list="loanTypeList" name="loan_type" id="loanTypeInput" class="form-control" placeholder="Type to search loan types..." required autocomplete="off">
+                <datalist id="loanTypeList">
                     <!-- Loan types loaded dynamically from database -->
-                </select>
+                </datalist>
+                <small class="text-muted">Start typing to filter loan types</small>
             </div>
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-images"></i> Upload Documents/Photos (Requirements/Papers)</label>
@@ -372,12 +373,11 @@ async function loadLoanTypes() {
         const response = await fetch('/api/loan-types');
         const loanTypes = await response.json();
         
-        const select = document.getElementById('loanTypeSelect');
+        const datalist = document.getElementById('loanTypeList');
         loanTypes.forEach(lt => {
             const option = document.createElement('option');
             option.value = lt.name;
-            option.textContent = lt.name;
-            select.appendChild(option);
+            datalist.appendChild(option);
         });
     } catch (error) {
         console.error('Error loading loan types:', error);

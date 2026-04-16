@@ -1,5 +1,6 @@
 /**
  * Full-Screen Floating Signature Pad
+ * Universal signature capture for all forms
  * Large signature capture with clear/redo functionality
  */
 
@@ -9,8 +10,12 @@ let isDrawing = false;
 let lastX = 0;
 let lastY = 0;
 let signatureData = null;
+let targetInputId = 'ci_signature'; // Default target
+let targetPreviewId = 'signaturePreview'; // Default preview
 
-function openSignaturePad() {
+function openSignaturePad(inputId = 'ci_signature', previewId = 'signaturePreview') {
+    targetInputId = inputId;
+    targetPreviewId = previewId;
     // Create modal overlay
     const modal = document.createElement('div');
     modal.id = 'signatureModal';
@@ -252,13 +257,13 @@ function saveSignature() {
     signatureData = signatureCanvas.toDataURL('image/png');
     
     // Update hidden input
-    const signatureInput = document.getElementById('ci_signature');
+    const signatureInput = document.getElementById(targetInputId);
     if (signatureInput) {
         signatureInput.value = signatureData;
     }
     
     // Update preview
-    const preview = document.getElementById('signaturePreview');
+    const preview = document.getElementById(targetPreviewId);
     if (preview) {
         preview.innerHTML = `
             <img src="${signatureData}" style="max-width: 300px; border: 2px solid #10b981; border-radius: 8px; padding: 10px; background: white;">
@@ -270,4 +275,9 @@ function saveSignature() {
     
     closeSignaturePad();
     alert('Signature saved successfully!');
+}
+
+// Helper function to check if signature exists
+function hasSignature() {
+    return signatureData !== null && signatureData !== '';
 }

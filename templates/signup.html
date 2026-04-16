@@ -89,7 +89,6 @@
         {% endwith %}
         
         <form method="POST" action="{{ url_for('signup') }}" id="signupForm" enctype="multipart/form-data" onsubmit="return validateSignup()">
-            <input type="hidden" name="signature_data" id="signature_data">
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-person"></i> Full Name</label>
                 <input type="text" class="form-control" name="name" required>
@@ -98,61 +97,6 @@
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-envelope"></i> Email Address</label>
                 <input type="email" class="form-control" name="email" required>
-            </div>
-            
-            <div class="mb-3">
-                <label class="form-label"><i class="bi bi-briefcase"></i> Role</label>
-                <select class="form-select" name="role" id="role" required onchange="toggleRouteSelection()">
-                    <option value="">Select Role</option>
-                    <option value="loan_officer">Loan Officer</option>
-                    <option value="ci_staff">CI Staff</option>
-                    <option value="loan_staff">Loan Staff</option>
-                </select>
-            </div>
-            
-            <div class="mb-3" id="route_selection" style="display: none;">
-                <label class="form-label"><i class="bi bi-map"></i> Assigned Routes * (Select all that apply)</label>
-                <div class="border rounded p-3" style="background: #f8f9fa;">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_1_bayawan_kalumboyan" id="route1" onchange="updateRouteCoverage()">
-                        <label class="form-check-label" for="route1">Route 1: Bayawan → Kalumboyan → Border</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_2_bayawan_basay" id="route2" onchange="updateRouteCoverage()">
-                        <label class="form-check-label" for="route2">Route 2: Bayawan → Candumao → Basay → Border</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_3_bayawan_sipalay" id="route3" onchange="updateRouteCoverage()">
-                        <label class="form-check-label" for="route3">Route 3: Bayawan → Sipalay</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_4_bayawan_santa_catalina" id="route4" onchange="updateRouteCoverage()">
-                        <label class="form-check-label" for="route4">Route 4: Bayawan → Santa Catalina</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_5_bayawan_center" id="route5" onchange="updateRouteCoverage()">
-                        <label class="form-check-label" for="route5">Route 5: Bayawan City Center</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_6_bayawan_omod" id="route6" onchange="updateRouteCoverage()">
-                        <label class="form-check-label" for="route6">Route 6: Bayawan → Omod → Border</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_7_bayawan_tayawan" id="route7" onchange="updateRouteCoverage()">
-                        <label class="form-check-label" for="route7">Route 7: Bayawan → Tayawan → Border</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="assigned_routes" value="route_8_bayawan_mabinay" id="route8" onchange="updateRouteCoverage()">
-                        <label class="form-check-label" for="route8">Route 8: Bayawan → Mabinay</label>
-                    </div>
-                </div>
-                <small class="text-muted">Select all routes you will cover for credit investigations</small>
-                
-                <!-- Route Coverage Details -->
-                <div id="route_coverage" class="mt-2 p-3 border rounded" style="display: none; background: #f8f9fa;">
-                    <strong class="text-primary">Selected Routes Coverage:</strong>
-                    <div id="route_details" class="mb-0 mt-2 small"></div>
-                </div>
             </div>
             
             <div class="mb-3">
@@ -168,14 +112,15 @@
             
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-pen"></i> Your Signature *</label>
-                <div class="border rounded p-2" style="background: #f8f9fa;">
-                    <canvas id="signature-pad" width="400" height="120" style="border: 1px solid #ddd; background: white; cursor: crosshair; width: 100%; max-width: 400px;"></canvas>
-                    <div class="mt-2">
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="clearSignature()">
-                            <i class="bi bi-x-circle"></i> Clear
-                        </button>
-                        <small class="text-muted ms-2">Draw your signature above</small>
-                    </div>
+                <input type="hidden" name="signature_data" id="signature_data">
+                <div id="signaturePreviewSignup" class="text-center p-3 border rounded" style="background: #f8f9fa; min-height: 100px;">
+                    <p class="text-muted mb-2">
+                        <i class="bi bi-pen" style="font-size: 2rem;"></i>
+                    </p>
+                    <button type="button" class="btn btn-primary" onclick="openSignaturePad('signature_data', 'signaturePreviewSignup')">
+                        <i class="bi bi-pen"></i> Open Signature Pad
+                    </button>
+                    <p class="text-muted mt-2 mb-0" style="font-size: 0.9rem;">Click to draw your signature</p>
                 </div>
             </div>
             
@@ -190,171 +135,14 @@
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
     <script>
-    // Show/hide route selection based on role
-    function toggleRouteSelection() {
-        const role = document.getElementById('role').value;
-        const routeSelection = document.getElementById('route_selection');
-        const routeCheckboxes = document.querySelectorAll('input[name="assigned_routes"]');
-        
-        if (role === 'ci_staff') {
-            routeSelection.style.display = 'block';
-            // At least one route must be selected
-            routeCheckboxes.forEach(cb => cb.required = false); // We'll validate manually
-        } else {
-            routeSelection.style.display = 'none';
-            routeCheckboxes.forEach(cb => {
-                cb.checked = false;
-                cb.required = false;
-            });
-            document.getElementById('route_coverage').style.display = 'none';
-        }
-    }
-    
-    // Show route coverage details for selected routes
-    function updateRouteCoverage() {
-        const routeCoverage = document.getElementById('route_coverage');
-        const routeDetails = document.getElementById('route_details');
-        const selectedCheckboxes = document.querySelectorAll('input[name="assigned_routes"]:checked');
-        
-        const routeInfo = {
-            'route_1_bayawan_kalumboyan': {
-                name: 'Route 1: Bayawan → Kalumboyan → Border',
-                barangays: 'Kalumboyan, Kalamtukan, Malabugas, Bugay, Nangka'
-            },
-            'route_2_bayawan_basay': {
-                name: 'Route 2: Bayawan → Candumao → Basay → Border',
-                barangays: 'All Basay barangays'
-            },
-            'route_3_bayawan_sipalay': {
-                name: 'Route 3: Bayawan → Sipalay',
-                barangays: 'All Sipalay barangays'
-            },
-            'route_4_bayawan_santa_catalina': {
-                name: 'Route 4: Bayawan → Santa Catalina',
-                barangays: 'All Santa Catalina barangays'
-            },
-            'route_5_bayawan_center': {
-                name: 'Route 5: Bayawan City Center',
-                barangays: 'Bayawan City center barangays'
-            },
-            'route_6_bayawan_omod': {
-                name: 'Route 6: Bayawan → Omod → Border',
-                barangays: 'Omod, Tamisu'
-            },
-            'route_7_bayawan_tayawan': {
-                name: 'Route 7: Bayawan → Tayawan → Border',
-                barangays: 'Tayawan'
-            },
-            'route_8_bayawan_mabinay': {
-                name: 'Route 8: Bayawan → Mabinay',
-                barangays: 'Mabinay municipality'
-            }
-        };
-        
-        if (selectedCheckboxes.length > 0) {
-            let html = '<ul class="mb-0">';
-            selectedCheckboxes.forEach(cb => {
-                const info = routeInfo[cb.value];
-                if (info) {
-                    html += `<li><strong>${info.name}:</strong> ${info.barangays}</li>`;
-                }
-            });
-            html += '</ul>';
-            routeDetails.innerHTML = html;
-            routeCoverage.style.display = 'block';
-        } else {
-            routeCoverage.style.display = 'none';
-        }
-    }
-    
-    // Validate at least one route is selected before submit
     function validateSignup() {
-        const role = document.getElementById('role').value;
-        if (role === 'ci_staff') {
-            const selectedRoutes = document.querySelectorAll('input[name="assigned_routes"]:checked');
-            if (selectedRoutes.length === 0) {
-                alert('Please select at least one route for CI staff.');
-                return false;
-            }
-        }
-        
-        if (!hasSignature) {
+        const signatureInput = document.getElementById('signature_data');
+        if (!signatureInput.value) {
             alert('Please provide your signature before registering.');
             return false;
         }
-        document.getElementById('signature_data').value = canvas.toDataURL();
-        return true;
-    }
-    
-    // Signature Pad
-    const canvas = document.getElementById('signature-pad');
-    const ctx = canvas.getContext('2d');
-    let isDrawing = false;
-    let hasSignature = false;
-
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseout', stopDrawing);
-
-    // Touch events for mobile
-    canvas.addEventListener('touchstart', handleTouch);
-    canvas.addEventListener('touchmove', handleTouch);
-    canvas.addEventListener('touchend', stopDrawing);
-
-    function startDrawing(e) {
-        isDrawing = true;
-        hasSignature = true;
-        const rect = canvas.getBoundingClientRect();
-        ctx.beginPath();
-        ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-    }
-
-    function draw(e) {
-        if (!isDrawing) return;
-        const rect = canvas.getBoundingClientRect();
-        ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-    }
-
-    function stopDrawing() {
-        isDrawing = false;
-    }
-
-    function handleTouch(e) {
-        e.preventDefault();
-        const touch = e.touches[0];
-        const mouseEvent = new MouseEvent(e.type === 'touchstart' ? 'mousedown' : e.type === 'touchmove' ? 'mousemove' : 'mouseup', {
-            clientX: touch.clientX,
-            clientY: touch.clientY
-        });
-        canvas.dispatchEvent(mouseEvent);
-    }
-
-    function clearSignature() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        hasSignature = false;
-    }
-
-    function validateSignup() {
-        const role = document.getElementById('role').value;
-        if (role === 'ci_staff') {
-            const selectedRoutes = document.querySelectorAll('input[name="assigned_routes"]:checked');
-            if (selectedRoutes.length === 0) {
-                alert('Please select at least one route for CI staff.');
-                return false;
-            }
-        }
-        
-        if (!hasSignature) {
-            alert('Please provide your signature before registering.');
-            return false;
-        }
-        document.getElementById('signature_data').value = canvas.toDataURL();
         return true;
     }
     </script>
