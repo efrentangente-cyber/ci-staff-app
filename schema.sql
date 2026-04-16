@@ -3,13 +3,15 @@ DROP TABLE IF EXISTS loan_applications;
 DROP TABLE IF EXISTS documents;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS notifications;
+DROP TABLE IF EXISTS loan_types;
+DROP TABLE IF EXISTS system_settings;
 
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('admin', 'loan_staff', 'ci_staff')),
+    role TEXT NOT NULL CHECK(role IN ('admin', 'loan_officer', 'loan_staff', 'ci_staff')),
     signature_path TEXT,
     profile_photo TEXT,
     current_workload INTEGER DEFAULT 0,
@@ -38,8 +40,8 @@ CREATE TABLE loan_applications (
     submitted_at TEXT DEFAULT CURRENT_TIMESTAMP,
     ci_completed_at TEXT,
     admin_decision_at TEXT,
-    latitude REAL,
-    longitude REAL,
+    ci_latitude REAL,
+    ci_longitude REAL,
     ci_notes TEXT,
     ci_checklist_data TEXT,
     ci_signature TEXT,
@@ -107,4 +109,24 @@ CREATE TABLE location_tracking (
     activity TEXT,
     tracked_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- New table for dynamic loan types
+CREATE TABLE loan_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- New table for system settings
+CREATE TABLE system_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    setting_key TEXT UNIQUE NOT NULL,
+    setting_value TEXT,
+    setting_type TEXT DEFAULT 'text',
+    description TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
