@@ -2312,35 +2312,54 @@ def deactivate_user(user_id):
 @app.route('/update_ci_route', methods=['POST'])
 @login_required
 def update_ci_route():
-    if current_user.role != 'admin':
+    if current_user.role not in ['admin', 'loan_officer']:
+        # Check if it's JSON request
+        if request.is_json:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
-    user_id = request.form.get('user_id')
-    assigned_route = request.form.get('assigned_route')
+    # Handle both JSON and form data
+    if request.is_json:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        assigned_route = data.get('assigned_route')
+    else:
+        user_id = request.form.get('user_id')
+        assigned_route = request.form.get('assigned_route')
     
-    if not user_id or not assigned_route:
+    if not user_id:
+        if request.is_json:
+            return jsonify({'success': False, 'error': 'User ID required'}), 400
         flash('Invalid request', 'danger')
         return redirect(url_for('manage_users'))
     
     conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id=? AND role="ci_staff"', (user_id,)).fetchone()
+    user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
     
     if not user:
-        flash('CI staff not found', 'danger')
         conn.close()
+        if request.is_json:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+        flash('User not found', 'danger')
         return redirect(url_for('manage_users'))
     
+    # Update route
     conn.execute('UPDATE users SET assigned_route=? WHERE id=?', (assigned_route, user_id))
     conn.commit()
     conn.close()
     
-    # Notify the CI staff
-    create_notification(int(user_id), 
-                      f'Your assigned route has been updated',
-                      '/ci/dashboard')
+    # Notify the CI staff if route assigned
+    if assigned_route:
+        create_notification(int(user_id), 
+                          f'Your assigned route has been updated',
+                          '/ci/dashboard')
     
-    flash(f'Route assigned successfully to {user["name"]}!', 'success')
+    # Return appropriate response
+    if request.is_json:
+        return jsonify({'success': True, 'message': 'Route assigned successfully'})
+    
+    flash(f'Route assigned successfully!', 'success')
     return redirect(url_for('manage_users'))
 
 # REPORT GENERATION ROUTES
