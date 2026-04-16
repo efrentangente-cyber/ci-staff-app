@@ -389,11 +389,6 @@
                     <div id="locationStatus" class="mb-3"></div>
                     
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Interview Notes *</label>
-                        <textarea name="ci_notes" class="form-control" rows="6" required placeholder="Provide your interview notes and observations here...">{{ application.ci_notes if application.ci_notes else '' }}</textarea>
-                    </div>
-                    
-                    <div class="mb-3">
                         <label class="form-label fw-bold"><i class="bi bi-camera"></i> Upload Interview Photos/Proof</label>
                         <input type="file" name="interview_photos" class="form-control" multiple accept="image/*" id="interview_photos">
                         <small class="text-muted">Upload photos of residence, business, or any supporting evidence (multiple files allowed)</small>
@@ -432,7 +427,7 @@
                     
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-success">
-                            <i class="bi bi-check-circle"></i> {% if application.status == 'ci_completed' %}Update Interview{% else %}Submit Interview & Send to Admin{% endif %}
+                            <i class="bi bi-check-circle"></i> {% if application.status == 'ci_completed' %}Update Interview{% else %}Submit Interview & Send to Loan Officer{% endif %}
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="printChecklist()">
                             <i class="bi bi-printer"></i> Print Checklist

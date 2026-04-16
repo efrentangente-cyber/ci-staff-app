@@ -986,12 +986,12 @@ def submit_application():
                     conn.commit()
                     conn.close()
             else:
-                # Send directly to admin
-                admin = conn.execute('SELECT id FROM users WHERE role="admin" LIMIT 1').fetchone()
+                # Send directly to loan officer
+                loan_officer = conn.execute('SELECT id FROM users WHERE role="loan_officer" LIMIT 1').fetchone()
                 conn.commit()
                 conn.close()
-                if admin:
-                    create_notification(admin['id'],
+                if loan_officer:
+                    create_notification(loan_officer['id'],
                                       f'New loan application submitted: {member_name}',
                                       f'/admin/application/{app_id}')
             
@@ -1083,7 +1083,7 @@ def ci_application(id):
         return redirect(url_for('ci_dashboard'))
     
     if request.method == 'POST':
-        ci_notes = request.form.get('ci_notes')
+        ci_notes = request.form.get('ci_notes', '')  # Make optional with default empty string
         checklist_data = request.form.get('checklist_data')
         ci_signature = request.form.get('ci_signature')  # Get base64 signature from form
         ci_latitude = request.form.get('ci_latitude')
@@ -1141,16 +1141,16 @@ def ci_application(id):
                 'timestamp': now_ph().isoformat()
             }, broadcast=True)
             
-            # Notify admin
-            admin = conn.execute('SELECT id FROM users WHERE role="admin" LIMIT 1').fetchone()
+            # Notify loan officer
+            loan_officer = conn.execute('SELECT id FROM users WHERE role="loan_officer" LIMIT 1').fetchone()
             conn.close()
             
-            if admin:
-                create_notification(admin['id'],
+            if loan_officer:
+                create_notification(loan_officer['id'],
                                   f'CI interview completed for: {app_data["member_name"]}',
                                   f'/admin/application/{id}')
             
-            flash('Interview completed and sent to admin!', 'success')
+            flash('Interview completed and sent to loan officer!', 'success')
             return redirect(url_for('ci_dashboard'))
         except Exception as e:
             conn.close()
