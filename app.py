@@ -2251,6 +2251,37 @@ def reject_user(user_id):
     flash(f'User {user["name"]} rejected and removed.', 'info')
     return redirect(url_for('manage_users'))
 
+@app.route('/assign_role/<int:user_id>', methods=['POST'])
+@login_required
+def assign_role(user_id):
+    if current_user.role not in ['admin', 'loan_officer']:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    role = data.get('role')
+    
+    if not role or role not in ['admin', 'loan_officer', 'loan_staff', 'ci_staff']:
+        return jsonify({'success': False, 'error': 'Invalid role'}), 400
+    
+    conn = get_db()
+    user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+    
+    if not user:
+        conn.close()
+        return jsonify({'success': False, 'error': 'User not found'}), 404
+    
+    # Update role
+    conn.execute('UPDATE users SET role=? WHERE id=?', (role, user_id))
+    
+    # If changing from ci_staff to another role, clear assigned_route
+    if user['role'] == 'ci_staff' and role != 'ci_staff':
+        conn.execute('UPDATE users SET assigned_route=NULL WHERE id=?', (user_id,))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True, 'message': 'Role assigned successfully'})
+
 @app.route('/deactivate_user/<int:user_id>', methods=['POST'])
 @login_required
 def deactivate_user(user_id):

@@ -63,30 +63,34 @@
                         <td><i class="bi bi-person-circle"></i> {{ user.name }}</td>
                         <td>{{ user.email }}</td>
                         <td>
-                            {% if user.role %}
-                            <span class="badge bg-info">
-                                {{ user.role.replace('_', ' ').title() }}
-                            </span>
-                            {% else %}
-                            <span class="badge bg-secondary">
-                                <i class="bi bi-question-circle"></i> Not Assigned
-                            </span>
-                            {% endif %}
+                            <!-- Role Assignment Dropdown -->
+                            <select class="form-select form-select-sm" 
+                                    onchange="assignRole({{ user.id }}, this.value)" 
+                                    style="width: auto; min-width: 150px;">
+                                <option value="" {% if not user.role %}selected{% endif %}>Select Role...</option>
+                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                                <option value="loan_officer" {% if user.role == 'loan_officer' %}selected{% endif %}>Loan Officer</option>
+                                <option value="loan_staff" {% if user.role == 'loan_staff' %}selected{% endif %}>Loan Staff</option>
+                                <option value="ci_staff" {% if user.role == 'ci_staff' %}selected{% endif %}>CI Staff</option>
+                            </select>
                         </td>
                         <td>
-                            {% if user.role == 'ci_staff' %}
-                                {% if user.assigned_route %}
-                                <small class="text-muted">
-                                    {% if user.assigned_route == 'route_1_bayawan_kalumboyan' %}Bayawan → Kalumboyan → Border
-                                    {% elif user.assigned_route == 'route_2_bayawan_basay' %}Bayawan → Basay → Border
-                                    {% elif user.assigned_route == 'route_3_bayawan_sipalay' %}Bayawan → Sipalay
-                                    {% elif user.assigned_route == 'route_4_bayawan_santa_catalina' %}Bayawan → Santa Catalina
-                                    {% elif user.assigned_route == 'route_5_bayawan_center' %}Bayawan City Center
-                                    {% else %}{{ user.assigned_route }}{% endif %}
-                                </small>
-                                {% else %}
-                                <small class="text-danger">Not Assigned</small>
-                                {% endif %}
+                            {% if user.role == 'ci_staff' or not user.role %}
+                            <!-- Route Assignment Dropdown (shown for CI staff or unassigned) -->
+                            <select class="form-select form-select-sm route-select-{{ user.id }}" 
+                                    onchange="assignRoute({{ user.id }}, this.value)"
+                                    style="width: auto; min-width: 180px; {% if user.role and user.role != 'ci_staff' %}display:none;{% endif %}"
+                                    {% if user.role != 'ci_staff' %}disabled{% endif %}>
+                                <option value="">Select Route...</option>
+                                <option value="route_1_bayawan_kalumboyan" {% if user.assigned_route == 'route_1_bayawan_kalumboyan' %}selected{% endif %}>Route 1: Bayawan → Kalumboyan</option>
+                                <option value="route_2_bayawan_basay" {% if user.assigned_route == 'route_2_bayawan_basay' %}selected{% endif %}>Route 2: Bayawan → Basay</option>
+                                <option value="route_3_bayawan_sipalay" {% if user.assigned_route == 'route_3_bayawan_sipalay' %}selected{% endif %}>Route 3: Bayawan → Sipalay</option>
+                                <option value="route_4_bayawan_santa_catalina" {% if user.assigned_route == 'route_4_bayawan_santa_catalina' %}selected{% endif %}>Route 4: Bayawan → Santa Catalina</option>
+                                <option value="route_5_bayawan_center" {% if user.assigned_route == 'route_5_bayawan_center' %}selected{% endif %}>Route 5: Bayawan City Center</option>
+                                <option value="route_6_bayawan_omod" {% if user.assigned_route == 'route_6_bayawan_omod' %}selected{% endif %}>Route 6: Bayawan → Omod</option>
+                                <option value="route_7_bayawan_tayawan" {% if user.assigned_route == 'route_7_bayawan_tayawan' %}selected{% endif %}>Route 7: Bayawan → Tayawan</option>
+                                <option value="route_8_bayawan_mabinay" {% if user.assigned_route == 'route_8_bayawan_mabinay' %}selected{% endif %}>Route 8: Bayawan → Mabinay</option>
+                            </select>
                             {% else %}
                             <small class="text-muted">N/A</small>
                             {% endif %}
@@ -296,6 +300,94 @@ function editRoute(userId, currentRoute, userName) {
     document.getElementById('edit_assigned_route').value = currentRoute;
     const modal = new bootstrap.Modal(document.getElementById('routeModal'));
     modal.show();
+}
+
+// Assign role to pending user
+function assignRole(userId, role) {
+    if (!role) {
+        alert('Please select a role');
+        return;
+    }
+    
+    fetch(`/assign_role/${userId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role: role })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show/hide route dropdown based on role
+            const routeSelect = document.querySelector(`.route-select-${userId}`);
+            if (routeSelect) {
+                if (role === 'ci_staff') {
+                    routeSelect.style.display = '';
+                    routeSelect.disabled = false;
+                } else {
+                    routeSelect.style.display = 'none';
+                    routeSelect.disabled = true;
+                }
+            }
+            
+            // Show success message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show';
+            alert.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+            alert.innerHTML = `
+                <strong>Success!</strong> Role assigned successfully.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+            setTimeout(() => alert.remove(), 3000);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to assign role');
+    });
+}
+
+// Assign route to pending CI staff
+function assignRoute(userId, route) {
+    if (!route) {
+        return; // Allow empty selection
+    }
+    
+    fetch(`/update_ci_route`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+            user_id: userId,
+            assigned_route: route 
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show';
+            alert.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+            alert.innerHTML = `
+                <strong>Success!</strong> Route assigned successfully.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+            setTimeout(() => alert.remove(), 3000);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to assign route');
+    });
 }
 </script>
 {% endblock %}
