@@ -795,7 +795,7 @@ def update_application_status(app_id):
         'member_name': app_data['member_name'] if app_data else '',
         'loan_amount': float(app_data['loan_amount']) if app_data else 0,
         'timestamp': now_ph().isoformat()
-    }, broadcast=True)
+    })
     
     return jsonify({'success': True})
 
@@ -833,7 +833,7 @@ def update_ci_staff_assignment(app_id):
         'loan_amount': float(app_data['loan_amount']) if app_data else 0,
         'ci_staff_id': ci_staff_id,
         'timestamp': now_ph().isoformat()
-    }, broadcast=True)
+    })
     
     return jsonify({'success': True})
 
@@ -1139,7 +1139,7 @@ def ci_application(id):
                 'member_name': updated_app['member_name'] if updated_app else '',
                 'loan_amount': float(updated_app['loan_amount']) if updated_app else 0,
                 'timestamp': now_ph().isoformat()
-            }, broadcast=True)
+            })
             
             # Notify loan officer
             loan_officer = conn.execute('SELECT id FROM users WHERE role="loan_officer" LIMIT 1').fetchone()
@@ -1248,7 +1248,7 @@ def admin_application(id):
                 'member_name': app_data['member_name'],
                 'loan_amount': float(app_data['loan_amount']),
                 'timestamp': now_ph().isoformat()
-            }, broadcast=True)
+            })
             
             # Send SMS notification to applicant
             if app_data['member_contact']:
