@@ -63,9 +63,15 @@
                         <td><i class="bi bi-person-circle"></i> {{ user.name }}</td>
                         <td>{{ user.email }}</td>
                         <td>
+                            {% if user.role %}
                             <span class="badge bg-info">
                                 {{ user.role.replace('_', ' ').title() }}
                             </span>
+                            {% else %}
+                            <span class="badge bg-secondary">
+                                <i class="bi bi-question-circle"></i> Not Assigned
+                            </span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if user.role == 'ci_staff' %}
@@ -156,9 +162,15 @@
                         <td><i class="bi bi-person-check-fill"></i> {{ user.name }}</td>
                         <td>{{ user.email }}</td>
                         <td>
+                            {% if user.role %}
                             <span class="badge bg-primary">
                                 {{ user.role.replace('_', ' ').title() }}
                             </span>
+                            {% else %}
+                            <span class="badge bg-secondary">
+                                <i class="bi bi-question-circle"></i> Not Assigned
+                            </span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if user.role == 'ci_staff' %}

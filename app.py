@@ -2204,6 +2204,18 @@ def approve_user(user_id):
         conn.close()
         return redirect(url_for('manage_users'))
     
+    # Check if role is assigned
+    if not user['role']:
+        flash(f'Cannot approve {user["name"]} - Please assign a role first!', 'warning')
+        conn.close()
+        return redirect(url_for('manage_users'))
+    
+    # Check if CI staff has route assigned
+    if user['role'] == 'ci_staff' and not user['assigned_route']:
+        flash(f'Cannot approve {user["name"]} - CI staff must have a route assigned!', 'warning')
+        conn.close()
+        return redirect(url_for('manage_users'))
+    
     conn.execute('UPDATE users SET is_approved = 1 WHERE id=?', (user_id,))
     conn.commit()
     conn.close()
