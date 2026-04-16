@@ -266,6 +266,43 @@ def init_db():
 # Initialize database on startup
 init_db()
 
+# Setup production users (runs on every startup to ensure correct roles)
+def setup_production_users():
+    """Create or update default users"""
+    try:
+        conn = get_db()
+        from werkzeug.security import generate_password_hash
+        
+        users = [
+            ('superadmin@dccco.test', 'admin@2024', 'Super Admin', 'admin'),
+            ('admin@dccco.test', 'admin123', 'Loan Officer', 'loan_officer'),
+            ('ci@dccco.test', 'ci123', 'CI Staff', 'ci_staff'),
+            ('loan@dccco.test', 'loan123', 'Loan Staff', 'loan_staff')
+        ]
+        
+        for email, password, name, role in users:
+            existing = conn.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+            
+            if existing:
+                # Update existing user's name and role
+                conn.execute('UPDATE users SET name = ?, role = ?, is_approved = 1 WHERE email = ?',
+                           (name, role, email))
+            else:
+                # Create new user
+                password_hash = generate_password_hash(password)
+                conn.execute('''
+                    INSERT INTO users (email, password_hash, name, role, is_approved)
+                    VALUES (?, ?, ?, ?, 1)
+                ''', (email, password_hash, name, role))
+        
+        conn.commit()
+        conn.close()
+        print("✓ Production users setup complete")
+    except Exception as e:
+        print(f"Setup users error: {e}")
+
+setup_production_users()
+
 def create_notification(user_id, message, link=None):
     try:
         conn = get_db()
