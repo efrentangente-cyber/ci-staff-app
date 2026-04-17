@@ -1050,22 +1050,24 @@ def ci_dashboard():
     conn.close()
     return render_template('ci_dashboard.html', applications=applications, unread_count=unread_count)
 
-@app.route('/ci/checklist/<int:id>')
+@app.route('/ci/checklist/<int:id>', methods=['GET'])
 @login_required
 def ci_checklist(id):
+    """Display the multi-page CI checklist wizard"""
     if current_user.role != 'ci_staff':
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
     conn = get_db()
     app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
-    conn.close()
     
     if not app_data or app_data['assigned_ci_staff'] != current_user.id:
         flash('Application not found', 'danger')
+        conn.close()
         return redirect(url_for('ci_dashboard'))
     
-    return render_template('ci_checklist_form.html', application=app_data)
+    conn.close()
+    return render_template('ci_checklist_wizard.html', application=app_data)
 
 @app.route('/ci/application/<int:id>', methods=['GET','POST'])
 @login_required
@@ -1172,25 +1174,6 @@ def ci_application(id):
     
     return render_template('ci_application.html', application=app_data, documents=documents, messages=messages, unread_count=unread_count)
 
-@app.route('/ci/checklist/<int:id>', methods=['GET'])
-@login_required
-def ci_checklist_wizard(id):
-    """Display the multi-page CI checklist wizard"""
-    if current_user.role != 'ci_staff':
-        flash('Unauthorized', 'danger')
-        return redirect(url_for('index'))
-    
-    conn = get_db()
-    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
-    
-    if not app_data or app_data['assigned_ci_staff'] != current_user.id:
-        flash('Application not found', 'danger')
-        conn.close()
-        return redirect(url_for('ci_dashboard'))
-    
-    conn.close()
-    return render_template('ci_checklist_wizard.html', application=app_data)
-
 @app.route('/view/checklist/<int:id>')
 @login_required
 def view_ci_checklist(id):
@@ -1245,7 +1228,7 @@ def submit_ci_checklist(id):
         if not ci_signature:
             flash('Signature is required', 'danger')
             conn.close()
-            return redirect(url_for('ci_checklist_wizard', id=id))
+            return redirect(url_for('ci_checklist', id=id))
         
         # Update application
         conn.execute('''
@@ -1294,7 +1277,7 @@ def submit_ci_checklist(id):
     except Exception as e:
         conn.close()
         flash(f'Error: {str(e)}', 'danger')
-        return redirect(url_for('ci_checklist_wizard', id=id))
+        return redirect(url_for('ci_checklist', id=id))
 
 # ADMIN ROUTES
 @app.route('/admin/dashboard')
