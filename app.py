@@ -1191,6 +1191,34 @@ def ci_checklist_wizard(id):
     conn.close()
     return render_template('ci_checklist_wizard.html', application=app_data)
 
+@app.route('/view/checklist/<int:id>')
+@login_required
+def view_ci_checklist(id):
+    """View completed CI checklist (for loan officer/admin)"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
+    
+    if not app_data:
+        flash('Application not found', 'danger')
+        conn.close()
+        return redirect(url_for('admin_dashboard'))
+    
+    # Parse checklist data
+    checklist_data = {}
+    if app_data['ci_checklist_data']:
+        try:
+            import json
+            checklist_data = json.loads(app_data['ci_checklist_data'])
+        except:
+            pass
+    
+    conn.close()
+    return render_template('view_ci_checklist.html', application=app_data, checklist_data=checklist_data)
+
 @app.route('/ci/checklist/<int:id>', methods=['POST'])
 @login_required
 def submit_ci_checklist(id):
