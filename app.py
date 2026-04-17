@@ -301,26 +301,26 @@ def setup_production_users():
         # Setup default loan types if table is empty
         count = conn.execute('SELECT COUNT(*) as count FROM loan_types').fetchone()
         if count['count'] == 0:
-            print("Setting up default loan types...")
+            print("Setting up default DCCCO loan types...")
             loan_types = [
-                ('Personal Loan', 'For personal expenses', 1),
-                ('Business Loan', 'For business capital', 1),
-                ('Emergency Loan', 'For urgent needs', 1),
-                ('Educational Loan', 'For education expenses', 1),
-                ('Medical Loan', 'For medical expenses', 1),
-                ('Housing Loan', 'For housing needs', 1),
-                ('Agricultural Loan', 'For farming needs', 1),
-                ('Motorcycle Loan', 'For motorcycle purchase', 1),
-                ('Appliance Loan', 'For appliance purchase', 1),
-                ('Salary Loan', 'Short-term salary advance', 1),
-                ('Pension Loan', 'For pensioners', 1),
-                ('Livelihood Loan', 'For small business', 1),
-                ('Calamity Loan', 'For disaster relief', 1),
-                ('Multi-Purpose Loan', 'For various purposes', 1),
-                ('Refinancing Loan', 'To refinance existing loan', 1),
-                ('Consolidation Loan', 'To consolidate debts', 1),
-                ('Vehicle Loan', 'For vehicle purchase', 1),
-                ('Equipment Loan', 'For equipment purchase', 1)
+                ('Agricultural with Chattel', 'Agricultural loan with chattel mortgage', 1),
+                ('Agricultural with REM', 'Agricultural loan with real estate mortgage', 1),
+                ('Agricultural w/o Collateral', 'Agricultural loan without collateral', 1),
+                ('Business with Chattel', 'Business loan with chattel mortgage', 1),
+                ('Business with REM', 'Business loan with real estate mortgage', 1),
+                ('Business w/o Collateral', 'Business loan without collateral', 1),
+                ('Multipurpose with Chattel', 'Multipurpose loan with chattel mortgage', 1),
+                ('Multipurpose with REM', 'Multipurpose loan with real estate mortgage', 1),
+                ('Multipurpose w/o Collateral', 'Multipurpose loan without collateral', 1),
+                ('Salary ATM - Dim', 'Salary loan via ATM', 1),
+                ('Salary MOA - Dim', 'Salary loan via MOA', 1),
+                ('Car Loan - Dim (surplus)', 'Car loan for surplus vehicles', 1),
+                ('Car Loan (Brand New) - Dim', 'Car loan for brand new vehicles', 1),
+                ('Back-to-back Loan', 'Back-to-back loan', 1),
+                ('Pension Loan', 'Pension loan', 1),
+                ('Hospitalization Loan', 'Hospitalization loan', 1),
+                ('Petty Cash Loan', 'Petty cash loan', 1),
+                ('Incentive Loan', 'Incentive loan', 1)
             ]
             
             for loan_name, description, is_active in loan_types:

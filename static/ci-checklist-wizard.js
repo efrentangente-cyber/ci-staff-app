@@ -1,7 +1,7 @@
 // CI Checklist Wizard JavaScript
 
 let currentPage = 1;
-const totalPages = 8;
+const totalPages = 5;
 let checklistData = {};
 
 // Initialize wizard

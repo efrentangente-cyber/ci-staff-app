@@ -4,1068 +4,1022 @@
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
 
+<style>
+/* Make it look EXACTLY like paper forms */
+.paper-form {
+    background: white;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    font-family: Arial, sans-serif;
+}
+
+.form-header {
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 10px;
+}
+
+.form-header h4 {
+    margin: 5px 0;
+    font-weight: bold;
+}
+
+.form-table-paper {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+}
+
+.form-table-paper td,
+.form-table-paper th {
+    border: 1px solid #000;
+    padding: 8px;
+    font-size: 11px;
+}
+
+.form-table-paper th {
+    background: #f0f0f0;
+    font-weight: bold;
+    text-align: center;
+}
+
+.form-table-paper input[type="text"],
+.form-table-paper input[type="number"],
+.form-table-paper input[type="date"] {
+    width: 100%;
+    border: none;
+    padding: 4px;
+    font-size: 11px;
+}
+
+.form-table-paper input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+
+.section-title {
+    font-weight: bold;
+    font-size: 12px;
+    margin: 20px 0 10px 0;
+    text-transform: uppercase;
+}
+
+.checkbox-inline {
+    display: inline-block;
+    margin-right: 15px;
+}
+
+.checkbox-inline input {
+    margin-right: 5px;
+}
+
+.progress-nav {
+    position: fixed;
+    top: 60px;
+    right: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+.progress-nav .page-btn {
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 5px 0;
+    border-radius: 50%;
+    border: 2px solid #ddd;
+    background: white;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.progress-nav .page-btn.active {
+    background: #0d6efd;
+    color: white;
+    border-color: #0d6efd;
+}
+
+.progress-nav .page-btn.completed {
+    background: #198754;
+    color: white;
+    border-color: #198754;
+}
+</style>
+
 <div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2><i class="bi bi-clipboard-check"></i> CI Assessment Checklist</h2>
-        <a href="{{ url_for('ci_application', id=application.id) }}" class="btn btn-secondary">
-            <i class="bi bi-arrow-left"></i> Back
-        </a>
+    <!-- Fixed Progress Navigation -->
+    <div class="progress-nav no-print">
+        <button class="page-btn active" onclick="goToPage(1)">1</button>
+        <button class="page-btn" onclick="goToPage(2)">2</button>
+        <button class="page-btn" onclick="goToPage(3)">3</button>
+        <button class="page-btn" onclick="goToPage(4)">4</button>
+        <button class="page-btn" onclick="goToPage(5)">5</button>
     </div>
 
-    <!-- Progress Bar -->
-    <div class="card mb-3">
-        <div class="card-body p-2">
-            <div class="progress-wizard">
-                <div class="progress-step active" data-step="1" onclick="goToPage(1)">
-                    <div class="step-number">1</div>
-                    <div class="step-label">Personal</div>
-                </div>
-                <div class="progress-step" data-step="2" onclick="goToPage(2)">
-                    <div class="step-number">2</div>
-                    <div class="step-label">Family</div>
-                </div>
-                <div class="progress-step" data-step="3" onclick="goToPage(3)">
-                    <div class="step-number">3</div>
-                    <div class="step-label">Employment</div>
-                </div>
-                <div class="progress-step" data-step="4" onclick="goToPage(4)">
-                    <div class="step-number">4</div>
-                    <div class="step-label">Credit</div>
-                </div>
-                <div class="progress-step" data-step="5" onclick="goToPage(5)">
-                    <div class="step-number">5</div>
-                    <div class="step-label">Membership</div>
-                </div>
-                <div class="progress-step" data-step="6" onclick="goToPage(6)">
-                    <div class="step-number">6</div>
-                    <div class="step-label">Computation</div>
-                </div>
-                <div class="progress-step" data-step="7" onclick="goToPage(7)">
-                    <div class="step-number">7</div>
-                    <div class="step-label">Assessment</div>
-                </div>
-                <div class="progress-step" data-step="8" onclick="goToPage(8)">
-                    <div class="step-number">8</div>
-                    <div class="step-label">Review</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Form -->
-    <form id="ciChecklistForm" method="POST" action="{{ url_for('submit_ci_checklist', id=application.id) }}">
+    <form id="ciChecklistForm" method="POST" action="{{ url_for('submit_ci_checklist', id=application.id) }}" enctype="multipart/form-data">
         <input type="hidden" name="checklist_data" id="checklist_data">
+        <input type="hidden" name="ci_signature" id="ci_signature" required>
+        <input type="hidden" name="ci_latitude" id="ci_latitude">
+        <input type="hidden" name="ci_longitude" id="ci_longitude">
 
-        <!-- PAGE 1: PERSONAL DATA -->
+        <!-- PAGE 1: PERSONAL DATA (Matches your image 2) -->
         <div class="wizard-page active" data-page="1">
-            <div class="card">
-                <div class="card-header bg-primary text-white text-center">
-                    <h5 class="mb-0">DCCCO MULTIPURPOSE COOPERATIVE</h5>
-                    <small>PERSONAL DATA</small>
+            <div class="paper-form">
+                <div class="form-header">
+                    <small>DCCCO Form No. 008</small>
+                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <small>Revised October 2021</small>
                 </div>
-                <div class="card-body">
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th width="50%">APPLICANT</th>
-                                <th width="50%">SPOUSE</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><label>Last Name:</label><input type="text" name="applicant_last_name" value="{{ application.member_name.split()[-1] if application.member_name else '' }}"></td>
-                                <td><label>Last Name:</label><input type="text" name="spouse_last_name"></td>
-                            </tr>
-                            <tr>
-                                <td><label>First Name:</label><input type="text" name="applicant_first_name" value="{{ application.member_name.split()[0] if application.member_name else '' }}"></td>
-                                <td><label>First Name:</label><input type="text" name="spouse_first_name"></td>
-                            </tr>
-                            <tr>
-                                <td><label>Middle Name:</label><input type="text" name="applicant_middle_name"></td>
-                                <td><label>Middle Name:</label><input type="text" name="spouse_middle_name"></td>
-                            </tr>
-                            <tr>
-                                <td><label>Birthday:</label><input type="date" name="applicant_birthday"></td>
-                                <td><label>Birthday:</label><input type="date" name="spouse_birthday"></td>
-                            </tr>
-                            <tr>
-                                <td><label>Age:</label><input type="number" name="applicant_age"></td>
-                                <td><label>Age:</label><input type="number" name="spouse_age"></td>
-                            </tr>
-                        </tbody>
-                    </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">FAMILY BACKGROUND</h6>
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th>NAME OF PARENTS AND CHILDREN</th>
-                                <th width="80px">AGE</th>
-                                <th width="150px">RELATIONSHIP</th>
-                                <th width="150px">MEMBER/NON-Member</th>
-                            </tr>
-                        </thead>
-                        <tbody id="family_members">
-                            <tr>
-                                <td><input type="text" name="family_1_name"></td>
-                                <td><input type="number" name="family_1_age"></td>
-                                <td><input type="text" name="family_1_relationship"></td>
-                                <td><input type="text" name="family_1_member_status"></td>
-                            </tr>
-                            <tr>
-                                <td><input type="text" name="family_2_name"></td>
-                                <td><input type="number" name="family_2_age"></td>
-                                <td><input type="text" name="family_2_relationship"></td>
-                                <td><input type="text" name="family_2_member_status"></td>
-                            </tr>
-                            <tr>
-                                <td><input type="text" name="family_3_name"></td>
-                                <td><input type="number" name="family_3_age"></td>
-                                <td><input type="text" name="family_3_relationship"></td>
-                                <td><input type="text" name="family_3_member_status"></td>
-                            </tr>
-                            <tr>
-                                <td><input type="text" name="family_4_name"></td>
-                                <td><input type="number" name="family_4_age"></td>
-                                <td><input type="text" name="family_4_relationship"></td>
-                                <td><input type="text" name="family_4_member_status"></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="section-title">PERSONAL DATA</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th colspan="2">APPLICANT</th>
+                        <th colspan="2">SPOUSE</th>
+                    </tr>
+                    <tr>
+                        <td>Last Name:</td>
+                        <td><input type="text" name="applicant_last_name"></td>
+                        <td>Last Name:</td>
+                        <td><input type="text" name="spouse_last_name"></td>
+                    </tr>
+                    <tr>
+                        <td>First Name:</td>
+                        <td><input type="text" name="applicant_first_name"></td>
+                        <td>First Name:</td>
+                        <td><input type="text" name="spouse_first_name"></td>
+                    </tr>
+                    <tr>
+                        <td>Middle Name:</td>
+                        <td><input type="text" name="applicant_middle_name"></td>
+                        <td>Middle Name:</td>
+                        <td><input type="text" name="spouse_middle_name"></td>
+                    </tr>
+                    <tr>
+                        <td>Birthday:</td>
+                        <td><input type="date" name="applicant_birthday"></td>
+                        <td>Birthday:</td>
+                        <td><input type="date" name="spouse_birthday"></td>
+                    </tr>
+                    <tr>
+                        <td>Age:</td>
+                        <td><input type="number" name="applicant_age"></td>
+                        <td>Age:</td>
+                        <td><input type="number" name="spouse_age"></td>
+                    </tr>
+                </table>
+
+                <div class="section-title">FAMILY BACKGROUND</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th>NAME OF PARENTS AND CHILDREN</th>
+                        <th width="60px">AGE</th>
+                        <th width="120px">RELATIONSHIP</th>
+                        <th width="150px">MEMBER/NON-Member</th>
+                    </tr>
+                    <tr><td><input type="text" name="family_1_name"></td><td><input type="number" name="family_1_age"></td><td><input type="text" name="family_1_rel"></td><td><input type="text" name="family_1_member"></td></tr>
+                    <tr><td><input type="text" name="family_2_name"></td><td><input type="number" name="family_2_age"></td><td><input type="text" name="family_2_rel"></td><td><input type="text" name="family_2_member"></td></tr>
+                    <tr><td><input type="text" name="family_3_name"></td><td><input type="number" name="family_3_age"></td><td><input type="text" name="family_3_rel"></td><td><input type="text" name="family_3_member"></td></tr>
+                    <tr><td><input type="text" name="family_4_name"></td><td><input type="number" name="family_4_age"></td><td><input type="text" name="family_4_rel"></td><td><input type="text" name="family_4_member"></td></tr>
+                </table>
+
+                <div class="section-title">RESIDENCE CHECKING</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td colspan="6"><strong>Present Address:</strong></td>
+                    </tr>
+                    <tr>
+                        <td>House No.</td>
+                        <td><input type="text" name="house_no"></td>
+                        <td>Street</td>
+                        <td><input type="text" name="street"></td>
+                        <td>Barangay</td>
+                        <td><input type="text" name="barangay"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">City/Municipality</td>
+                        <td colspan="2"><input type="text" name="city"></td>
+                        <td>Province</td>
+                        <td><input type="text" name="province"></td>
+                    </tr>
+                </table>
+
+                <div class="section-title">Residence Status:</div>
+                <div style="margin: 10px 0;">
+                    <label class="checkbox-inline"><input type="checkbox" name="res_owned"> Owned</label>
+                    <label class="checkbox-inline"><input type="checkbox" name="res_rented"> Rented</label>
+                    <label class="checkbox-inline"><input type="checkbox" name="res_living_parents"> Living with Parents</label>
+                    <label class="checkbox-inline"><input type="checkbox" name="res_mortgaged"> Mortgaged</label>
+                    <label class="checkbox-inline"><input type="checkbox" name="res_others"> Others</label>
                 </div>
-            </div>
-            
-            <div class="wizard-navigation">
-                <button type="button" class="btn btn-secondary" disabled>
-                    <i class="bi bi-arrow-left"></i> Previous
-                </button>
-                <div class="page-indicator">Page 1 of 8</div>
-                <button type="button" class="btn btn-primary" onclick="nextPage()">
-                    Next <i class="bi bi-arrow-right"></i>
-                </button>
+
+                <div class="section-title">Type of House:</div>
+                <div style="margin: 10px 0;">
+                    <label class="checkbox-inline"><input type="checkbox" name="house_concrete"> Concrete</label>
+                    <label class="checkbox-inline"><input type="checkbox" name="house_semi"> Semi-Concrete</label>
+                    <label class="checkbox-inline"><input type="checkbox" name="house_wood"> Wood</label>
+                    <label class="checkbox-inline"><input type="checkbox" name="house_shanty"> Shanty</label>
+                    <label class="checkbox-inline"><input type="checkbox" name="house_others"> Others</label>
+                </div>
+
+                <div class="section-title">COURT AND OTHER GOVERNMENT AGENCY CHECKING (if applicable):</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th width="60px">YES</th>
+                        <th width="60px">NO</th>
+                        <th>Item</th>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="court_1_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="court_1_no"></td>
+                        <td>Has record of complaints regarding money or debt</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="court_2_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="court_2_no"></td>
+                        <td>Has pending case for money judgment or sum of money or replevin, foreclosure, garnishment, insolvency</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="court_3_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="court_3_no"></td>
+                        <td>Has criminal record (Police/NBI clearance)</td>
+                    </tr>
+                </table>
+
+                <div class="section-title">EMPLOYMENT/BUSINESS CHECKING</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th colspan="2">APPLICANT</th>
+                        <th colspan="2">SPOUSE</th>
+                    </tr>
+                    <tr>
+                        <td colspan="4"><strong>Employment Details:</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Employer:</td>
+                        <td><input type="text" name="app_employer"></td>
+                        <td>Employer:</td>
+                        <td><input type="text" name="spouse_employer"></td>
+                    </tr>
+                    <tr>
+                        <td>Office Address:</td>
+                        <td><input type="text" name="app_office"></td>
+                        <td>Office Address:</td>
+                        <td><input type="text" name="spouse_office"></td>
+                    </tr>
+                    <tr>
+                        <td>Contact Number:</td>
+                        <td><input type="text" name="app_contact"></td>
+                        <td>Contact Number:</td>
+                        <td><input type="text" name="spouse_contact"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4"><strong>Status of Employment:</strong></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">
+                            <label class="checkbox-inline"><input type="checkbox" name="app_permanent"> Permanent</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="app_casual"> Casual</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="app_contractual"> Contractual</label>
+                        </td>
+                        <td colspan="2">
+                            <label class="checkbox-inline"><input type="checkbox" name="spouse_permanent"> Permanent</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="spouse_casual"> Casual</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="spouse_contractual"> Contractual</label>
+                        </td>
+                    </tr>
+                </table>
+
+                <div class="text-center mt-4 no-print">
+                    <button type="button" class="btn btn-lg btn-primary" onclick="nextPage()">
+                        Next Page <i class="bi bi-arrow-right"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
-        <!-- PAGE 2: RESIDENCE & COURT CHECKING -->
+        <!-- PAGE 2: CREDIT CHECKING + MEMBERSHIP (Matches your image 3) -->
         <div class="wizard-page" data-page="2">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">RESIDENCE CHECKING</h5>
+            <div class="paper-form">
+                <div class="form-header">
+                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
                 </div>
-                <div class="card-body">
-                    <table class="form-table">
-                        <tr>
-                            <td colspan="2"><strong>Present Address:</strong></td>
-                        </tr>
-                        <tr>
-                            <td><label>House No:</label><input type="text" name="house_no"></td>
-                            <td><label>Street:</label><input type="text" name="street"></td>
-                        </tr>
-                        <tr>
-                            <td><label>Barangay:</label><input type="text" name="barangay" value="{{ application.member_address.split(',')[0] if application.member_address else '' }}"></td>
-                            <td><label>City/Municipality:</label><input type="text" name="city"></td>
-                        </tr>
-                        <tr>
-                            <td colspan="2"><label>Province:</label><input type="text" name="province"></td>
-                        </tr>
-                        <tr>
-                            <td colspan="2"><strong>Permanent Address:</strong></td>
-                        </tr>
-                        <tr>
-                            <td><label>House No:</label><input type="text" name="perm_house_no"></td>
-                            <td><label>Street:</label><input type="text" name="perm_street"></td>
-                        </tr>
-                        <tr>
-                            <td><label>Barangay:</label><input type="text" name="perm_barangay"></td>
-                            <td><label>City/Municipality:</label><input type="text" name="perm_city"></td>
-                        </tr>
-                        <tr>
-                            <td colspan="2"><label>Province:</label><input type="text" name="perm_province"></td>
-                        </tr>
-                    </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">Residence Status:</h6>
-                    <div class="checkbox-group">
-                        <div class="checkbox-item"><input type="checkbox" name="res_owned" id="res_owned"><label for="res_owned">Owned</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="res_rented" id="res_rented"><label for="res_rented">Rented</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="res_living_parents" id="res_living_parents"><label for="res_living_parents">Living with Parents</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="res_mortgaged" id="res_mortgaged"><label for="res_mortgaged">Mortgaged</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="res_others" id="res_others"><label for="res_others">Others</label></div>
-                    </div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td>Business Name:</td>
+                        <td colspan="3"><input type="text" name="business_name"></td>
+                    </tr>
+                    <tr>
+                        <td>Address:</td>
+                        <td colspan="3"><input type="text" name="business_address"></td>
+                    </tr>
+                    <tr>
+                        <td>Nature:</td>
+                        <td colspan="3">
+                            <label class="checkbox-inline"><input type="checkbox" name="nature_sole"> Sole Proprietorship</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="nature_partnership"> Partnership</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="nature_corp"> Corporation</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="nature_service"> Service</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="nature_others"> Others</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Years in Business:</td>
+                        <td><input type="number" name="years_business"></td>
+                        <td colspan="2"><small>* To be supported with Annual Income Tax Return and Audited Financial Statements</small></td>
+                    </tr>
+                </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">Type of House:</h6>
-                    <div class="checkbox-group">
-                        <div class="checkbox-item"><input type="checkbox" name="house_concrete" id="house_concrete"><label for="house_concrete">Concrete</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_semi" id="house_semi"><label for="house_semi">Semi-Concrete</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_wood" id="house_wood"><label for="house_wood">Wood</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_shanty" id="house_shanty"><label for="house_shanty">Shanty</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_others" id="house_others"><label for="house_others">Others</label></div>
-                    </div>
+                <div class="section-title">CREDIT CHECKING</div>
+                <div style="text-align: right; font-size: 10px; margin-bottom: 5px;">CONFIDENTIAL</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th>Item</th>
+                        <th width="120px">Updated/NRCS</th>
+                        <th width="120px">Delayed/Non-NRCS</th>
+                        <th width="200px">Remarks</th>
+                    </tr>
+                    <tr><td>Electric Company</td><td style="text-align:center"><input type="checkbox" name="credit_electric_updated"></td><td style="text-align:center"><input type="checkbox" name="credit_electric_delayed"></td><td><input type="text" name="credit_electric_remarks"></td></tr>
+                    <tr><td>Water/Utility Company</td><td style="text-align:center"><input type="checkbox" name="credit_water_updated"></td><td style="text-align:center"><input type="checkbox" name="credit_water_delayed"></td><td><input type="text" name="credit_water_remarks"></td></tr>
+                    <tr><td>Other Cooperatives</td><td style="text-align:center"><input type="checkbox" name="credit_coop_updated"></td><td style="text-align:center"><input type="checkbox" name="credit_coop_delayed"></td><td><input type="text" name="credit_coop_remarks"></td></tr>
+                    <tr><td>N/A</td><td style="text-align:center"><input type="checkbox" name="credit_na1"></td><td></td><td></td></tr>
+                    <tr><td>Banks</td><td style="text-align:center"><input type="checkbox" name="credit_banks_updated"></td><td style="text-align:center"><input type="checkbox" name="credit_banks_delayed"></td><td><input type="text" name="credit_banks_remarks"></td></tr>
+                    <tr><td>Other Financial Institutions</td><td style="text-align:center"><input type="checkbox" name="credit_financial_updated"></td><td style="text-align:center"><input type="checkbox" name="credit_financial_delayed"></td><td><input type="text" name="credit_financial_remarks"></td></tr>
+                    <tr><td>N/A</td><td style="text-align:center"><input type="checkbox" name="credit_na2"></td><td></td><td></td></tr>
+                    <tr><td>Sari-sari Store</td><td style="text-align:center"><input type="checkbox" name="credit_store_updated"></td><td style="text-align:center"><input type="checkbox" name="credit_store_delayed"></td><td><input type="text" name="credit_store_remarks"></td></tr>
+                    <tr><td>N/A</td><td style="text-align:center"><input type="checkbox" name="credit_na3"></td><td></td><td></td></tr>
+                    <tr><td>Loans with Informal Lenders</td><td style="text-align:center"><input type="checkbox" name="credit_informal_updated"></td><td style="text-align:center"><input type="checkbox" name="credit_informal_delayed"></td><td><input type="text" name="credit_informal_remarks"></td></tr>
+                    <tr><td>N/A</td><td style="text-align:center"><input type="checkbox" name="credit_na4"></td><td></td><td></td></tr>
+                </table>
 
-                    <div class="checkbox-group mt-3">
-                        <div class="checkbox-item"><input type="checkbox" name="house_row" id="house_row"><label for="house_row">Row House</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_duplex" id="house_duplex"><label for="house_duplex">Duplex</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_single" id="house_single"><label for="house_single">Single-Detached</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_split" id="house_split"><label for="house_split">Split Type</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_two_storey" id="house_two_storey"><label for="house_two_storey">Two-Storey</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="house_condo" id="house_condo"><label for="house_condo">Condo Unit</label></div>
-                    </div>
+                <div class="section-title">MEMBERSHIP STATUS WITH DCCCO</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td>Membership Classification:</td>
+                        <td colspan="3">
+                            <label class="checkbox-inline"><input type="checkbox" name="member_new"> New Member</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="member_nrcs"> NRCS</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="member_non_nrcs"> Non-NRCS</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="4"><strong>Loan Accounts with DCCCO (last attached SDA):</strong></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4">
+                            <label class="checkbox-inline"><input type="checkbox" name="loan_no_loan"> No Loan</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="loan_1_2"> 1-2 Filers</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="loan_more_2"> More than 2 Filers</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="loan_past_due"> Past Due</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="loan_restructured"> Restructured</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="4"><strong>Outstanding loan accounts within 12 months:</strong></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4">
+                            <label class="checkbox-inline"><input type="checkbox" name="outstanding_no"> No Loan</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="outstanding_1_2"> 1-2 Filers</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="outstanding_more"> More than 2 Filers</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="outstanding_past"> Past Due</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="outstanding_restr"> Restructured</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Other Loan Accounts:</td>
+                        <td colspan="3">
+                            <label class="checkbox-inline"><input type="checkbox" name="other_niskal"> Niskal</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="other_bronze"> Bronze</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="other_silver"> Silver</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="other_gold"> Gold</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="other_platinum"> Platinum</label>
+                        </td>
+                    </tr>
+                </table>
 
-                    <div class="row mt-3">
-                        <div class="col-md-6">
-                            <label>Length of Stay (Years):</label>
-                            <input type="number" class="form-control" name="stay_years">
-                        </div>
-                        <div class="col-md-6">
-                            <label>Length of Stay (Months):</label>
-                            <input type="number" class="form-control" name="stay_months">
-                        </div>
-                    </div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td>Date Reported:</td>
+                        <td><input type="date" name="date_reported"></td>
+                        <td>Date Investigated:</td>
+                        <td><input type="date" name="date_investigated"></td>
+                    </tr>
+                    <tr>
+                        <td>Prepared by:</td>
+                        <td><input type="text" name="prepared_by" value="{{ current_user.name }}" readonly></td>
+                        <td>Reviewed by:</td>
+                        <td><input type="text" name="reviewed_by"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="text-align:center"><small>Credit Investigator</small></td>
+                        <td colspan="2" style="text-align:center"><small>Head, Credit Investigator / Credit Officer</small></td>
+                    </tr>
+                </table>
 
-                    <div class="mt-3">
-                        <label>Remarks:</label>
-                        <textarea class="form-control" name="residence_remarks" rows="2"></textarea>
-                    </div>
-
-                    <h6 class="mt-4 mb-3 fw-bold">COURT AND OTHER GOVERNMENT AGENCY CHECKING</h6>
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th>Item</th>
-                                <th width="80px">YES</th>
-                                <th width="80px">NO</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Has record of complaints regarding money or debt</td>
-                                <td class="text-center"><input type="radio" name="court_complaints" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="court_complaints" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Has pending case for money judgment or sum of money or replevin, foreclosure, garnishment, insolvency</td>
-                                <td class="text-center"><input type="radio" name="court_pending" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="court_pending" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Has criminal record (Police/NBI clearance)</td>
-                                <td class="text-center"><input type="radio" name="court_criminal" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="court_criminal" value="no"></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="text-center mt-4 no-print">
+                    <button type="button" class="btn btn-secondary" onclick="previousPage()">
+                        <i class="bi bi-arrow-left"></i> Previous
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="nextPage()">
+                        Next <i class="bi bi-arrow-right"></i>
+                    </button>
                 </div>
-            </div>
-            
-            <div class="wizard-navigation">
-                <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                    <i class="bi bi-arrow-left"></i> Previous
-                </button>
-                <div class="page-indicator">Page 2 of 8</div>
-                <button type="button" class="btn btn-primary" onclick="nextPage()">
-                    Next <i class="bi bi-arrow-right"></i>
-                </button>
             </div>
         </div>
 
-        <!-- PAGE 3: EMPLOYMENT/BUSINESS CHECKING -->
+        <!-- PAGE 3: COMPUTATION (Matches your image 4 - WITH DYNAMIC CALCULATIONS) -->
         <div class="wizard-page" data-page="3">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">EMPLOYMENT/BUSINESS CHECKING</h5>
-                </div>
-                <div class="card-body">
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th width="50%">APPLICANT</th>
-                                <th width="50%">SPOUSE</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td colspan="2"><strong>Employment Details:</strong></td>
-                            </tr>
-                            <tr>
-                                <td><label>Employer:</label><input type="text" name="applicant_employer"></td>
-                                <td><label>Employer:</label><input type="text" name="spouse_employer"></td>
-                            </tr>
-                            <tr>
-                                <td><label>Office Address:</label><input type="text" name="applicant_office_address"></td>
-                                <td><label>Office Address:</label><input type="text" name="spouse_office_address"></td>
-                            </tr>
-                            <tr>
-                                <td><label>Date of Organization:</label><input type="date" name="applicant_org_date"></td>
-                                <td><label>Date of Organization:</label><input type="date" name="spouse_org_date"></td>
-                            </tr>
-                            <tr>
-                                <td><label>Contact Number:</label><input type="text" name="applicant_employer_contact"></td>
-                                <td><label>Contact Number:</label><input type="text" name="spouse_employer_contact"></td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <h6 class="mt-4 mb-3 fw-bold">Status of Employment (Applicant):</h6>
-                    <div class="checkbox-group">
-                        <div class="checkbox-item"><input type="checkbox" name="app_emp_permanent"><label>Permanent</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_emp_casual"><label>Casual</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_emp_contractual"><label>Contractual</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_emp_probationary"><label>Probationary</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_emp_others"><label>Others</label></div>
-                    </div>
-
-                    <div class="row mt-3">
-                        <div class="col-md-6">
-                            <label>Length of Service (Years):</label>
-                            <input type="number" class="form-control" name="app_service_years">
-                        </div>
-                        <div class="col-md-6">
-                            <label>Length of Service (Months):</label>
-                            <input type="number" class="form-control" name="app_service_months">
-                        </div>
-                    </div>
-
-                    <h6 class="mt-4 mb-3 fw-bold">Type of Organization (Applicant):</h6>
-                    <div class="checkbox-group">
-                        <div class="checkbox-item"><input type="checkbox" name="app_org_govt"><label>Government Institution</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_org_military"><label>Military and Uniformed Personnel</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_org_depot"><label>Depot</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_org_others"><label>Others</label></div>
-                    </div>
-
-                    <h6 class="mt-3 mb-2 fw-bold">Private Institution:</h6>
-                    <div class="checkbox-group">
-                        <div class="checkbox-item"><input type="checkbox" name="app_private_small"><label>Small</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_private_medium"><label>Medium</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_private_large"><label>Large</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="app_private_bpo"><label>Business Processing Outsourcing (BPO)</label></div>
-                    </div>
-
-                    <hr class="my-4">
-
-                    <h6 class="mb-3 fw-bold">Status of Employment (Spouse):</h6>
-                    <div class="checkbox-group">
-                        <div class="checkbox-item"><input type="checkbox" name="spouse_emp_permanent"><label>Permanent</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="spouse_emp_casual"><label>Casual</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="spouse_emp_contractual"><label>Contractual</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="spouse_emp_probationary"><label>Probationary</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="spouse_emp_others"><label>Others</label></div>
-                    </div>
-
-                    <div class="row mt-3">
-                        <div class="col-md-6">
-                            <label>Length of Service (Years):</label>
-                            <input type="number" class="form-control" name="spouse_service_years">
-                        </div>
-                        <div class="col-md-6">
-                            <label>Length of Service (Months):</label>
-                            <input type="number" class="form-control" name="spouse_service_months">
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="wizard-navigation">
-                <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                    <i class="bi bi-arrow-left"></i> Previous
-                </button>
-                <div class="page-indicator">Page 3 of 8</div>
-                <button type="button" class="btn btn-primary" onclick="nextPage()">
-                    Next <i class="bi bi-arrow-right"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- PAGE 4: CREDIT CHECKING -->
-        <div class="wizard-page" data-page="4">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">CREDIT CHECKING</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <label class="fw-bold">Business Name:</label>
-                            <input type="text" class="form-control" name="business_name">
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-12">
-                            <label class="fw-bold">Address:</label>
-                            <input type="text" class="form-control" name="business_address">
-                        </div>
-                    </div>
-
-                    <h6 class="mb-2 fw-bold">Nature:</h6>
-                    <div class="checkbox-group mb-3">
-                        <div class="checkbox-item"><input type="checkbox" name="nature_sole"><label>Sole Proprietorship</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="nature_partnership"><label>Partnership</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="nature_corporation"><label>Corporation</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="nature_service"><label>Service</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="nature_manufacturing"><label>Manufacturing</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="nature_others"><label>Others</label></div>
-                    </div>
-
-                    <div class="row mb-4">
-                        <div class="col-md-6">
-                            <label class="fw-bold">Years in Business:</label>
-                            <input type="number" class="form-control" name="years_in_business">
-                        </div>
-                    </div>
-
-                    <h6 class="mb-3 fw-bold">CREDIT CHECKING</h6>
-                    <div class="table-responsive">
-                        <table class="form-table">
-                            <thead>
-                                <tr>
-                                    <th>Item</th>
-                                    <th width="120px">Updated/NRCS</th>
-                                    <th width="120px">Delayed/Non-NRCS</th>
-                                    <th>Remarks</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><strong>Electric Company</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_electric_updated"></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_electric_delayed"></td>
-                                    <td><input type="text" name="credit_electric_remarks"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Water/Utility Company</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_water_updated"></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_water_delayed"></td>
-                                    <td><input type="text" name="credit_water_remarks"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Other Cooperatives</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_coop_updated"></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_coop_delayed"></td>
-                                    <td><input type="text" name="credit_coop_remarks"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>N/A</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_na1"></td>
-                                    <td></td>
-                                    <td></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Banks</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_banks_updated"></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_banks_delayed"></td>
-                                    <td><input type="text" name="credit_banks_remarks"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Other Financial Institutions</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_financial_updated"></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_financial_delayed"></td>
-                                    <td><input type="text" name="credit_financial_remarks"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>N/A</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_na2"></td>
-                                    <td></td>
-                                    <td></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Sari-sari Store</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_store_updated"></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_store_delayed"></td>
-                                    <td><input type="text" name="credit_store_remarks"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>N/A</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_na3"></td>
-                                    <td></td>
-                                    <td></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Loans with Informal Lenders</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_informal_updated"></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_informal_delayed"></td>
-                                    <td><input type="text" name="credit_informal_remarks"></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>N/A</strong></td>
-                                    <td class="text-center"><input type="checkbox" name="credit_na4"></td>
-                                    <td></td>
-                                    <td></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="wizard-navigation">
-                <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                    <i class="bi bi-arrow-left"></i> Previous
-                </button>
-                <div class="page-indicator">Page 4 of 8</div>
-                <button type="button" class="btn btn-primary" onclick="nextPage()">
-                    Next <i class="bi bi-arrow-right"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- PAGE 5: MEMBERSHIP STATUS WITH DCCCO -->
-        <div class="wizard-page" data-page="5">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">MEMBERSHIP STATUS WITH DCCCO</h5>
-                </div>
-                <div class="card-body">
-                    <h6 class="mb-3 fw-bold">Membership Classification:</h6>
-                    <div class="checkbox-group mb-4">
-                        <div class="checkbox-item"><input type="checkbox" name="member_new"><label>New Member</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="member_nrcs"><label>NRCS</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="member_non_nrcs"><label>Non-NRCS</label></div>
-                    </div>
-
-                    <h6 class="mb-3 fw-bold">Loan Accounts with DCCCO (last attached SDA):</h6>
-                    <div class="checkbox-group mb-4">
-                        <div class="checkbox-item"><input type="checkbox" name="loan_no_loan"><label>No Loan</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="loan_1_2_filers"><label>1-2 Filers</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="loan_more_2"><label>More than 2 Filers</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="loan_past_due"><label>Past Due</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="loan_restructured"><label>Restructured</label></div>
-                    </div>
-
-                    <h6 class="mb-3 fw-bold">Outstanding loan accounts within 12 months:</h6>
-                    <div class="checkbox-group mb-4">
-                        <div class="checkbox-item"><input type="checkbox" name="outstanding_no_loan"><label>No Loan</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="outstanding_1_2"><label>1-2 Filers</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="outstanding_more_2"><label>More than 2 Filers</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="outstanding_past_due"><label>Past Due</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="outstanding_restructured"><label>Restructured</label></div>
-                    </div>
-
-                    <h6 class="mb-3 fw-bold">Other Loan Accounts:</h6>
-                    <div class="checkbox-group mb-4">
-                        <div class="checkbox-item"><input type="checkbox" name="other_niskal"><label>Niskal</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="other_bronze"><label>Bronze</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="other_silver"><label>Silver</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="other_gold"><label>Gold</label></div>
-                        <div class="checkbox-item"><input type="checkbox" name="other_platinum"><label>Platinum</label></div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="fw-bold">Date Reported:</label>
-                            <input type="date" class="form-control" name="date_reported">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="fw-bold">Date Investigated:</label>
-                            <input type="date" class="form-control" name="date_investigated">
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="fw-bold">Prepared by:</label>
-                            <input type="text" class="form-control" name="prepared_by" value="{{ current_user.name }}" readonly>
-                            <small class="text-muted">Credit Investigator</small>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="fw-bold">Reviewed by:</label>
-                            <input type="text" class="form-control" name="reviewed_by">
-                            <small class="text-muted">Head, Credit Investigator</small>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="fw-bold">Noted by:</label>
-                            <input type="text" class="form-control" name="noted_by">
-                            <small class="text-muted">Credit Officer</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="wizard-navigation">
-                <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                    <i class="bi bi-arrow-left"></i> Previous
-                </button>
-                <div class="page-indicator">Page 5 of 8</div>
-                <button type="button" class="btn btn-primary" onclick="nextPage()">
-                    Next <i class="bi bi-arrow-right"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- PAGE 6: COMPUTATION OF DEBT AND EXPENSE-TO-INCOME RATIO -->
-        <div class="wizard-page" data-page="6">
-            <div class="card">
-                <div class="card-header bg-primary text-white text-center">
-                    <h5 class="mb-0">DCCCO MULTIPURPOSE COOPERATIVE</h5>
+            <div class="paper-form">
+                <div class="form-header">
+                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
                     <small>COMPUTATION OF DEBT AND EXPENSE-TO-INCOME RATIO</small>
                 </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label class="fw-bold">Name of Member:</label>
-                            <input type="text" class="form-control" value="{{ application.member_name }}" readonly>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="fw-bold">Applied Loan:</label>
-                            <input type="text" class="form-control" value="{{ application.loan_type }}" readonly>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="fw-bold">Applied Amount:</label>
-                            <input type="text" class="form-control" value="₱{{ '{:,.2f}'.format(application.loan_amount) }}" readonly>
-                        </div>
-                    </div>
 
-                    <h6 class="mt-4 mb-3 fw-bold bg-light p-2">INCOME</h6>
-                    <table class="form-table">
-                        <tr>
-                            <td width="60%"><strong>Gross Pay</strong></td>
-                            <td width="40%">₱ <input type="number" name="gross_pay" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td><strong>Add: Allowances/Benefits</strong> (Received monthly)</td>
-                            <td>₱ <input type="number" name="allowances" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>PERA/ACA</td>
-                            <td>₱ <input type="number" name="pera_aca" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Long Pay</td>
-                            <td>₱ <input type="number" name="long_pay" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td><strong>Less: Statutory Deductions</strong> (all deductions reflected on the pay slip)</td>
-                            <td>₱ <input type="number" name="statutory_deductions" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr class="table-success">
-                            <td><strong>Net Pay</strong></td>
-                            <td><strong>₱ <input type="number" name="net_pay" step="0.01" value="0" readonly style="background: #d1e7dd; font-weight: bold;"></strong></td>
-                        </tr>
-                    </table>
+                <table class="form-table-paper">
+                    <tr>
+                        <td>Name of Member:</td>
+                        <td colspan="3"><input type="text" name="comp_member_name" value="{{ application.member_name }}" readonly></td>
+                    </tr>
+                    <tr>
+                        <td>Membership Classification:</td>
+                        <td><input type="text" name="comp_membership"></td>
+                        <td>Applied Loan:</td>
+                        <td><input type="text" name="comp_loan_type" value="{{ application.loan_type }}" readonly></td>
+                    </tr>
+                    <tr>
+                        <td>Occupation:</td>
+                        <td><input type="text" name="comp_occupation"></td>
+                        <td>Applied Amount:</td>
+                        <td><input type="number" name="comp_applied_amount" value="{{ application.loan_amount }}" readonly></td>
+                    </tr>
+                </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">Other Income (with proof):</h6>
-                    <table class="form-table">
-                        <tr>
-                            <td width="60%">Income from Business/Salary Permit/ITR, Audited FS</td>
-                            <td width="40%">₱ <input type="number" name="income_business" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Remittance from Abroad/ATM Card</td>
-                            <td>₱ <input type="number" name="remittance" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Allotment (Base Statement, Certificate of Allotment)</td>
-                            <td>₱ <input type="number" name="allotment" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Others (with documents to support)</td>
-                            <td>₱ <input type="number" name="other_income" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr class="table-success">
-                            <td><strong>Total Gross Income</strong></td>
-                            <td><strong>₱ <input type="number" name="total_gross_income" step="0.01" value="0" readonly style="background: #d1e7dd; font-weight: bold;"></strong></td>
-                        </tr>
-                    </table>
+                <div class="section-title">INCOME</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td colspan="3">Gross Pay:</td>
+                        <td><input type="number" name="gross_pay" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3">Add: Allowances/Benefits (Received monthly):</td>
+                        <td><input type="number" name="allowances" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3">PERA/ACA:</td>
+                        <td><input type="number" name="pera_aca" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3">Long Pay:</td>
+                        <td><input type="number" name="long_pay" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3">Less: Statutory Deductions (all deductions reflected on the pay slip):</td>
+                        <td><input type="number" name="statutory_deductions" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr style="background: #f0f0f0;">
+                        <td colspan="3"><strong>Net Pay:</strong></td>
+                        <td><input type="number" name="net_pay" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                    </tr>
+                </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold bg-light p-2">LOAN AMORTIZATIONS & OTHER OBLIGATIONS/EXPENSES</h6>
-                    <p class="mb-2"><strong>LOAN AMORTIZATIONS</strong></p>
-                    <p class="mb-2">From Other Institutions:</p>
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th>Institution</th>
-                                <th>Principal</th>
-                                <th>Balance</th>
-                                <th>Monthly Amortization</th>
-                                <th width="50px"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="loan_rows_container">
-                            <tr class="loan-row">
-                                <td><input type="text" name="loan_1_institution"></td>
-                                <td>₱ <input type="number" name="loan_1_principal" step="0.01"></td>
-                                <td>₱ <input type="number" name="loan_1_balance" step="0.01"></td>
-                                <td>₱ <input type="number" name="loan_1_monthly" step="0.01" oninput="updateLoanAmortizations()"></td>
-                                <td></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <button type="button" class="btn btn-sm btn-success mt-2" onclick="addLoanRow()">
-                        <i class="bi bi-plus-circle"></i> Add Loan
+                <div class="section-title">OTHER INCOME (with proof)</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td colspan="3">Income from Business/Salary Permit/ITR, Audited FS:</td>
+                        <td><input type="number" name="income_business" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3">Remittance from Abroad/ATM Card:</td>
+                        <td><input type="number" name="remittance" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3">Allotment (Base Statement, Certificate of Allotment):</td>
+                        <td><input type="number" name="allotment" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="3">Others (with documents to support):</td>
+                        <td><input type="number" name="other_income" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                    </tr>
+                    <tr style="background: #f0f0f0;">
+                        <td colspan="3"><strong>Total Gross Income:</strong></td>
+                        <td><input type="number" name="total_gross_income" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                    </tr>
+                </table>
+
+                <div class="section-title">LOAN AMORTIZATIONS & OTHER OBLIGATIONS/EXPENSES</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th>From Other Institutions</th>
+                        <th>Principal</th>
+                        <th>Balance</th>
+                        <th>Monthly Amortization</th>
+                    </tr>
+                    <tbody id="loan_rows_container">
+                        <tr class="loan-row">
+                            <td><input type="text" name="loan_1_institution"></td>
+                            <td><input type="number" name="loan_1_principal" step="0.01" value="0"></td>
+                            <td><input type="number" name="loan_1_balance" step="0.01" value="0"></td>
+                            <td><input type="number" name="loan_1_monthly" step="0.01" value="0" oninput="updateLoanAmortizations()"></td>
+                        </tr>
+                    </tbody>
+                    <tr>
+                        <td colspan="4" style="text-align: center;">
+                            <button type="button" class="btn btn-sm btn-success" onclick="addLoanRow()">
+                                <i class="bi bi-plus"></i> Add Loan
+                            </button>
+                        </td>
+                    </tr>
+                    <tr style="background: #f0f0f0;">
+                        <td colspan="3"><strong>Sub-total:</strong></td>
+                        <td><input type="number" name="total_loan_amortizations" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                    </tr>
+                </table>
+
+                <table class="form-table-paper">
+                    <tr>
+                        <th colspan="2">DCCCO Loans (existing)</th>
+                        <th>Monthly Amortization</th>
+                    </tr>
+                    <tr>
+                        <td colspan="2"><input type="text" name="dccco_loan_1_desc" placeholder="Loan description"></td>
+                        <td><input type="number" name="dccco_loan_1" step="0.01" value="0" oninput="updateTotalBeforeNew()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2"><input type="text" name="dccco_loan_2_desc" placeholder="Loan description"></td>
+                        <td><input type="number" name="dccco_loan_2" step="0.01" value="0" oninput="updateTotalBeforeNew()"></td>
+                    </tr>
+                    <tr style="background: #f0f0f0;">
+                        <td colspan="2"><strong>Total Loans/Amortizations before New Loan:</strong></td>
+                        <td><input type="number" name="total_before_new" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                    </tr>
+                </table>
+
+                <table class="form-table-paper">
+                    <tr>
+                        <td colspan="2">Add: Loan applied for:</td>
+                        <td><input type="number" name="new_loan_amount" step="0.01" value="0" oninput="updateNewLoan()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Less: Loan's deductible from proceeds:</td>
+                        <td><input type="number" name="loan_deductible" step="0.01" value="0" oninput="updateNewLoan()"></td>
+                    </tr>
+                    <tr style="background: #f0f0f0;">
+                        <td colspan="2"><strong>New Loan:</strong></td>
+                        <td><input type="number" name="new_loan_final" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                    </tr>
+                </table>
+
+                <div class="section-title">OTHER OBLIGATIONS/EXPENSES</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td colspan="2">Household Expenses (₱3,500.00 per family member):</td>
+                        <td><input type="number" name="household_expenses" step="0.01" value="0" oninput="updateOtherObligations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Tuition & other school expenses:</td>
+                        <td><input type="number" name="tuition" step="0.01" value="0" oninput="updateOtherObligations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Medical/Hospitalization:</td>
+                        <td><input type="number" name="medical" step="0.01" value="0" oninput="updateOtherObligations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Water & Fuel consumption:</td>
+                        <td><input type="number" name="water_fuel" step="0.01" value="0" oninput="updateOtherObligations()"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Internet/Cellphone load:</td>
+                        <td><input type="number" name="internet" step="0.01" value="0" oninput="updateOtherObligations()"></td>
+                    </tr>
+                    <tr style="background: #f0f0f0;">
+                        <td colspan="2"><strong>TOTAL LOAN AMORTIZATIONS & OTHER OBLIGATIONS/EXPENSES:</strong></td>
+                        <td><input type="number" name="total_other_obligations" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                    </tr>
+                    <tr style="background: #ffffcc;">
+                        <td colspan="2"><strong>Net Disposable Income:</strong></td>
+                        <td><input type="number" name="net_disposable_income" step="0.01" value="0" readonly style="background: #ffffcc; font-weight: bold;"></td>
+                    </tr>
+                </table>
+
+                <div class="section-title">FINAL CALCULATIONS</div>
+                <table class="form-table-paper">
+                    <tr style="background: #ffffcc;">
+                        <td colspan="2"><strong>Debt & Expense to Income Ratio (80% maximum):</strong></td>
+                        <td><input type="number" name="debt_expense_ratio" step="0.01" value="0" readonly style="background: #ffffcc; font-weight: bold;"> %</td>
+                    </tr>
+                    <tr style="background: #ffffcc;">
+                        <td colspan="2"><strong>Total Loan Amortization Limit (80% of Total Gross Income):</strong></td>
+                        <td><input type="number" name="loan_amortization_limit" step="0.01" value="0" readonly style="background: #ffffcc; font-weight: bold;"></td>
+                    </tr>
+                </table>
+
+                <div class="text-center mt-4 no-print">
+                    <button type="button" class="btn btn-secondary" onclick="previousPage()">
+                        <i class="bi bi-arrow-left"></i> Previous
                     </button>
-
-                    <table class="form-table mt-3">
-                        <tr class="table-warning">
-                            <td width="60%"><strong>Sub-total (Other Institutions)</strong></td>
-                            <td width="40%"><strong>₱ <input type="number" name="total_loan_amortizations" step="0.01" value="0" readonly style="background: #fff3cd; font-weight: bold;"></strong></td>
-                        </tr>
-                    </table>
-
-                    <p class="mt-3 mb-2"><strong>DCCCO Loans (existing):</strong></p>
-                    <table class="form-table">
-                        <tbody id="dccco_loan_rows">
-                            <tr>
-                                <td width="60%">Existing DCCCO Loan 1</td>
-                                <td width="40%">₱ <input type="number" name="dccco_loan_1" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                            </tr>
-                            <tr>
-                                <td>Existing DCCCO Loan 2</td>
-                                <td>₱ <input type="number" name="dccco_loan_2" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <table class="form-table mt-3">
-                        <tr class="table-info">
-                            <td width="60%"><strong>Total Loans/Amortizations before New Loan</strong></td>
-                            <td width="40%"><strong>₱ <input type="number" name="total_before_new" step="0.01" value="0" readonly style="background: #cff4fc; font-weight: bold;"></strong></td>
-                        </tr>
-                        <tr>
-                            <td>Add: Loan applied for</td>
-                            <td>₱ <input type="number" name="new_loan_amount" step="0.01" value="{{ application.loan_amount }}" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Less: Loan's deductible from proceeds</td>
-                            <td>₱ <input type="number" name="loan_deductible" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr class="table-success">
-                            <td><strong>New Loan</strong></td>
-                            <td><strong>₱ <input type="number" name="new_loan_final" step="0.01" value="0" readonly style="background: #d1e7dd; font-weight: bold;"></strong></td>
-                        </tr>
-                    </table>
-
-                    <h6 class="mt-4 mb-3 fw-bold">OTHER OBLIGATIONS/EXPENSES:</h6>
-                    <table class="form-table">
-                        <tr>
-                            <td width="60%">Household Expenses (₱3,500.00 per family member)</td>
-                            <td width="40%">₱ <input type="number" name="household_expenses" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Tuition & other school expenses</td>
-                            <td>₱ <input type="number" name="tuition" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Medical/Hospitalization</td>
-                            <td>₱ <input type="number" name="medical" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Water & Fuel consumption</td>
-                            <td>₱ <input type="number" name="water_fuel" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr>
-                            <td>Internet/Cellphone load</td>
-                            <td>₱ <input type="number" name="internet" step="0.01" value="0" oninput="updateAllComputations()"></td>
-                        </tr>
-                        <tr class="table-warning">
-                            <td><strong>TOTAL OTHER OBLIGATIONS/EXPENSES</strong></td>
-                            <td><strong>₱ <input type="number" name="total_other_obligations" step="0.01" value="0" readonly style="background: #fff3cd; font-weight: bold;"></strong></td>
-                        </tr>
-                    </table>
-
-                    <h6 class="mt-4 mb-3 fw-bold bg-light p-2">FINAL CALCULATIONS</h6>
-                    <table class="form-table">
-                        <tr class="table-success">
-                            <td width="60%"><strong>Net Disposable Income</strong></td>
-                            <td width="40%"><strong>₱ <input type="number" name="net_disposable_income" step="0.01" value="0" readonly style="background: #d1e7dd; font-weight: bold;"></strong></td>
-                        </tr>
-                        <tr class="table-danger">
-                            <td><strong>Debt & Expense to Income Ratio</strong> (80% maximum)</td>
-                            <td><strong><input type="number" name="debt_expense_ratio" step="0.01" value="0" readonly style="background: #f8d7da; font-weight: bold;"> %</strong></td>
-                        </tr>
-                        <tr class="table-info">
-                            <td><strong>Total Loan Amortization Limit</strong> (80% of Total Gross Income)</td>
-                            <td><strong>₱ <input type="number" name="loan_amortization_limit" step="0.01" value="0" readonly style="background: #cff4fc; font-weight: bold;"></strong></td>
-                        </tr>
-                    </table>
-
-                    <div class="alert alert-info mt-3">
-                        <i class="bi bi-info-circle"></i> <strong>Note:</strong> All calculations update automatically as you type. Ensure all income and expense fields are filled accurately.
-                    </div>
+                    <button type="button" class="btn btn-primary" onclick="nextPage()">
+                        Next <i class="bi bi-arrow-right"></i>
+                    </button>
                 </div>
-            </div>
-            
-            <div class="wizard-navigation">
-                <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                    <i class="bi bi-arrow-left"></i> Previous
-                </button>
-                <div class="page-indicator">Page 6 of 8</div>
-                <button type="button" class="btn btn-primary" onclick="nextPage()">
-                    Next <i class="bi bi-arrow-right"></i>
-                </button>
             </div>
         </div>
 
-        <!-- PAGE 7: CREDIT ASSESSMENT SUMMARY -->
-        <div class="wizard-page" data-page="7">
-            <div class="card">
-                <div class="card-header bg-primary text-white text-center">
-                    <h5 class="mb-0">CREDIT ASSESSMENT SUMMARY</h5>
+        <!-- PAGE 4: CREDIT ASSESSMENT SUMMARY (Matches your image 5) -->
+        <div class="wizard-page" data-page="4">
+            <div class="paper-form">
+                <div class="form-header">
+                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <small>CREDIT ASSESSMENT SUMMARY</small>
                 </div>
-                <div class="card-body">
-                    <h6 class="mb-3 fw-bold">CAPACITY</h6>
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th>Item</th>
-                                <th width="80px">YES</th>
-                                <th width="80px">NO</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>DEIR (Debt & Expense to Income Ratio) is within limit</td>
-                                <td class="text-center"><input type="radio" name="capacity_deir" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="capacity_deir" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Net Take Home Pay (if Salary Loan) is within limit</td>
-                                <td class="text-center"><input type="radio" name="capacity_nthp" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="capacity_nthp" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Able to perform daily routine tasks</td>
-                                <td class="text-center"><input type="radio" name="capacity_health" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="capacity_health" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Not taking regular/maintenance medication</td>
-                                <td class="text-center"><input type="radio" name="capacity_medication" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="capacity_medication" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Business/employment is stable</td>
-                                <td class="text-center"><input type="radio" name="capacity_stable" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="capacity_stable" value="no"></td>
-                            </tr>
-                        </tbody>
-                    </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">CHARACTER</h6>
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th>Item</th>
-                                <th width="80px">YES</th>
-                                <th width="80px">NO</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>DCCCO Credit History: Loans are current and never fined</td>
-                                <td class="text-center"><input type="radio" name="character_current" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="character_current" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Loans were fined/past due (1, 2 or more fines)</td>
-                                <td class="text-center"><input type="radio" name="character_fined" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="character_fined" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Without negative feedback from other institutions</td>
-                                <td class="text-center"><input type="radio" name="character_institutions" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="character_institutions" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Without negative feedback from neighbors/co-workers/barangay/court</td>
-                                <td class="text-center"><input type="radio" name="character_community" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="character_community" value="no"></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <table class="form-table-paper">
+                    <tr>
+                        <td>Name of Member:</td>
+                        <td><input type="text" name="assess_member_name" value="{{ application.member_name }}" readonly></td>
+                        <td>Type of Loan:</td>
+                        <td><input type="text" name="assess_loan_type" value="{{ application.loan_type }}" readonly></td>
+                    </tr>
+                    <tr>
+                        <td>Age:</td>
+                        <td><input type="number" name="assess_age"></td>
+                        <td>Loan Amount:</td>
+                        <td><input type="number" name="assess_loan_amount" value="{{ application.loan_amount }}" readonly></td>
+                    </tr>
+                    <tr>
+                        <td>Membership Classification:</td>
+                        <td><input type="text" name="assess_membership"></td>
+                        <td>Purpose:</td>
+                        <td><input type="text" name="assess_purpose"></td>
+                    </tr>
+                    <tr>
+                        <td>Years of Membership:</td>
+                        <td><input type="number" name="assess_years_member"></td>
+                        <td>Term:</td>
+                        <td><input type="text" name="assess_term"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Account with DCCCO: Good Attendance</td>
+                        <td>Amortization:</td>
+                        <td><input type="number" name="assess_amortization" step="0.01"></td>
+                    </tr>
+                </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">COLLATERAL</h6>
-                    <table class="form-table">
-                        <tr>
-                            <td width="30%"><strong>REM - OCT No:</strong></td>
-                            <td width="70%"><input type="text" name="collateral_oct_no"></td>
-                        </tr>
-                        <tr>
-                            <td><strong>Location:</strong></td>
-                            <td><input type="text" name="collateral_location"></td>
-                        </tr>
-                        <tr>
-                            <td><strong>Loan Value:</strong></td>
-                            <td>₱ <input type="number" name="collateral_loan_value" step="0.01"></td>
-                        </tr>
-                        <tr>
-                            <td><strong>Area (sq. m.):</strong></td>
-                            <td><input type="number" name="collateral_area" step="0.01"></td>
-                        </tr>
-                        <tr>
-                            <td><strong>Chattel - Type:</strong></td>
-                            <td><input type="text" name="collateral_chattel_type"></td>
-                        </tr>
-                        <tr>
-                            <td><strong>With Right of Way:</strong></td>
-                            <td>
-                                <label><input type="radio" name="collateral_right_of_way" value="yes"> Yes</label>
-                                <label class="ms-3"><input type="radio" name="collateral_right_of_way" value="no"> No</label>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>Others:</strong></td>
-                            <td><input type="text" name="collateral_others"></td>
-                        </tr>
-                    </table>
+                <div class="section-title">CREDIT AND BACKGROUND INVESTIGATION</div>
+                
+                <div class="section-title" style="font-size: 11px; margin-top: 15px;">CAPACITY</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th width="60px">YES</th>
+                        <th width="60px">NO</th>
+                        <th>Item</th>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="capacity_deir_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="capacity_deir_no"></td>
+                        <td>DEIR (Debt & Expense to Income Ratio) is within limit (see Attachment 2 - DEIR)</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="capacity_nthp_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="capacity_nthp_no"></td>
+                        <td>Net Take Home Pay (if Salary Loan) is within limit (see Attachment 3 - NTHP)</td>
+                    </tr>
+                </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">CONDITION</h6>
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th>Item</th>
-                                <th width="80px">YES</th>
-                                <th width="80px">NO</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>Business has updated permits (Business, BIR, DTI, etc)</td>
-                                <td class="text-center"><input type="radio" name="condition_permits" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="condition_permits" value="no"></td>
-                            </tr>
-                            <tr>
-                                <td>Nature of business is legal</td>
-                                <td class="text-center"><input type="radio" name="condition_legal" value="yes"></td>
-                                <td class="text-center"><input type="radio" name="condition_legal" value="no"></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <table class="form-table-paper">
+                    <tr>
+                        <td colspan="4"><strong>Other Info:</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Borrower:</td>
+                        <td colspan="3"><input type="text" name="capacity_borrower"></td>
+                    </tr>
+                    <tr>
+                        <td>Employer:</td>
+                        <td><input type="text" name="capacity_employer"></td>
+                        <td>Tenure:</td>
+                        <td><input type="text" name="capacity_tenure"></td>
+                    </tr>
+                    <tr>
+                        <td>Salary:</td>
+                        <td colspan="3"><input type="number" name="capacity_salary" step="0.01"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="4">Company category/Maximum Loanable Amount: <input type="text" name="capacity_company_cat" style="width: 60%;"></td>
+                    </tr>
+                    <tr>
+                        <td>Business:</td>
+                        <td><input type="text" name="capacity_business"></td>
+                        <td>Years:</td>
+                        <td><input type="number" name="capacity_business_years"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Monthly Income:</td>
+                        <td colspan="2"><input type="number" name="capacity_monthly_income" step="0.01"></td>
+                    </tr>
+                    <tr>
+                        <td>Spouse:</td>
+                        <td colspan="3"><input type="text" name="capacity_spouse"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Employer/Business:</td>
+                        <td colspan="2"><input type="text" name="capacity_spouse_employer"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2">Salary/Business Income:</td>
+                        <td colspan="2"><input type="number" name="capacity_spouse_income" step="0.01"></td>
+                    </tr>
+                </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">OTHER INFORMATION</h6>
-                    <textarea class="form-control" name="assessment_other_info" rows="4" placeholder="Additional observations and notes..."></textarea>
+                <div class="section-title" style="font-size: 11px; margin-top: 15px;">CHARACTER</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th width="60px">YES</th>
+                        <th width="60px">NO</th>
+                        <th>Item</th>
+                    </tr>
+                    <tr>
+                        <td colspan="3"><strong>DCCCO Credit History in the last twelve (12) months:</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="character_current_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="character_current_no"></td>
+                        <td>Loans are current and never fined</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="character_fined_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="character_fined_no"></td>
+                        <td>Loans were fined/past due: 
+                            <label class="checkbox-inline"><input type="checkbox" name="character_fined_1"> 1</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="character_fined_2plus"> 2 or more fines</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="character_psm_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="character_psm_no"></td>
+                        <td>PSM Loan</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="character_no_negative_inst_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="character_no_negative_inst_no"></td>
+                        <td>Without negative feedback from other institutions (coop/lending/utility/telco)</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="character_no_negative_neighbors_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="character_no_negative_neighbors_no"></td>
+                        <td>Without negative feedback from neighbors/co-workers/barangay/court</td>
+                    </tr>
+                </table>
 
-                    <h6 class="mt-4 mb-3 fw-bold">RECOMMENDATION/ACTION</h6>
-                    <table class="form-table">
-                        <thead>
-                            <tr>
-                                <th width="20%">Position</th>
-                                <th width="50%">Decision</th>
-                                <th width="30%">Remarks</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>Credit Officer</strong></td>
-                                <td>
-                                    <label><input type="radio" name="rec_credit_officer" value="approve"> Approve</label>
-                                    <label class="ms-2"><input type="radio" name="rec_credit_officer" value="disapprove"> Disapprove</label>
-                                    <label class="ms-2"><input type="radio" name="rec_credit_officer" value="defer"> Defer</label>
-                                </td>
-                                <td><input type="text" name="rec_credit_officer_remarks"></td>
-                            </tr>
-                            <tr>
-                                <td><strong>CM</strong></td>
-                                <td>
-                                    <label><input type="radio" name="rec_cm" value="approve"> Approve</label>
-                                    <label class="ms-2"><input type="radio" name="rec_cm" value="disapprove"> Disapprove</label>
-                                    <label class="ms-2"><input type="radio" name="rec_cm" value="defer"> Defer</label>
-                                </td>
-                                <td><input type="text" name="rec_cm_remarks"></td>
-                            </tr>
-                            <tr>
-                                <td><strong>OM</strong></td>
-                                <td>
-                                    <label><input type="radio" name="rec_om" value="approve"> Approve</label>
-                                    <label class="ms-2"><input type="radio" name="rec_om" value="disapprove"> Disapprove</label>
-                                    <label class="ms-2"><input type="radio" name="rec_om" value="defer"> Defer</label>
-                                </td>
-                                <td><input type="text" name="rec_om_remarks"></td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="section-title" style="font-size: 11px; margin-top: 15px;">COLLATERAL</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td>REM:</td>
+                        <td colspan="3">
+                            OCT No: <input type="text" name="collateral_oct" style="width: 30%;">
+                            Location: <input type="text" name="collateral_location" style="width: 30%;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td colspan="3">
+                            Loan Value: <input type="number" name="collateral_loan_value" step="0.01" style="width: 30%;">
+                            Area (sq. m.): <input type="number" name="collateral_area" step="0.01" style="width: 30%;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Chattel:</td>
+                        <td colspan="3">
+                            Type: <input type="text" name="collateral_chattel_type" style="width: 40%;">
+                            With Right of Way: 
+                            <label class="checkbox-inline"><input type="checkbox" name="collateral_right_way_yes"> Yes</label>
+                            <label class="checkbox-inline"><input type="checkbox" name="collateral_right_way_no"> No</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td></td>
+                        <td colspan="3">Loan Value: <input type="number" name="collateral_chattel_value" step="0.01" style="width: 40%;"></td>
+                    </tr>
+                    <tr>
+                        <td>Others:</td>
+                        <td colspan="3"><input type="text" name="collateral_others"></td>
+                    </tr>
+                </table>
+
+                <div class="section-title" style="font-size: 11px; margin-top: 15px;">CONDITION</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <th width="60px">YES</th>
+                        <th width="60px">NO</th>
+                        <th>Item</th>
+                    </tr>
+                    <tr>
+                        <td colspan="3"><strong>Health:</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="condition_health_able_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="condition_health_able_no"></td>
+                        <td>Able to perform daily routine tasks</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="condition_health_medication_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="condition_health_medication_no"></td>
+                        <td>Not taking regular/maintenance medication</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3"><strong>Business (if any):</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="condition_business_permits_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="condition_business_permits_no"></td>
+                        <td>Business has updated permits (Business, BIR, DTI, etc)</td>
+                    </tr>
+                    <tr>
+                        <td style="text-align:center"><input type="checkbox" name="condition_business_legal_yes"></td>
+                        <td style="text-align:center"><input type="checkbox" name="condition_business_legal_no"></td>
+                        <td>Nature of business is legal (Please state below the details)</td>
+                    </tr>
+                </table>
+
+                <div class="section-title">OTHER INFORMATION</div>
+                <table class="form-table-paper">
+                    <tr>
+                        <td><textarea name="other_info" rows="5" style="width: 100%; border: none; padding: 8px;"></textarea></td>
+                    </tr>
+                </table>
+
+                <table class="form-table-paper">
+                    <tr>
+                        <td>Prepared by:</td>
+                        <td><input type="text" name="assess_prepared_by" value="{{ current_user.name }}" readonly></td>
+                        <td>Reviewed by:</td>
+                        <td><input type="text" name="assess_reviewed_by"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="text-align:center"><small>CIRI / FLMS</small></td>
+                        <td colspan="2" style="text-align:center"><small>Head, CIRI</small></td>
+                    </tr>
+                </table>
+
+                <div class="text-center mt-4 no-print">
+                    <button type="button" class="btn btn-secondary" onclick="previousPage()">
+                        <i class="bi bi-arrow-left"></i> Previous
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="nextPage()">
+                        Next <i class="bi bi-arrow-right"></i>
+                    </button>
                 </div>
-            </div>
-            
-            <div class="wizard-navigation">
-                <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                    <i class="bi bi-arrow-left"></i> Previous
-                </button>
-                <div class="page-indicator">Page 7 of 8</div>
-                <button type="button" class="btn btn-primary" onclick="nextPage()">
-                    Next <i class="bi bi-arrow-right"></i>
-                </button>
             </div>
         </div>
 
-        <!-- PAGE 8: REVIEW & SUBMIT -->
-        <div class="wizard-page" data-page="8">
-            <div class="card">
-                <div class="card-header bg-success text-white text-center">
-                    <h5 class="mb-0"><i class="bi bi-check-circle"></i> FINAL REVIEW & SUBMIT</h5>
+        <!-- PAGE 5: RECOMMENDATION/ACTION (Matches your image 6) -->
+        <div class="wizard-page" data-page="5">
+            <div class="paper-form">
+                <div class="form-header">
+                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <small>RECOMMENDATION/ACTION</small>
                 </div>
-                <div class="card-body">
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> <strong>Review your checklist before submitting.</strong> You can go back to any page to make changes.
-                    </div>
 
-                    <h6 class="fw-bold mb-3">Application Details:</h6>
-                    <table class="table table-bordered">
-                        <tr>
-                            <th width="30%">Member Name:</th>
-                            <td>{{ application.member_name }}</td>
-                        </tr>
-                        <tr>
-                            <th>Loan Type:</th>
-                            <td>{{ application.loan_type }}</td>
-                        </tr>
-                        <tr>
-                            <th>Loan Amount:</th>
-                            <td>₱{{ '{:,.2f}'.format(application.loan_amount) }}</td>
-                        </tr>
-                        <tr>
-                            <th>Address:</th>
-                            <td>{{ application.member_address }}</td>
-                        </tr>
-                        <tr>
-                            <th>Contact:</th>
-                            <td>{{ application.member_contact }}</td>
-                        </tr>
-                    </table>
+                <table class="form-table-paper">
+                    <tr>
+                        <th width="200px">POSITION</th>
+                        <th width="150px">ACTION</th>
+                        <th>REMARKS</th>
+                        <th width="150px">SIGNATURE/DATE</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Credit Officer</strong></td>
+                        <td>
+                            <label class="checkbox-inline"><input type="checkbox" name="co_approve"> Approve</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="co_disapprove"> Disapprove</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="co_defer"> Defer</label>
+                        </td>
+                        <td><textarea name="co_remarks" rows="3" style="width: 100%; border: none;"></textarea></td>
+                        <td><input type="text" name="co_signature"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>CM (Credit Manager)</strong></td>
+                        <td>
+                            <label class="checkbox-inline"><input type="checkbox" name="cm_approve"> Approve</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="cm_disapprove"> Disapprove</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="cm_defer"> Defer</label>
+                        </td>
+                        <td><textarea name="cm_remarks" rows="3" style="width: 100%; border: none;"></textarea></td>
+                        <td><input type="text" name="cm_signature"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>OM (Operations Manager)</strong></td>
+                        <td>
+                            <label class="checkbox-inline"><input type="checkbox" name="om_approve"> Approve</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="om_disapprove"> Disapprove</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="om_defer"> Defer</label>
+                        </td>
+                        <td><textarea name="om_remarks" rows="3" style="width: 100%; border: none;"></textarea></td>
+                        <td><input type="text" name="om_signature"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Management Credit Committee</strong></td>
+                        <td>
+                            <label class="checkbox-inline"><input type="checkbox" name="mcc_approve"> Approve</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="mcc_disapprove"> Disapprove</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="mcc_defer"> Defer</label>
+                        </td>
+                        <td><textarea name="mcc_remarks" rows="3" style="width: 100%; border: none;"></textarea></td>
+                        <td><input type="text" name="mcc_signature"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>FTM (Finance & Treasury Manager)</strong></td>
+                        <td>
+                            <label class="checkbox-inline"><input type="checkbox" name="ftm_approve"> Approve</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="ftm_disapprove"> Disapprove</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="ftm_defer"> Defer</label>
+                        </td>
+                        <td><textarea name="ftm_remarks" rows="3" style="width: 100%; border: none;"></textarea></td>
+                        <td><input type="text" name="ftm_signature"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>CEO (Chief Executive Officer)</strong></td>
+                        <td>
+                            <label class="checkbox-inline"><input type="checkbox" name="ceo_approve"> Approve</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="ceo_disapprove"> Disapprove</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="ceo_defer"> Defer</label>
+                        </td>
+                        <td><textarea name="ceo_remarks" rows="3" style="width: 100%; border: none;"></textarea></td>
+                        <td><input type="text" name="ceo_signature"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Board of Directors</strong></td>
+                        <td>
+                            <label class="checkbox-inline"><input type="checkbox" name="bod_approve"> Approve</label><br>
+                            <label class="checkbox-inline"><input type="checkbox" name="bod_disapprove"> Disapprove</label>
+                        </td>
+                        <td><textarea name="bod_remarks" rows="3" style="width: 100%; border: none;"></textarea></td>
+                        <td><input type="text" name="bod_signature"></td>
+                    </tr>
+                </table>
 
-                    <h6 class="fw-bold mt-4 mb-3">Upload Interview Photos:</h6>
-                    <input type="file" name="interview_photos" class="form-control" multiple accept="image/*" id="interview_photos_final">
-                    <small class="text-muted">Upload photos of residence, business, or any supporting evidence</small>
-                    <div id="photo_preview_final" class="mt-3 row g-2"></div>
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6;">
+                    <strong>Legend:</strong><br>
+                    <small>
+                        DEIR - Debt and Expense to Income Ratio<br>
+                        NTHP - Net Take Home Pay Computation
+                    </small>
+                </div>
 
-                    <h6 class="fw-bold mt-4 mb-3">CI Staff Signature:</h6>
-                    <div id="signaturePreview" class="border rounded p-3 mb-3" style="background: #f8f9fa; text-align: center; min-height: 150px; display: flex; align-items: center; justify-content: center;">
-                        <p class="text-muted">
-                            <i class="bi bi-pen"></i> No signature yet. Click button below to sign.
-                        </p>
-                    </div>
-                    
-                    <button type="button" class="btn btn-primary btn-lg w-100 mb-3" onclick="openSignaturePad()">
-                        <i class="bi bi-pen-fill"></i> Open Signature Pad
-                    </button>
-                    
-                    <input type="hidden" name="ci_signature" id="ci_signature" required>
-                    <input type="hidden" name="ci_latitude" id="ci_latitude">
-                    <input type="hidden" name="ci_longitude" id="ci_longitude">
-                    
-                    <div id="locationStatus" class="alert alert-warning">
-                        <i class="bi bi-geo-alt"></i> Capturing GPS location...
-                    </div>
+                <div style="text-align: right; margin-top: 10px;">
+                    <small>ISO Reg. No. 187, s. 2022 (March 21, 2022)</small><br>
+                    <small>page 2 of 2</small>
+                </div>
 
+                <div class="section-title" style="margin-top: 30px;">FINAL SUBMISSION</div>
+                <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h5>Before submitting, please:</h5>
+                    <ul>
+                        <li>Review all pages for accuracy</li>
+                        <li>Ensure all required fields are filled</li>
+                        <li>Provide your signature below</li>
+                        <li>Upload supporting photos if available</li>
+                    </ul>
+                </div>
+
+                <div class="section-title">CI STAFF SIGNATURE (Required)</div>
+                <div style="border: 2px solid #000; padding: 10px; margin: 20px 0; background: white;">
+                    <canvas id="signaturePad" width="800" height="200" style="border: 1px dashed #ccc; cursor: crosshair; width: 100%;"></canvas>
                     <div class="text-center mt-2">
-                        <small class="text-muted">
-                            <strong>{{ current_user.name }}</strong> - CI Staff
-                        </small>
-                    </div>
-
-                    <div class="alert alert-success mt-4">
-                        <i class="bi bi-check-circle"></i> <strong>Ready to submit?</strong> Make sure all required fields are filled and your signature is captured.
+                        <button type="button" class="btn btn-sm btn-warning" onclick="clearSignature()">
+                            <i class="bi bi-eraser"></i> Clear Signature
+                        </button>
                     </div>
                 </div>
-            </div>
-            
-            <div class="wizard-navigation">
-                <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                    <i class="bi bi-arrow-left"></i> Previous
-                </button>
-                <div class="page-indicator">Page 8 of 8</div>
-                <button type="submit" class="btn btn-success btn-lg" onclick="return submitChecklist()">
-                    <i class="bi bi-send"></i> Submit Checklist & Send to Loan Officer
-                </button>
+
+                <div class="section-title">UPLOAD PHOTOS (Optional)</div>
+                <div style="margin: 20px 0;">
+                    <input type="file" name="ci_photos" accept="image/*" multiple class="form-control">
+                    <small class="text-muted">You can upload multiple photos from the CI visit</small>
+                </div>
+
+                <div class="section-title">GPS LOCATION</div>
+                <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <p><i class="bi bi-geo-alt-fill"></i> <strong>Location will be captured automatically when you submit</strong></p>
+                    <p class="mb-0"><small>Latitude: <span id="display_latitude">Not captured yet</span></small></p>
+                    <p class="mb-0"><small>Longitude: <span id="display_longitude">Not captured yet</span></small></p>
+                </div>
+
+                <div class="text-center mt-4 no-print">
+                    <button type="button" class="btn btn-secondary" onclick="previousPage()">
+                        <i class="bi bi-arrow-left"></i> Previous
+                    </button>
+                    <button type="button" class="btn btn-success btn-lg" onclick="submitChecklist()">
+                        <i class="bi bi-check-circle"></i> Submit Complete Checklist
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -1077,59 +1031,52 @@
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
 
 <script>
-// Photo preview for final page
-document.getElementById('interview_photos_final')?.addEventListener('change', function(e) {
-    const preview = document.getElementById('photo_preview_final');
-    const files = Array.from(e.target.files);
-    
-    preview.innerHTML = '';
-    
-    files.forEach((file, index) => {
-        if (file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const col = document.createElement('div');
-                col.className = 'col-md-3 col-6';
-                col.innerHTML = `
-                    <div class="card">
-                        <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
-                        <div class="card-body p-2">
-                            <small class="text-muted">${file.name}</small>
-                        </div>
-                    </div>
-                `;
-                preview.appendChild(col);
-            };
-            reader.readAsDataURL(file);
-        }
-    });
+// Initialize signature pad
+let signaturePad;
+document.addEventListener('DOMContentLoaded', function() {
+    const canvas = document.getElementById('signaturePad');
+    if (canvas) {
+        signaturePad = new SignaturePad(canvas);
+    }
 });
 
-// Enhanced submit function
-function submitChecklist() {
-    // Validate signature
-    const signature = document.getElementById('ci_signature').value;
-    if (!signature) {
-        alert('Please provide your signature before submitting.');
-        return false;
+function clearSignature() {
+    if (signaturePad) {
+        signaturePad.clear();
     }
-    
-    // Save all data
-    saveCurrentPageData();
-    
-    // Store in hidden field
-    document.getElementById('checklist_data').value = JSON.stringify(checklistData);
-    
-    // Clear localStorage after successful submission
-    localStorage.removeItem('ci_checklist_draft');
-    
-    return true;
 }
 
-// Initialize computations on page load
-document.addEventListener('DOMContentLoaded', function() {
-    updateAllComputations();
-});
+function submitChecklist() {
+    // Validate signature
+    if (!signaturePad || signaturePad.isEmpty()) {
+        alert('Please provide your signature before submitting');
+        return;
+    }
+    
+    // Get signature data
+    const signatureData = signaturePad.toDataURL();
+    document.getElementById('ci_signature').value = signatureData;
+    
+    // Get GPS location
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+            document.getElementById('ci_latitude').value = position.coords.latitude;
+            document.getElementById('ci_longitude').value = position.coords.longitude;
+            document.getElementById('display_latitude').textContent = position.coords.latitude;
+            document.getElementById('display_longitude').textContent = position.coords.longitude;
+            
+            // Save all data and submit
+            saveCurrentPageData();
+            document.getElementById('checklist_data').value = JSON.stringify(checklistData);
+            document.getElementById('ciChecklistForm').submit();
+        }, function(error) {
+            alert('Could not get GPS location. Please enable location services and try again.');
+        });
+    } else {
+        alert('Geolocation is not supported by your browser');
+    }
+}
 </script>
 
 {% endblock %}
+
