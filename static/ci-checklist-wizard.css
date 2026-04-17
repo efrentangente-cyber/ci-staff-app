@@ -1,0 +1,185 @@
+/* CI Checklist Wizard Styles */
+
+.progress-wizard {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    padding: 20px 0;
+}
+
+.progress-wizard::before {
+    content: '';
+    position: absolute;
+    top: 35px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #e9ecef;
+    z-index: 0;
+}
+
+.progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    flex: 1;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-bottom: 8px;
+    transition: all 0.3s;
+}
+
+.step-label {
+    font-size: 0.75rem;
+    text-align: center;
+    color: #6c757d;
+    max-width: 80px;
+}
+
+.progress-step.active .step-number {
+    background: #0d6efd;
+    color: white;
+}
+
+.progress-step.completed .step-number {
+    background: #198754;
+    color: white;
+}
+
+.progress-step.completed .step-number::after {
+    content: '✓';
+}
+
+.wizard-page {
+    display: none;
+}
+
+.wizard-page.active {
+    display: block;
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.form-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.form-table th,
+.form-table td {
+    border: 1px solid #dee2e6;
+    padding: 8px;
+    text-align: left;
+}
+
+.form-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.form-table input[type="text"],
+.form-table input[type="number"],
+.form-table input[type="date"],
+.form-table select {
+    width: 100%;
+    border: none;
+    padding: 4px;
+    font-size: 0.9rem;
+}
+
+.form-table input[type="checkbox"],
+.form-table input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.checkbox-group {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.wizard-navigation {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 2px solid #e9ecef;
+}
+
+.page-indicator {
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-top: 10px;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .progress-wizard {
+        overflow-x: auto;
+        justify-content: flex-start;
+        gap: 10px;
+    }
+    
+    .progress-step {
+        flex: 0 0 auto;
+        min-width: 60px;
+    }
+    
+    .step-label {
+        font-size: 0.65rem;
+        max-width: 60px;
+    }
+    
+    .step-number {
+        width: 30px;
+        height: 30px;
+        font-size: 0.8rem;
+    }
+}
+
+/* Print styles */
+@media print {
+    .progress-wizard,
+    .wizard-navigation,
+    .btn,
+    .page-indicator {
+        display: none !important;
+    }
+    
+    .wizard-page {
+        display: block !important;
+        page-break-after: always;
+    }
+    
+    .card {
+        border: 1px solid #000 !important;
+        box-shadow: none !important;
+    }
+}
