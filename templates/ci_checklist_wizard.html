@@ -1080,3 +1080,110 @@ function submitChecklist() {
 
 {% endblock %}
 
+
+        <!-- PAGE 3: COMPUTATION (Matches your image 4) -->
+        <div class="wizard-page" data-page="3">
+            <div class="paper-form">
+                <div class="form-header">
+                    <h4>DCCCO Multipurpose Cooperative</h4>
+                    <div>Branch: _____________ Date: _____________</div>
+                    <h5>COMPUTATION OF DEBT AND EXPENSE-TO-INCOME RATIO</h5>
+                </div>
+
+                <table class="form-table-paper">
+                    <tr>
+                        <td>Name of Member:</td>
+                        <td>{{ application.member_name }}</td>
+                        <td>Applied Loan:</td>
+                        <td>{{ application.loan_type }}</td>
+                    </tr>
+                    <tr>
+                        <td>Membership Classification:</td>
+                        <td><input type="text" name="comp_membership"></td>
+                        <td>Applied Amount:</td>
+                        <td>₱{{ '{:,.2f}'.format(application.loan_amount) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Occupation:</td>
+                        <td colspan="3"><input type="text" name="comp_occupation"></td>
+                    </tr>
+                </table>
+
+                <div class="section-title">INCOME:</div>
+                <table class="form-table-paper">
+                    <tr><td width="70%">Gross Pay</td><td width="30%">₱ <input type="number" name="gross_pay" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Add: Allowances/Benefits (Received monthly)</td><td>₱ <input type="number" name="allowances" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td style="padding-left:30px">PERA/ACA</td><td><input type="number" name="pera_aca" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td style="padding-left:30px">Long Pay</td><td>₱ <input type="number" name="long_pay" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Less: Statutory Deductions (all deductions reflected on the pay slip)</td><td>₱ <input type="number" name="statutory_deductions" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr style="background:#e8f5e9"><td><strong>Net Pay</strong></td><td><strong>₱ <input type="number" name="net_pay" step="0.01" value="0" readonly style="background:#e8f5e9;font-weight:bold"></strong></td></tr>
+                </table>
+
+                <div class="section-title">Other Income (with proof):</div>
+                <table class="form-table-paper">
+                    <tr><td width="70%">Income from Business/Salary Permit/ITR, Audited FS</td><td width="30%">₱ <input type="number" name="income_business" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Remittance from Abroad/ATM Card</td><td><input type="number" name="remittance" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Allotment (Base Statement, Certificate of Allotment)</td><td><input type="number" name="allotment" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Others (with documents to support)</td><td>₱ <input type="number" name="other_income" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr style="background:#e8f5e9"><td><strong>Total Gross Income</strong></td><td><strong>₱ <input type="number" name="total_gross_income" step="0.01" value="0" readonly style="background:#e8f5e9;font-weight:bold"></strong></td></tr>
+                </table>
+
+                <div class="section-title">LOAN AMORTIZATIONS & OTHER OBLIGATIONS/EXPENSES:</div>
+                <p><strong>LOAN AMORTIZATIONS</strong></p>
+                <p>From Other Institutions:</p>
+                <table class="form-table-paper">
+                    <tr><th>Institution</th><th>Principal</th><th>Balance</th><th>Monthly Amortization</th></tr>
+                    <tr><td><input type="text" name="loan_1_inst"></td><td>₱<input type="number" name="loan_1_principal" step="0.01"></td><td>₱<input type="number" name="loan_1_balance" step="0.01"></td><td>₱<input type="number" name="loan_1_monthly" step="0.01" value="0" oninput="updateLoanAmortizations()"></td></tr>
+                    <tr><td><input type="text" name="loan_2_inst"></td><td>₱<input type="number" name="loan_2_principal" step="0.01"></td><td>₱<input type="number" name="loan_2_balance" step="0.01"></td><td>₱<input type="number" name="loan_2_monthly" step="0.01" value="0" oninput="updateLoanAmortizations()"></td></tr>
+                    <tr style="background:#fff3cd"><td colspan="3"><strong>Sub-total</strong></td><td><strong>₱<input type="number" name="total_loan_amortizations" step="0.01" value="0" readonly style="background:#fff3cd;font-weight:bold"></strong></td></tr>
+                </table>
+
+                <p><strong>DCCCO Loans (existing):</strong></p>
+                <table class="form-table-paper">
+                    <tr><td width="70%">Existing DCCCO Loan 1</td><td width="30%">₱<input type="number" name="dccco_loan_1" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Existing DCCCO Loan 2</td><td>₱<input type="number" name="dccco_loan_2" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr style="background:#cfe2ff"><td><strong>Total Loans/Amortizations before New Loan</strong></td><td><strong>₱<input type="number" name="total_before_new" step="0.01" value="0" readonly style="background:#cfe2ff;font-weight:bold"></strong></td></tr>
+                    <tr><td>Add: Loan applied for</td><td>₱<input type="number" name="new_loan_amount" step="0.01" value="{{ application.loan_amount }}" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Less: Loan's deductible from proceeds</td><td>₱<input type="number" name="loan_deductible" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr style="background:#e8f5e9"><td><strong>New Loan</strong></td><td><strong>₱<input type="number" name="new_loan_final" step="0.01" value="0" readonly style="background:#e8f5e9;font-weight:bold"></strong></td></tr>
+                </table>
+
+                <div class="section-title">OTHER OBLIGATIONS/EXPENSES:</div>
+                <table class="form-table-paper">
+                    <tr><td width="70%">Household Expenses (₱3,500.00 per family member)</td><td width="30%">₱<input type="number" name="household_expenses" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Tuition & other school expenses</td><td>₱<input type="number" name="tuition" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Medical/Hospitalization</td><td>₱<input type="number" name="medical" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Water & Fuel consumption</td><td>₱<input type="number" name="water_fuel" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Internet/Cellphone load</td><td>₱<input type="number" name="internet" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr style="background:#fff3cd"><td><strong>TOTAL LOAN AMORTIZATIONS & OTHER OBLIGATIONS/EXPENSES</strong></td><td><strong>₱<input type="number" name="total_other_obligations" step="0.01" value="0" readonly style="background:#fff3cd;font-weight:bold"></strong></td></tr>
+                    <tr style="background:#e8f5e9"><td><strong>Net Disposable Income</strong></td><td><strong>₱<input type="number" name="net_disposable_income" step="0.01" value="0" readonly style="background:#e8f5e9;font-weight:bold"></strong></td></tr>
+                </table>
+
+                <table class="form-table-paper">
+                    <tr style="background:#f8d7da"><td width="70%"><strong>Debt & Expense to Income Ratio</strong> (80% maximum)</td><td width="30%"><strong><input type="number" name="debt_expense_ratio" step="0.01" value="0" readonly style="background:#f8d7da;font-weight:bold"> %</strong></td></tr>
+                    <tr style="background:#cfe2ff"><td><strong>Total Loan Amortization Limit</strong> (80% of Total Gross Income)</td><td><strong>₱<input type="number" name="loan_amortization_limit" step="0.01" value="0" readonly style="background:#cfe2ff;font-weight:bold"></strong></td></tr>
+                </table>
+
+                <table class="form-table-paper">
+                    <tr>
+                        <td>Prepared by:</td>
+                        <td>{{ current_user.name }}</td>
+                        <td>Noted by:</td>
+                        <td><input type="text" name="comp_noted_by"></td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="text-align:center"><small>CIRI / FFS / FLMS</small></td>
+                        <td colspan="2" style="text-align:center"><small>Credit Officer</small></td>
+                    </tr>
+                </table>
+
+                <div class="text-center mt-4 no-print">
+                    <button type="button" class="btn btn-secondary" onclick="previousPage()">
+                        <i class="bi bi-arrow-left"></i> Previous
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="nextPage()">
+                        Next <i class="bi bi-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>

@@ -36,22 +36,16 @@ function goToPage(pageNumber) {
 
 // Update progress bar
 function updateProgressBar() {
-    document.querySelectorAll('.progress-step').forEach((step, index) => {
-        const stepNumber = index + 1;
-        step.classList.remove('active', 'completed');
+    document.querySelectorAll('.page-btn').forEach((btn, index) => {
+        const pageNumber = index + 1;
+        btn.classList.remove('active', 'completed');
         
-        if (stepNumber < currentPage) {
-            step.classList.add('completed');
-        } else if (stepNumber === currentPage) {
-            step.classList.add('active');
+        if (pageNumber < currentPage) {
+            btn.classList.add('completed');
+        } else if (pageNumber === currentPage) {
+            btn.classList.add('active');
         }
     });
-    
-    // Update page indicator
-    const indicator = document.querySelector('.page-indicator');
-    if (indicator) {
-        indicator.textContent = `Page ${currentPage} of ${totalPages}`;
-    }
 }
 
 // Save current page data
