@@ -1172,6 +1172,102 @@ def ci_application(id):
     
     return render_template('ci_application.html', application=app_data, documents=documents, messages=messages, unread_count=unread_count)
 
+@app.route('/ci/checklist/<int:id>', methods=['GET'])
+@login_required
+def ci_checklist_wizard(id):
+    """Display the multi-page CI checklist wizard"""
+    if current_user.role != 'ci_staff':
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
+    
+    if not app_data or app_data['assigned_ci_staff'] != current_user.id:
+        flash('Application not found', 'danger')
+        conn.close()
+        return redirect(url_for('ci_dashboard'))
+    
+    conn.close()
+    return render_template('ci_checklist_wizard.html', application=app_data)
+
+@app.route('/ci/checklist/<int:id>', methods=['POST'])
+@login_required
+def submit_ci_checklist(id):
+    """Submit the completed CI checklist"""
+    if current_user.role != 'ci_staff':
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
+    
+    if not app_data or app_data['assigned_ci_staff'] != current_user.id:
+        flash('Application not found', 'danger')
+        conn.close()
+        return redirect(url_for('ci_dashboard'))
+    
+    try:
+        checklist_data = request.form.get('checklist_data')
+        ci_signature = request.form.get('ci_signature')
+        ci_latitude = request.form.get('ci_latitude')
+        ci_longitude = request.form.get('ci_longitude')
+        
+        # Validate signature
+        if not ci_signature:
+            flash('Signature is required', 'danger')
+            conn.close()
+            return redirect(url_for('ci_checklist_wizard', id=id))
+        
+        # Update application
+        conn.execute('''
+            UPDATE loan_applications 
+            SET status=?, ci_checklist_data=?, ci_signature=?, ci_completed_at=?, ci_latitude=?, ci_longitude=?
+            WHERE id=?
+        ''', ('ci_completed', checklist_data, ci_signature, now_ph().isoformat(), ci_latitude, ci_longitude, id))
+        
+        # Handle interview photo uploads
+        if 'interview_photos' in request.files:
+            files = request.files.getlist('interview_photos')
+            for file in files:
+                if file and file.filename:
+                    filename = secure_filename(file.filename)
+                    unique_filename = f"{id}_interview_{uuid.uuid4().hex[:8]}_{filename}"
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+                    file.save(filepath)
+                    conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
+                               (id, filename, filepath, current_user.id))
+        
+        # Update workload
+        conn.execute('UPDATE users SET current_workload = current_workload - 1 WHERE id=?', (current_user.id,))
+        conn.commit()
+        
+        # Emit real-time update
+        socketio.emit('application_updated', {
+            'id': id,
+            'status': 'ci_completed',
+            'member_name': app_data['member_name'],
+            'loan_amount': float(app_data['loan_amount']),
+            'timestamp': now_ph().isoformat()
+        })
+        
+        # Notify loan officer
+        loan_officer = conn.execute('SELECT id FROM users WHERE role="loan_officer" LIMIT 1').fetchone()
+        conn.close()
+        
+        if loan_officer:
+            create_notification(loan_officer['id'],
+                              f'CI interview completed for: {app_data["member_name"]}',
+                              f'/admin/application/{id}')
+        
+        flash('CI Checklist submitted successfully!', 'success')
+        return redirect(url_for('ci_dashboard'))
+        
+    except Exception as e:
+        conn.close()
+        flash(f'Error: {str(e)}', 'danger')
+        return redirect(url_for('ci_checklist_wizard', id=id))
+
 # ADMIN ROUTES
 @app.route('/admin/dashboard')
 @login_required

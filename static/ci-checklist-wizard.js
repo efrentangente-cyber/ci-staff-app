@@ -156,6 +156,9 @@ function updateAllComputations() {
     updateNetPay();
     updateTotalGrossIncome();
     updateLoanAmortizations();
+    updateDCCCOLoans();
+    updateTotalBeforeNew();
+    updateNewLoan();
     updateOtherObligations();
     updateFinalCalculations();
 }
@@ -195,13 +198,33 @@ function updateTotalGrossIncome() {
 }
 
 function updateLoanAmortizations() {
-    // Calculate total from dynamic loan rows
     let total = 0;
     document.querySelectorAll('.loan-row').forEach(row => {
         const monthly = parseFloat(row.querySelector('[name$="_monthly"]')?.value) || 0;
         total += monthly;
     });
     setComputedValue('total_loan_amortizations', total);
+    updateTotalBeforeNew();
+}
+
+function updateDCCCOLoans() {
+    const loan1 = getNumericValue('dccco_loan_1');
+    const loan2 = getNumericValue('dccco_loan_2');
+    return loan1 + loan2;
+}
+
+function updateTotalBeforeNew() {
+    const otherLoans = getNumericValue('total_loan_amortizations');
+    const dcccoLoans = updateDCCCOLoans();
+    const total = otherLoans + dcccoLoans;
+    setComputedValue('total_before_new', total);
+}
+
+function updateNewLoan() {
+    const applied = getNumericValue('new_loan_amount');
+    const deductible = getNumericValue('loan_deductible');
+    const newLoan = applied - deductible;
+    setComputedValue('new_loan_final', newLoan);
 }
 
 function updateOtherObligations() {
@@ -217,19 +240,23 @@ function updateOtherObligations() {
 
 function updateFinalCalculations() {
     const totalIncome = getNumericValue('total_gross_income');
-    const totalLoans = getNumericValue('total_loan_amortizations');
+    const totalBeforeNew = getNumericValue('total_before_new');
+    const newLoan = getNumericValue('new_loan_final');
     const totalObligations = getNumericValue('total_other_obligations');
-    const newLoan = getNumericValue('new_loan_amount');
     
-    const netDisposable = totalIncome - totalLoans - totalObligations - newLoan;
+    const totalExpenses = totalBeforeNew + newLoan + totalObligations;
+    const netDisposable = totalIncome - totalExpenses;
     setComputedValue('net_disposable_income', netDisposable);
     
     if (totalIncome > 0) {
-        const ratio = ((totalLoans + totalObligations + newLoan) / totalIncome) * 100;
+        const ratio = (totalExpenses / totalIncome) * 100;
         setComputedValue('debt_expense_ratio', ratio);
         
         const loanLimit = totalIncome * 0.80;
         setComputedValue('loan_amortization_limit', loanLimit);
+    } else {
+        setComputedValue('debt_expense_ratio', 0);
+        setComputedValue('loan_amortization_limit', 0);
     }
 }
 
