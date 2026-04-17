@@ -990,11 +990,16 @@
                 </div>
 
                 <div class="section-title">CI STAFF SIGNATURE (Required)</div>
-                <div style="border: 2px solid #000; padding: 10px; margin: 20px 0; background: white;">
-                    <canvas id="signaturePad" width="800" height="200" style="border: 1px dashed #ccc; cursor: crosshair; width: 100%;"></canvas>
-                    <div class="text-center mt-2">
-                        <button type="button" class="btn btn-sm btn-warning" onclick="clearSignature()">
-                            <i class="bi bi-eraser"></i> Clear Signature
+                <div style="border: 2px solid #10b981; padding: 20px; margin: 20px 0; background: #f0fdf4; border-radius: 8px;">
+                    <div id="signaturePreview" style="text-align: center; min-height: 100px;">
+                        <p style="color: #6b7280; margin: 20px 0;">
+                            <i class="bi bi-pen" style="font-size: 48px;"></i><br>
+                            No signature yet
+                        </p>
+                    </div>
+                    <div class="text-center mt-3">
+                        <button type="button" class="btn btn-primary btn-lg" onclick="openSignaturePad('ci_signature', 'signaturePreview')">
+                            <i class="bi bi-pen"></i> Click to Sign
                         </button>
                     </div>
                 </div>
@@ -1031,58 +1036,46 @@
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
 
 <script>
-// Initialize signature pad
-let signaturePad;
-document.addEventListener('DOMContentLoaded', function() {
-    const canvas = document.getElementById('signaturePad');
-    if (canvas) {
-        signaturePad = new SignaturePad(canvas);
-    }
-});
-
-function clearSignature() {
-    if (signaturePad) {
-        signaturePad.clear();
-    }
-}
-
 function submitChecklist() {
     // Validate signature
-    if (!signaturePad || signaturePad.isEmpty()) {
+    const signatureInput = document.getElementById('ci_signature');
+    if (!signatureInput || !signatureInput.value) {
         alert('Please provide your signature before submitting');
         return;
     }
-    
-    // Get signature data
-    const signatureData = signaturePad.toDataURL();
-    document.getElementById('ci_signature').value = signatureData;
     
     // Get GPS location
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(function(position) {
             document.getElementById('ci_latitude').value = position.coords.latitude;
             document.getElementById('ci_longitude').value = position.coords.longitude;
-            document.getElementById('display_latitude').textContent = position.coords.latitude;
-            document.getElementById('display_longitude').textContent = position.coords.longitude;
+            document.getElementById('display_latitude').textContent = position.coords.latitude.toFixed(6);
+            document.getElementById('display_longitude').textContent = position.coords.longitude.toFixed(6);
             
             // Save all data and submit
             saveCurrentPageData();
             document.getElementById('checklist_data').value = JSON.stringify(checklistData);
             document.getElementById('ciChecklistForm').submit();
         }, function(error) {
-            alert('Could not get GPS location. Please enable location services and try again.');
+            // If GPS fails, ask user if they want to continue
+            if (confirm('Could not get GPS location. Do you want to submit without location data?')) {
+                saveCurrentPageData();
+                document.getElementById('checklist_data').value = JSON.stringify(checklistData);
+                document.getElementById('ciChecklistForm').submit();
+            }
         });
     } else {
-        alert('Geolocation is not supported by your browser');
+        // No geolocation support, ask user if they want to continue
+        if (confirm('Geolocation is not supported by your browser. Do you want to submit without location data?')) {
+            saveCurrentPageData();
+            document.getElementById('checklist_data').value = JSON.stringify(checklistData);
+            document.getElementById('ciChecklistForm').submit();
+        }
     }
 }
 </script>
 
 {% endblock %}
-
-
-        <!-- PAGE 3: COMPUTATION (Matches your image 4) -->
-        <div class="wizard-page" data-page="3">
             <div class="paper-form">
                 <div class="form-header">
                     <h4>DCCCO Multipurpose Cooperative</h4>
