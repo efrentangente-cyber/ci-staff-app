@@ -162,7 +162,7 @@ def sanitize_filename(filename):
     return filename
 
 class User(UserMixin):
-    def __init__(self, id, email, name, role, signature_path=None, backup_email=None, profile_photo=None, assigned_route=None):
+    def __init__(self, id, email, name, role, signature_path=None, backup_email=None, profile_photo=None, assigned_route=None, permissions=None):
         self.id = id
         self.email = email
         self.name = name
@@ -171,6 +171,7 @@ class User(UserMixin):
         self.backup_email = backup_email
         self.profile_photo = profile_photo
         self.assigned_route = assigned_route
+        self.permissions = permissions
 
 def send_verification_email(to_email, code, user_name):
     """Send verification code email using Resend"""
@@ -235,6 +236,15 @@ def get_db():
     conn = sqlite3.connect(DATABASE, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
+
+def has_permission(user, permission):
+    """Check if user has specific permission"""
+    if user.role == 'admin':
+        return True  # Super admin has all permissions
+    if user.role == 'loan_officer':
+        if hasattr(user, 'permissions') and user.permissions:
+            return permission in user.permissions
+    return False
 
 def init_db():
     """Initialize database if it doesn't exist"""
@@ -651,7 +661,8 @@ def load_user(user_id):
         backup_email = row['backup_email'] if 'backup_email' in row.keys() else None
         profile_photo = row['profile_photo'] if 'profile_photo' in row.keys() else None
         assigned_route = row['assigned_route'] if 'assigned_route' in row.keys() else None
-        return User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], backup_email, profile_photo, assigned_route)
+        permissions = row['permissions'] if 'permissions' in row.keys() else None
+        return User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], backup_email, profile_photo, assigned_route, permissions)
     return None
 
 # Add security headers to prevent caching of authenticated pages
@@ -2171,7 +2182,16 @@ def signup():
 @app.route('/manage_users')
 @login_required
 def manage_users():
-    if current_user.role not in ['admin', 'loan_officer']:
+    # Check if user has permission
+    if current_user.role == 'admin':
+        # Super admin always has access
+        pass
+    elif current_user.role == 'loan_officer':
+        # Check if loan officer has manage_users permission
+        if not has_permission(current_user, 'manage_users'):
+            flash('Access Denied - You do not have permission to manage users. Contact super admin.', 'danger')
+            return redirect(url_for('admin_dashboard'))
+    else:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
@@ -2393,8 +2413,17 @@ def reports():
 @app.route('/system_settings')
 @login_required
 def system_settings():
-    """System configuration page (admin only)"""
-    if current_user.role != 'admin':
+    """System configuration page (admin only or loan officer with permission)"""
+    # Check if user has permission
+    if current_user.role == 'admin':
+        # Super admin always has access
+        pass
+    elif current_user.role == 'loan_officer':
+        # Check if loan officer has system_settings permission
+        if not has_permission(current_user, 'system_settings'):
+            flash('Access Denied - You do not have permission to access system settings. Contact super admin.', 'danger')
+            return redirect(url_for('admin_dashboard'))
+    else:
         flash('Unauthorized - Admin access required', 'danger')
         return redirect(url_for('index'))
     
@@ -2419,8 +2448,15 @@ def system_settings():
 @app.route('/update_system_settings', methods=['POST'])
 @login_required
 def update_system_settings():
-    """Update system settings (admin only)"""
-    if current_user.role != 'admin':
+    """Update system settings (admin only or loan officer with permission)"""
+    # Check if user has permission
+    if current_user.role == 'admin':
+        pass
+    elif current_user.role == 'loan_officer':
+        if not has_permission(current_user, 'system_settings'):
+            flash('Access Denied - You do not have permission to update system settings.', 'danger')
+            return redirect(url_for('admin_dashboard'))
+    else:
         flash('Unauthorized - Admin access required', 'danger')
         return redirect(url_for('index'))
     
@@ -2441,6 +2477,58 @@ def update_system_settings():
     
     flash('System settings updated successfully!', 'success')
     return redirect(url_for('system_settings'))
+
+@app.route('/manage_permissions')
+@login_required
+def manage_permissions():
+    """Manage loan officer permissions (super admin only)"""
+    if current_user.role != 'admin':
+        flash('Unauthorized - Super Admin access required', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    
+    # Get all loan officers
+    loan_officers = conn.execute('''
+        SELECT id, name, email, permissions
+        FROM users
+        WHERE role = 'loan_officer' AND is_approved = 1
+        ORDER BY name ASC
+    ''').fetchall()
+    
+    conn.close()
+    
+    return render_template('manage_permissions.html', loan_officers=loan_officers)
+
+@app.route('/update_permissions/<int:user_id>', methods=['POST'])
+@login_required
+def update_permissions(user_id):
+    """Update loan officer permissions (super admin only)"""
+    if current_user.role != 'admin':
+        flash('Unauthorized - Super Admin access required', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    
+    # Get selected permissions
+    permissions = []
+    if request.form.get('manage_users'):
+        permissions.append('manage_users')
+    if request.form.get('system_settings'):
+        permissions.append('system_settings')
+    
+    # Update user permissions
+    permissions_str = ','.join(permissions) if permissions else None
+    conn.execute('UPDATE users SET permissions=? WHERE id=? AND role="loan_officer"', 
+                 (permissions_str, user_id))
+    conn.commit()
+    
+    # Get user name for flash message
+    user = conn.execute('SELECT name FROM users WHERE id=?', (user_id,)).fetchone()
+    conn.close()
+    
+    flash(f'Permissions updated successfully for {user["name"]}!', 'success')
+    return redirect(url_for('manage_permissions'))
 
 @app.route('/generate_report/<report_type>', methods=['POST'])
 @login_required

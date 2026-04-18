@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Manage Permissions{% endblock %}
+{% block content %}
+
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-shield-lock"></i> Manage Loan Officer Permissions</h2>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> 
+        <strong>Super Admin Control:</strong> Grant or revoke full access permissions for loan officers to manage users and system settings.
+    </div>
+
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Loan Officers</h5>
+                </div>
+                <div class="card-body">
+                    {% if loan_officers %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th width="200px">Manage Users</th>
+                                    <th width="200px">System Settings</th>
+                                    <th width="100px">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for officer in loan_officers %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ officer.name }}</strong>
+                                    </td>
+                                    <td>{{ officer.email }}</td>
+                                    <td>
+                                        {% if officer.permissions and 'manage_users' in officer.permissions %}
+                                        <span class="badge bg-success">
+                                            <i class="bi bi-check-circle"></i> Granted
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">
+                                            <i class="bi bi-x-circle"></i> Denied
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if officer.permissions and 'system_settings' in officer.permissions %}
+                                        <span class="badge bg-success">
+                                            <i class="bi bi-check-circle"></i> Granted
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">
+                                            <i class="bi bi-x-circle"></i> Denied
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#editPermissionsModal{{ officer.id }}">
+                                            <i class="bi bi-pencil"></i> Edit
+                                        </button>
+                                    </td>
+                                </tr>
+
+                                <!-- Edit Permissions Modal -->
+                                <div class="modal fade" id="editPermissionsModal{{ officer.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header bg-primary text-white">
+                                                <h5 class="modal-title">
+                                                    <i class="bi bi-shield-lock"></i> Edit Permissions - {{ officer.name }}
+                                                </h5>
+                                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <form method="POST" action="{{ url_for('update_permissions', user_id=officer.id) }}">
+                                                <div class="modal-body">
+                                                    <p class="text-muted mb-3">
+                                                        <i class="bi bi-info-circle"></i> 
+                                                        Select which features this loan officer can access:
+                                                    </p>
+                                                    
+                                                    <div class="form-check mb-3">
+                                                        <input class="form-check-input" 
+                                                               type="checkbox" 
+                                                               name="manage_users" 
+                                                               id="manage_users_{{ officer.id }}"
+                                                               {% if officer.permissions and 'manage_users' in officer.permissions %}checked{% endif %}>
+                                                        <label class="form-check-label" for="manage_users_{{ officer.id }}">
+                                                            <strong><i class="bi bi-people"></i> Manage Users</strong>
+                                                            <br>
+                                                            <small class="text-muted">
+                                                                Approve/reject user registrations, view all users, manage user roles
+                                                            </small>
+                                                        </label>
+                                                    </div>
+
+                                                    <div class="form-check mb-3">
+                                                        <input class="form-check-input" 
+                                                               type="checkbox" 
+                                                               name="system_settings" 
+                                                               id="system_settings_{{ officer.id }}"
+                                                               {% if officer.permissions and 'system_settings' in officer.permissions %}checked{% endif %}>
+                                                        <label class="form-check-label" for="system_settings_{{ officer.id }}">
+                                                            <strong><i class="bi bi-gear"></i> System Settings</strong>
+                                                            <br>
+                                                            <small class="text-muted">
+                                                                Configure system settings, manage loan types, view system statistics
+                                                            </small>
+                                                        </label>
+                                                    </div>
+
+                                                    <div class="alert alert-warning mt-3">
+                                                        <i class="bi bi-exclamation-triangle"></i> 
+                                                        <small>
+                                                            <strong>Note:</strong> Loan officers will always have access to review applications and make decisions. These permissions grant additional administrative capabilities.
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                    <button type="submit" class="btn btn-primary">
+                                                        <i class="bi bi-check-circle"></i> Update Permissions
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> No loan officers found in the system.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Permission Legend -->
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="bi bi-info-circle"></i> Permission Descriptions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6><i class="bi bi-people text-primary"></i> Manage Users</h6>
+                            <ul class="small">
+                                <li>Approve or reject new user registrations</li>
+                                <li>View all active users</li>
+                                <li>Manage user roles and assignments</li>
+                                <li>Access user management interface</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6><i class="bi bi-gear text-primary"></i> System Settings</h6>
+                            <ul class="small">
+                                <li>Configure system-wide settings</li>
+                                <li>Manage loan types and categories</li>
+                                <li>View system statistics and reports</li>
+                                <li>Access system configuration panel</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="alert alert-success mt-3 mb-0">
+                        <i class="bi bi-shield-check"></i> 
+                        <strong>Default Access:</strong> All loan officers can review applications, view CI checklists, and make approval/rejection decisions regardless of these permissions.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.table td {
+    vertical-align: middle;
+}
+
+.badge {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+}
+
+.form-check {
+    padding: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #f8f9fa;
+}
+
+.form-check:hover {
+    background: #e9ecef;
+}
+
+.form-check-input:checked {
+    background-color: #198754;
+    border-color: #198754;
+}
+</style>
+
+{% endblock %}
