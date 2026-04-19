@@ -7,12 +7,69 @@ let checklistData = {};
 // Initialize wizard
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedData();
+    loadCheckboxData(); // Load checkbox data from summary page
     loadOCRData(); // Load OCR extracted data if available
     loadVerificationData(); // Load CI verification checkbox data
     updateProgressBar();
     setupAutoSave();
     setupComputationListeners();
 });
+
+// Load checkbox data from summary page
+function loadCheckboxData() {
+    const checkboxData = sessionStorage.getItem('ci_checkbox_data');
+    if (checkboxData) {
+        try {
+            const data = JSON.parse(checkboxData);
+            
+            // Apply checkbox data to form
+            Object.keys(data).forEach(key => {
+                const checkbox = document.querySelector(`[name="${key}"]`);
+                if (checkbox && checkbox.type === 'checkbox') {
+                    checkbox.checked = data[key];
+                    // Highlight auto-filled checkboxes
+                    if (data[key]) {
+                        checkbox.parentElement.style.backgroundColor = '#f0fff4';
+                        setTimeout(() => {
+                            checkbox.parentElement.style.backgroundColor = '';
+                        }, 3000);
+                    }
+                }
+            });
+            
+            // Show notification
+            showCheckboxNotification();
+            
+            // Clear session storage after loading
+            sessionStorage.removeItem('ci_checkbox_data');
+        } catch (e) {
+            console.error('Error loading checkbox data:', e);
+        }
+    }
+}
+
+// Show checkbox notification
+function showCheckboxNotification() {
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-info alert-dismissible fade show';
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.maxWidth = '400px';
+    notification.innerHTML = `
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <h6><i class="bi bi-check2-square"></i> Checkbox Summary Loaded!</h6>
+        <p class="mb-0 small">All checkboxes from the summary page have been applied. Review and complete the remaining fields.</p>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        notification.remove();
+    }, 5000);
+}
 
 // Load CI verification data from session storage
 function loadVerificationData() {

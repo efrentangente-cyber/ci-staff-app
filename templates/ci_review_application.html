@@ -112,120 +112,37 @@
             </div>
         </div>
 
-        <!-- Right Column: Verification Checklist -->
+        <!-- Right Column: Quick Actions -->
         <div class="col-lg-4">
             <div class="card sticky-top" style="top: 20px;">
                 <div class="card-header bg-success text-white">
-                    <h5 class="mb-0"><i class="bi bi-check2-square"></i> Document Verification</h5>
+                    <h5 class="mb-0"><i class="bi bi-list-check"></i> Quick Actions</h5>
                 </div>
                 <div class="card-body">
-                    <form id="verificationForm">
-                        <p class="text-muted small mb-3">
-                            <i class="bi bi-info-circle"></i> Check all items before proceeding to interview
-                        </p>
+                    <p class="text-muted small mb-3">
+                        <i class="bi bi-info-circle"></i> Review the documents and application details
+                    </p>
 
-                        <!-- Required Documents Checklist -->
-                        <div class="mb-4">
-                            <h6 class="border-bottom pb-2">Required Documents</h6>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_valid_id" name="valid_id_verified">
-                                <label class="form-check-label" for="check_valid_id">
-                                    Valid ID Verified
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_proof_income" name="proof_income_verified">
-                                <label class="form-check-label" for="check_proof_income">
-                                    Proof of Income
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_proof_residence" name="proof_residence_verified">
-                                <label class="form-check-label" for="check_proof_residence">
-                                    Proof of Residence
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_application_form" name="application_form_verified">
-                                <label class="form-check-label" for="check_application_form">
-                                    Application Form Complete
-                                </label>
-                            </div>
-                        </div>
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('ci_checklist_summary', id=application.id) }}" class="btn btn-success btn-lg">
+                            <i class="bi bi-check2-square"></i> Fill Interview Checklist
+                        </a>
+                        <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='{{ url_for('ci_dashboard') }}'">
+                            <i class="bi bi-arrow-left"></i> Back to Dashboard
+                        </button>
+                    </div>
 
-                        <!-- Identity Verification -->
-                        <div class="mb-4">
-                            <h6 class="border-bottom pb-2">Identity Verification</h6>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_identity" name="identity_confirmed">
-                                <label class="form-check-label" for="check_identity">
-                                    Identity Confirmed
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_address" name="address_verified">
-                                <label class="form-check-label" for="check_address">
-                                    Address Verified
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_contact" name="contact_verified">
-                                <label class="form-check-label" for="check_contact">
-                                    Contact Number Verified
-                                </label>
-                            </div>
-                        </div>
+                    <hr class="my-3">
 
-                        <!-- Additional Checks -->
-                        <div class="mb-4">
-                            <h6 class="border-bottom pb-2">Additional Verification</h6>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_member_status" name="member_status_checked">
-                                <label class="form-check-label" for="check_member_status">
-                                    Member Status Checked
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_credit_history" name="credit_history_checked">
-                                <label class="form-check-label" for="check_credit_history">
-                                    Credit History Reviewed
-                                </label>
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="check_comaker" name="comaker_verified">
-                                <label class="form-check-label" for="check_comaker">
-                                    Co-maker Information Verified
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Notes -->
-                        <div class="mb-3">
-                            <label class="form-label">Verification Notes (Optional)</label>
-                            <textarea class="form-control" id="verification_notes" name="verification_notes" rows="3" placeholder="Add any notes or observations..."></textarea>
-                        </div>
-
-                        <!-- Progress Indicator -->
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <small class="text-muted">Verification Progress</small>
-                                <small class="text-muted"><span id="checkedCount">0</span>/10</small>
-                            </div>
-                            <div class="progress" style="height: 8px;">
-                                <div class="progress-bar bg-success" id="progressBar" role="progressbar" style="width: 0%"></div>
-                            </div>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div class="d-grid gap-2">
-                            <button type="button" class="btn btn-success btn-lg" id="proceedBtn" disabled>
-                                <i class="bi bi-arrow-right-circle"></i> Proceed to Interview Form
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='{{ url_for('ci_dashboard') }}'">
-                                <i class="bi bi-x-circle"></i> Cancel
-                            </button>
-                        </div>
-                    </form>
+                    <div class="alert alert-info small mb-0">
+                        <strong>Next Steps:</strong>
+                        <ol class="mb-0 ps-3">
+                            <li>Review all uploaded documents</li>
+                            <li>Click "Fill Interview Checklist"</li>
+                            <li>Complete all checkboxes</li>
+                            <li>View detailed 5-page form</li>
+                        </ol>
+                    </div>
                 </div>
             </div>
         </div>
@@ -254,11 +171,6 @@
     z-index: 100;
 }
 
-.form-check-input:checked {
-    background-color: #28a745;
-    border-color: #28a745;
-}
-
 .card-img-top {
     transition: transform 0.2s;
 }
@@ -269,77 +181,11 @@
 </style>
 
 <script>
-// Track checkbox progress
-const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-const progressBar = document.getElementById('progressBar');
-const checkedCount = document.getElementById('checkedCount');
-const proceedBtn = document.getElementById('proceedBtn');
-const totalCheckboxes = checkboxes.length;
-
-// Update progress
-function updateProgress() {
-    const checked = document.querySelectorAll('input[type="checkbox"]:checked').length;
-    const percentage = (checked / totalCheckboxes) * 100;
-    
-    progressBar.style.width = percentage + '%';
-    checkedCount.textContent = checked;
-    
-    // Enable proceed button only if all checkboxes are checked
-    if (checked === totalCheckboxes) {
-        proceedBtn.disabled = false;
-        proceedBtn.classList.add('pulse');
-    } else {
-        proceedBtn.disabled = true;
-        proceedBtn.classList.remove('pulse');
-    }
-}
-
-// Add event listeners to all checkboxes
-checkboxes.forEach(checkbox => {
-    checkbox.addEventListener('change', updateProgress);
-});
-
-// Proceed to interview form
-proceedBtn.addEventListener('click', function() {
-    // Save verification data to session storage
-    const verificationData = {
-        valid_id_verified: document.getElementById('check_valid_id').checked,
-        proof_income_verified: document.getElementById('check_proof_income').checked,
-        proof_residence_verified: document.getElementById('check_proof_residence').checked,
-        application_form_verified: document.getElementById('check_application_form').checked,
-        identity_confirmed: document.getElementById('check_identity').checked,
-        address_verified: document.getElementById('check_address').checked,
-        contact_verified: document.getElementById('check_contact').checked,
-        member_status_checked: document.getElementById('check_member_status').checked,
-        credit_history_checked: document.getElementById('check_credit_history').checked,
-        comaker_verified: document.getElementById('check_comaker').checked,
-        verification_notes: document.getElementById('verification_notes').value
-    };
-    
-    sessionStorage.setItem('ci_verification_data', JSON.stringify(verificationData));
-    
-    // Redirect to CI checklist wizard
-    window.location.href = '{{ url_for("ci_checklist", id=application.id) }}';
-});
-
 // Open image in modal
 function openImageModal(imageUrl, imageName) {
     document.getElementById('modalImage').src = imageUrl;
     document.getElementById('imageModalLabel').textContent = imageName;
     new bootstrap.Modal(document.getElementById('imageModal')).show();
 }
-
-// Pulse animation for proceed button
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-    }
-    .pulse {
-        animation: pulse 1.5s infinite;
-    }
-`;
-document.head.appendChild(style);
 </script>
 {% endblock %}

@@ -1,0 +1,735 @@
+{% extends "base.html" %}
+{% block title %}CI Checklist Summary - {{ application.member_name }}{% endblock %}
+
+{% block content %}
+<style>
+.summary-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background: white;
+}
+
+.summary-header {
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+    margin-bottom: 30px;
+}
+
+.summary-section {
+    background: #f8f9fa;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.summary-section h5 {
+    color: #667eea;
+    font-weight: bold;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.checkbox-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin: 15px 0;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: white;
+    border-radius: 5px;
+    border: 1px solid #dee2e6;
+    transition: all 0.2s;
+}
+
+.checkbox-item:hover {
+    background: #f0f7ff;
+    border-color: #667eea;
+}
+
+.checkbox-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.checkbox-item label {
+    margin: 0;
+    cursor: pointer;
+    flex: 1;
+}
+
+.yes-no-group {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    padding: 10px;
+    background: white;
+    border-radius: 5px;
+    border: 1px solid #dee2e6;
+    margin-bottom: 10px;
+}
+
+.yes-no-group .question {
+    flex: 1;
+    font-weight: 500;
+}
+
+.yes-no-group .options {
+    display: flex;
+    gap: 15px;
+}
+
+.progress-indicator {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+.progress-indicator .progress {
+    height: 25px;
+    margin-top: 10px;
+}
+
+</style>
+
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-12">
+            <a href="{{ url_for('ci_review_application', id=application.id) }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Review
+            </a>
+        </div>
+    </div>
+
+    <!-- Progress Indicator -->
+    <div class="progress-indicator no-print">
+        <strong>Completion Progress</strong>
+        <div class="progress">
+            <div id="progressBar" class="progress-bar bg-success" role="progressbar" style="width: 0%">0%</div>
+        </div>
+        <small class="text-muted mt-2 d-block"><span id="checkedCount">0</span> of <span id="totalCount">0</span> items</small>
+    </div>
+
+    <div class="summary-container">
+        <div class="summary-header">
+            <h3><i class="bi bi-check2-square"></i> CI Checklist Summary</h3>
+            <p class="mb-0">Complete all checkboxes below before proceeding to the detailed 5-page form</p>
+            <small>Application: {{ application.member_name }} - {{ application.loan_type }}</small>
+        </div>
+
+        <form id="checklistSummaryForm">
+            <!-- SECTION 1: RESIDENCE STATUS -->
+            <div class="summary-section">
+                <h5><i class="bi bi-house-door"></i> Residence Status</h5>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="res_owned" id="res_owned">
+                        <label for="res_owned">Owned</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="res_rented" id="res_rented">
+                        <label for="res_rented">Rented</label>
+                    </div>
+
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="res_living_parents" id="res_living_parents">
+                        <label for="res_living_parents">Living with Parents</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="res_mortgaged" id="res_mortgaged">
+                        <label for="res_mortgaged">Mortgaged</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="res_others" id="res_others">
+                        <label for="res_others">Others</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: TYPE OF HOUSE -->
+            <div class="summary-section">
+                <h5><i class="bi bi-building"></i> Type of House</h5>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="house_concrete" id="house_concrete">
+                        <label for="house_concrete">Concrete</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="house_semi" id="house_semi">
+                        <label for="house_semi">Semi-Concrete</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="house_wood" id="house_wood">
+                        <label for="house_wood">Wood</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="house_shanty" id="house_shanty">
+                        <label for="house_shanty">Shanty</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="house_others" id="house_others">
+                        <label for="house_others">Others</label>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- SECTION 3: COURT AND GOVERNMENT AGENCY CHECKING -->
+            <div class="summary-section">
+                <h5><i class="bi bi-shield-check"></i> Court and Government Agency Checking</h5>
+                <div class="yes-no-group">
+                    <div class="question">Has record of complaints regarding money or debt</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="court_1_yes" id="court_1_yes"> YES</label>
+                        <label><input type="checkbox" name="court_1_no" id="court_1_no"> NO</label>
+                    </div>
+                </div>
+                <div class="yes-no-group">
+                    <div class="question">Has pending case for money judgment or sum of money</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="court_2_yes" id="court_2_yes"> YES</label>
+                        <label><input type="checkbox" name="court_2_no" id="court_2_no"> NO</label>
+                    </div>
+                </div>
+                <div class="yes-no-group">
+                    <div class="question">Has criminal record (Police/NBI clearance)</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="court_3_yes" id="court_3_yes"> YES</label>
+                        <label><input type="checkbox" name="court_3_no" id="court_3_no"> NO</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 4: EMPLOYMENT STATUS - APPLICANT -->
+            <div class="summary-section">
+                <h5><i class="bi bi-briefcase"></i> Employment Status - Applicant</h5>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="app_permanent" id="app_permanent">
+                        <label for="app_permanent">Permanent</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="app_casual" id="app_casual">
+                        <label for="app_casual">Casual</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="app_contractual" id="app_contractual">
+                        <label for="app_contractual">Contractual</label>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- SECTION 5: EMPLOYMENT STATUS - SPOUSE -->
+            <div class="summary-section">
+                <h5><i class="bi bi-briefcase-fill"></i> Employment Status - Spouse</h5>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="spouse_permanent" id="spouse_permanent">
+                        <label for="spouse_permanent">Permanent</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="spouse_casual" id="spouse_casual">
+                        <label for="spouse_casual">Casual</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="spouse_contractual" id="spouse_contractual">
+                        <label for="spouse_contractual">Contractual</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 6: BUSINESS NATURE -->
+            <div class="summary-section">
+                <h5><i class="bi bi-shop"></i> Business Nature</h5>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="nature_sole" id="nature_sole">
+                        <label for="nature_sole">Sole Proprietorship</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="nature_partnership" id="nature_partnership">
+                        <label for="nature_partnership">Partnership</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="nature_corp" id="nature_corp">
+                        <label for="nature_corp">Corporation</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="nature_service" id="nature_service">
+                        <label for="nature_service">Service</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="nature_others" id="nature_others">
+                        <label for="nature_others">Others</label>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- SECTION 7: CREDIT CHECKING -->
+            <div class="summary-section">
+                <h5><i class="bi bi-credit-card-2-front"></i> Credit Checking</h5>
+                
+                <h6 class="mt-3">Electric Company</h6>
+                <div class="yes-no-group">
+                    <div class="question">Payment Status</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="credit_electric_updated" id="credit_electric_updated"> Updated/NRCS</label>
+                        <label><input type="checkbox" name="credit_electric_delayed" id="credit_electric_delayed"> Delayed/Non-NRCS</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Water/Utility Company</h6>
+                <div class="yes-no-group">
+                    <div class="question">Payment Status</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="credit_water_updated" id="credit_water_updated"> Updated/NRCS</label>
+                        <label><input type="checkbox" name="credit_water_delayed" id="credit_water_delayed"> Delayed/Non-NRCS</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Other Cooperatives</h6>
+                <div class="yes-no-group">
+                    <div class="question">Payment Status</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="credit_coop_updated" id="credit_coop_updated"> Updated/NRCS</label>
+                        <label><input type="checkbox" name="credit_coop_delayed" id="credit_coop_delayed"> Delayed/Non-NRCS</label>
+                        <label><input type="checkbox" name="credit_na1" id="credit_na1"> N/A</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Banks</h6>
+                <div class="yes-no-group">
+                    <div class="question">Payment Status</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="credit_banks_updated" id="credit_banks_updated"> Updated/NRCS</label>
+                        <label><input type="checkbox" name="credit_banks_delayed" id="credit_banks_delayed"> Delayed/Non-NRCS</label>
+                    </div>
+                </div>
+
+
+                <h6 class="mt-3">Other Financial Institutions</h6>
+                <div class="yes-no-group">
+                    <div class="question">Payment Status</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="credit_financial_updated" id="credit_financial_updated"> Updated/NRCS</label>
+                        <label><input type="checkbox" name="credit_financial_delayed" id="credit_financial_delayed"> Delayed/Non-NRCS</label>
+                        <label><input type="checkbox" name="credit_na2" id="credit_na2"> N/A</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Sari-sari Store</h6>
+                <div class="yes-no-group">
+                    <div class="question">Payment Status</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="credit_store_updated" id="credit_store_updated"> Updated/NRCS</label>
+                        <label><input type="checkbox" name="credit_store_delayed" id="credit_store_delayed"> Delayed/Non-NRCS</label>
+                        <label><input type="checkbox" name="credit_na3" id="credit_na3"> N/A</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Loans with Informal Lenders</h6>
+                <div class="yes-no-group">
+                    <div class="question">Payment Status</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="credit_informal_updated" id="credit_informal_updated"> Updated/NRCS</label>
+                        <label><input type="checkbox" name="credit_informal_delayed" id="credit_informal_delayed"> Delayed/Non-NRCS</label>
+                        <label><input type="checkbox" name="credit_na4" id="credit_na4"> N/A</label>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- SECTION 8: MEMBERSHIP STATUS -->
+            <div class="summary-section">
+                <h5><i class="bi bi-person-badge"></i> Membership Status with DCCCO</h5>
+                
+                <h6>Membership Classification</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="member_new" id="member_new">
+                        <label for="member_new">New Member</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="member_nrcs" id="member_nrcs">
+                        <label for="member_nrcs">NRCS</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="member_non_nrcs" id="member_non_nrcs">
+                        <label for="member_non_nrcs">Non-NRCS</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Loan Accounts with DCCCO</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="loan_no_loan" id="loan_no_loan">
+                        <label for="loan_no_loan">No Loan</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="loan_1_2" id="loan_1_2">
+                        <label for="loan_1_2">1-2 Filers</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="loan_more_2" id="loan_more_2">
+                        <label for="loan_more_2">More than 2 Filers</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="loan_past_due" id="loan_past_due">
+                        <label for="loan_past_due">Past Due</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="loan_restructured" id="loan_restructured">
+                        <label for="loan_restructured">Restructured</label>
+                    </div>
+                </div>
+
+
+                <h6 class="mt-3">Outstanding Loan Accounts (within 12 months)</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="outstanding_no" id="outstanding_no">
+                        <label for="outstanding_no">No Loan</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="outstanding_1_2" id="outstanding_1_2">
+                        <label for="outstanding_1_2">1-2 Filers</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="outstanding_more" id="outstanding_more">
+                        <label for="outstanding_more">More than 2 Filers</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="outstanding_past" id="outstanding_past">
+                        <label for="outstanding_past">Past Due</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="outstanding_restr" id="outstanding_restr">
+                        <label for="outstanding_restr">Restructured</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Other Loan Accounts</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="other_niskal" id="other_niskal">
+                        <label for="other_niskal">Niskal</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="other_bronze" id="other_bronze">
+                        <label for="other_bronze">Bronze</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="other_silver" id="other_silver">
+                        <label for="other_silver">Silver</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="other_gold" id="other_gold">
+                        <label for="other_gold">Gold</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="other_platinum" id="other_platinum">
+                        <label for="other_platinum">Platinum</label>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- SECTION 9: CAPACITY ASSESSMENT -->
+            <div class="summary-section">
+                <h5><i class="bi bi-graph-up"></i> Capacity Assessment</h5>
+                <div class="yes-no-group">
+                    <div class="question">DEIR (Debt & Expense to Income Ratio) is within limit</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="capacity_deir_yes" id="capacity_deir_yes"> YES</label>
+                        <label><input type="checkbox" name="capacity_deir_no" id="capacity_deir_no"> NO</label>
+                    </div>
+                </div>
+                <div class="yes-no-group">
+                    <div class="question">Net Take Home Pay (if Salary Loan) is within limit</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="capacity_nthp_yes" id="capacity_nthp_yes"> YES</label>
+                        <label><input type="checkbox" name="capacity_nthp_no" id="capacity_nthp_no"> NO</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 10: CHARACTER ASSESSMENT -->
+            <div class="summary-section">
+                <h5><i class="bi bi-person-check"></i> Character Assessment</h5>
+                <div class="yes-no-group">
+                    <div class="question">Loans are current and never fined</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="character_current_yes" id="character_current_yes"> YES</label>
+                        <label><input type="checkbox" name="character_current_no" id="character_current_no"> NO</label>
+                    </div>
+                </div>
+                <div class="yes-no-group">
+                    <div class="question">Loans were fined/past due</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="character_fined_yes" id="character_fined_yes"> YES</label>
+                        <label><input type="checkbox" name="character_fined_no" id="character_fined_no"> NO</label>
+                        <label><input type="checkbox" name="character_fined_1" id="character_fined_1"> 1 Fine</label>
+                        <label><input type="checkbox" name="character_fined_2plus" id="character_fined_2plus"> 2+ Fines</label>
+                    </div>
+                </div>
+                <div class="yes-no-group">
+                    <div class="question">PSM Loan</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="character_psm_yes" id="character_psm_yes"> YES</label>
+                        <label><input type="checkbox" name="character_psm_no" id="character_psm_no"> NO</label>
+                    </div>
+                </div>
+
+                <div class="yes-no-group">
+                    <div class="question">Without negative feedback from other institutions</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="character_no_negative_inst_yes" id="character_no_negative_inst_yes"> YES</label>
+                        <label><input type="checkbox" name="character_no_negative_inst_no" id="character_no_negative_inst_no"> NO</label>
+                    </div>
+                </div>
+                <div class="yes-no-group">
+                    <div class="question">Without negative feedback from neighbors/co-workers/barangay/court</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="character_no_negative_neighbors_yes" id="character_no_negative_neighbors_yes"> YES</label>
+                        <label><input type="checkbox" name="character_no_negative_neighbors_no" id="character_no_negative_neighbors_no"> NO</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 11: COLLATERAL -->
+            <div class="summary-section">
+                <h5><i class="bi bi-file-earmark-text"></i> Collateral</h5>
+                <div class="yes-no-group">
+                    <div class="question">With Right of Way</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="collateral_right_way_yes" id="collateral_right_way_yes"> YES</label>
+                        <label><input type="checkbox" name="collateral_right_way_no" id="collateral_right_way_no"> NO</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 12: CONDITION - HEALTH -->
+            <div class="summary-section">
+                <h5><i class="bi bi-heart-pulse"></i> Condition - Health</h5>
+                <div class="yes-no-group">
+                    <div class="question">Able to perform daily routine tasks</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="condition_health_able_yes" id="condition_health_able_yes"> YES</label>
+                        <label><input type="checkbox" name="condition_health_able_no" id="condition_health_able_no"> NO</label>
+                    </div>
+                </div>
+                <div class="yes-no-group">
+                    <div class="question">Not taking regular/maintenance medication</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="condition_health_medication_yes" id="condition_health_medication_yes"> YES</label>
+                        <label><input type="checkbox" name="condition_health_medication_no" id="condition_health_medication_no"> NO</label>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- SECTION 13: CONDITION - BUSINESS -->
+            <div class="summary-section">
+                <h5><i class="bi bi-shop-window"></i> Condition - Business</h5>
+                <div class="yes-no-group">
+                    <div class="question">Business has updated permits (Business, BIR, DTI, etc)</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="condition_business_permits_yes" id="condition_business_permits_yes"> YES</label>
+                        <label><input type="checkbox" name="condition_business_permits_no" id="condition_business_permits_no"> NO</label>
+                    </div>
+                </div>
+                <div class="yes-no-group">
+                    <div class="question">Nature of business is legal</div>
+                    <div class="options">
+                        <label><input type="checkbox" name="condition_business_legal_yes" id="condition_business_legal_yes"> YES</label>
+                        <label><input type="checkbox" name="condition_business_legal_no" id="condition_business_legal_no"> NO</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 14: RECOMMENDATIONS -->
+            <div class="summary-section">
+                <h5><i class="bi bi-clipboard-check"></i> Recommendations</h5>
+                
+                <h6>Credit Officer</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="co_approve" id="co_approve">
+                        <label for="co_approve">Approve</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="co_disapprove" id="co_disapprove">
+                        <label for="co_disapprove">Disapprove</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="co_defer" id="co_defer">
+                        <label for="co_defer">Defer</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">CM (Credit Manager)</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="cm_approve" id="cm_approve">
+                        <label for="cm_approve">Approve</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="cm_disapprove" id="cm_disapprove">
+                        <label for="cm_disapprove">Disapprove</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="cm_defer" id="cm_defer">
+                        <label for="cm_defer">Defer</label>
+                    </div>
+                </div>
+
+
+                <h6 class="mt-3">OM (Operations Manager)</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="om_approve" id="om_approve">
+                        <label for="om_approve">Approve</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="om_disapprove" id="om_disapprove">
+                        <label for="om_disapprove">Disapprove</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="om_defer" id="om_defer">
+                        <label for="om_defer">Defer</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Management Credit Committee</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="mcc_approve" id="mcc_approve">
+                        <label for="mcc_approve">Approve</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="mcc_disapprove" id="mcc_disapprove">
+                        <label for="mcc_disapprove">Disapprove</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="mcc_defer" id="mcc_defer">
+                        <label for="mcc_defer">Defer</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">FTM (Finance & Treasury Manager)</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="ftm_approve" id="ftm_approve">
+                        <label for="ftm_approve">Approve</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="ftm_disapprove" id="ftm_disapprove">
+                        <label for="ftm_disapprove">Disapprove</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="ftm_defer" id="ftm_defer">
+                        <label for="ftm_defer">Defer</label>
+                    </div>
+                </div>
+
+
+                <h6 class="mt-3">CEO (Chief Executive Officer)</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="ceo_approve" id="ceo_approve">
+                        <label for="ceo_approve">Approve</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="ceo_disapprove" id="ceo_disapprove">
+                        <label for="ceo_disapprove">Disapprove</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="ceo_defer" id="ceo_defer">
+                        <label for="ceo_defer">Defer</label>
+                    </div>
+                </div>
+
+                <h6 class="mt-3">Board of Directors</h6>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="bod_approve" id="bod_approve">
+                        <label for="bod_approve">Approve</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" name="bod_disapprove" id="bod_disapprove">
+                        <label for="bod_disapprove">Disapprove</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBMIT BUTTON -->
+            <div class="text-center mt-5 mb-5">
+                <button type="button" class="btn btn-success btn-lg" onclick="proceedToWizard()" style="padding: 15px 50px;">
+                    <i class="bi bi-arrow-right-circle"></i> Proceed to 5-Page Form
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<script>
+// Track progress
+document.addEventListener('DOMContentLoaded', function() {
+    updateProgress();
+    
+    // Add change listeners to all checkboxes
+    document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', updateProgress);
+    });
+});
+
+function updateProgress() {
+    const allCheckboxes = document.querySelectorAll('input[type="checkbox"]');
+    const checkedCheckboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+    
+    const total = allCheckboxes.length;
+    const checked = checkedCheckboxes.length;
+    const percentage = total > 0 ? Math.round((checked / total) * 100) : 0;
+    
+    document.getElementById('totalCount').textContent = total;
+    document.getElementById('checkedCount').textContent = checked;
+    document.getElementById('progressBar').style.width = percentage + '%';
+    document.getElementById('progressBar').textContent = percentage + '%';
+}
+
+function proceedToWizard() {
+    // Collect all checkbox data
+    const checkboxData = {};
+    document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkboxData[checkbox.name] = checkbox.checked;
+    });
+    
+    // Save to session storage
+    sessionStorage.setItem('ci_checkbox_data', JSON.stringify(checkboxData));
+    
+    // Redirect to wizard
+    window.location.href = "{{ url_for('ci_checklist_wizard', id=application.id) }}";
+}
+</script>
+
+{% endblock %}
