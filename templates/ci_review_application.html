@@ -124,7 +124,7 @@
                     </p>
 
                     <div class="d-grid gap-2">
-                        <a href="{{ url_for('ci_checklist_summary', id=application.id) }}" class="btn btn-success btn-lg">
+                        <a href="{{ url_for('ci_checklist_wizard', id=application.id) }}" class="btn btn-success btn-lg">
                             <i class="bi bi-check2-square"></i> Fill Interview Checklist
                         </a>
                         <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='{{ url_for('ci_dashboard') }}'">
