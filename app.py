@@ -1149,15 +1149,29 @@ def ci_checklist_summary(id):
     """CI Checklist Summary - All checkboxes in one page before 5-page wizard"""
     try:
         # Check authorization
-        if not hasattr(current_user, 'role') or current_user.role != 'ci_staff':
+        if not hasattr(current_user, 'role'):
+            flash('Session error. Please login again.', 'danger')
+            return redirect(url_for('login'))
+            
+        if current_user.role != 'ci_staff':
             flash('Unauthorized access. CI Staff only.', 'danger')
             return redirect(url_for('index'))
         
         conn = get_db()
         
-        # Get application data
+        # Get application data with all fields
         app_data = conn.execute('''
-            SELECT la.*, u.name as loan_staff_name
+            SELECT 
+                la.id,
+                la.member_name,
+                la.member_contact,
+                la.member_address,
+                la.loan_amount,
+                la.loan_type,
+                la.status,
+                la.submitted_at,
+                la.submitted_by,
+                u.name as loan_staff_name
             FROM loan_applications la
             LEFT JOIN users u ON la.submitted_by = u.id
             WHERE la.id=?
@@ -1168,29 +1182,39 @@ def ci_checklist_summary(id):
             flash('Application not found', 'danger')
             return redirect(url_for('ci_dashboard'))
         
-        # Get unread notifications count
+        # Convert to dict for easier access
+        application = dict(app_data)
+        
+        # Get unread notifications count safely
+        unread_count = 0
         try:
-            unread_count = conn.execute('''
+            result = conn.execute('''
                 SELECT COUNT(*) as count 
                 FROM notifications 
                 WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
-            ''', (current_user.id,)).fetchone()['count']
-        except:
-            unread_count = 0
+            ''', (current_user.id,)).fetchone()
+            if result:
+                unread_count = result['count']
+        except Exception as e:
+            print(f"Error getting unread count: {e}")
         
         conn.close()
         
-        return render_template('ci_checklist_summary.html', 
-                             application=app_data,
-                             unread_count=unread_count,
-                             current_user=current_user)
+        # Render template with all required data
+        return render_template('ci_checklist_summary_simple.html', 
+                             application=application,
+                             unread_count=unread_count)
     
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        print(f"Error in ci_checklist_summary: {str(e)}")
-        print(error_details)
-        flash(f'An error occurred while loading the page. Please try again.', 'danger')
+        print(f"=== ERROR in ci_checklist_summary ===")
+        print(f"Error: {str(e)}")
+        print(f"Details: {error_details}")
+        print(f"=== END ERROR ===")
+        
+        flash('An error occurred while loading the page. Please try again.', 'danger')
+        
         try:
             return redirect(url_for('ci_dashboard'))
         except:

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}CI Checklist Summary{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <a href="{{ url_for('ci_review_application', id=application.id) }}" class="btn btn-secondary mb-3">
+                <i class="bi bi-arrow-left"></i> Back to Review
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">CI Checklist Summary</h4>
+            <small>Application: {{ application.member_name }} - {{ application.loan_type }}</small>
+        </div>
+        <div class="card-body">
+            <p class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Complete all checkboxes below, then proceed to the detailed 5-page form.
+            </p>
+
+            <form id="checklistSummaryForm">
+                <!-- Residence Status -->
+                <div class="mb-4">
+                    <h5 class="border-bottom pb-2"><i class="bi bi-house-door"></i> Residence Status</h5>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="res_owned" id="res_owned">
+                                <label class="form-check-label" for="res_owned">Owned</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="res_rented" id="res_rented">
+                                <label class="form-check-label" for="res_rented">Rented</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="res_living_parents" id="res_living_parents">
+                                <label class="form-check-label" for="res_living_parents">Living with Parents</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="res_mortgaged" id="res_mortgaged">
+                                <label class="form-check-label" for="res_mortgaged">Mortgaged</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Type of House -->
+                <div class="mb-4">
+                    <h5 class="border-bottom pb-2"><i class="bi bi-building"></i> Type of House</h5>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="house_concrete" id="house_concrete">
+                                <label class="form-check-label" for="house_concrete">Concrete</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="house_semi" id="house_semi">
+                                <label class="form-check-label" for="house_semi">Semi-Concrete</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="house_wood" id="house_wood">
+                                <label class="form-check-label" for="house_wood">Wood</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="house_shanty" id="house_shanty">
+                                <label class="form-check-label" for="house_shanty">Shanty</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Employment Status -->
+                <div class="mb-4">
+                    <h5 class="border-bottom pb-2"><i class="bi bi-briefcase"></i> Employment Status - Applicant</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="app_permanent" id="app_permanent">
+                                <label class="form-check-label" for="app_permanent">Permanent</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="app_casual" id="app_casual">
+                                <label class="form-check-label" for="app_casual">Casual</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="app_contractual" id="app_contractual">
+                                <label class="form-check-label" for="app_contractual">Contractual</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Membership Classification -->
+                <div class="mb-4">
+                    <h5 class="border-bottom pb-2"><i class="bi bi-person-badge"></i> Membership Classification</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="member_new" id="member_new">
+                                <label class="form-check-label" for="member_new">New Member</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="member_nrcs" id="member_nrcs">
+                                <label class="form-check-label" for="member_nrcs">NRCS</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="member_non_nrcs" id="member_non_nrcs">
+                                <label class="form-check-label" for="member_non_nrcs">Non-NRCS</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-5">
+                    <button type="button" class="btn btn-success btn-lg" onclick="proceedToWizard()">
+                        <i class="bi bi-arrow-right-circle"></i> Proceed to 5-Page Form
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function proceedToWizard() {
+    // Collect all checkbox data
+    const checkboxData = {};
+    document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkboxData[checkbox.name] = checkbox.checked;
+    });
+    
+    // Save to session storage
+    sessionStorage.setItem('ci_checkbox_data', JSON.stringify(checkboxData));
+    
+    // Redirect to wizard
+    window.location.href = "{{ url_for('ci_checklist_wizard', id=application.id) }}";
+}
+</script>
+{% endblock %}
