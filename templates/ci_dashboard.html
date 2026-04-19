@@ -116,7 +116,7 @@
                         <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
                         <td>{{ app.member_address }}</td>
                         <td>
-                            <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-warning">
+                            <a href="{{ url_for('ci_checklist_wizard', id=app.id) }}" class="btn btn-sm btn-warning">
                                 <i class="bi bi-pencil"></i>
                                 <span class="btn-text">Start</span>
                             </a>
