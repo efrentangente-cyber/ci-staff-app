@@ -7,10 +7,188 @@ let checklistData = {};
 // Initialize wizard
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedData();
+    loadOCRData(); // Load OCR extracted data if available
     updateProgressBar();
     setupAutoSave();
     setupComputationListeners();
 });
+
+// Load OCR extracted data from session storage
+function loadOCRData() {
+    const ocrData = sessionStorage.getItem('ocr_extracted_data');
+    if (ocrData) {
+        try {
+            const data = JSON.parse(ocrData);
+            autoFillFromOCR(data);
+            
+            // Show notification
+            showOCRNotification();
+            
+            // Clear session storage after loading
+            sessionStorage.removeItem('ocr_extracted_data');
+        } catch (e) {
+            console.error('Error loading OCR data:', e);
+        }
+    }
+}
+
+// Auto-fill form from OCR data
+function autoFillFromOCR(data) {
+    console.log('Auto-filling from OCR data:', data);
+    
+    // Page 1: Personal Data - Applicant
+    if (data.applicant) {
+        setFieldValue('applicant_last_name', data.applicant.last_name);
+        setFieldValue('applicant_first_name', data.applicant.first_name);
+        setFieldValue('applicant_middle_name', data.applicant.middle_name);
+        setFieldValue('applicant_birthday', data.applicant.birthday);
+        setFieldValue('applicant_age', data.applicant.age);
+    }
+    
+    // Page 1: Personal Data - Spouse
+    if (data.spouse) {
+        setFieldValue('spouse_last_name', data.spouse.last_name);
+        setFieldValue('spouse_first_name', data.spouse.first_name);
+        setFieldValue('spouse_middle_name', data.spouse.middle_name);
+        setFieldValue('spouse_birthday', data.spouse.birthday);
+        setFieldValue('spouse_age', data.spouse.age);
+    }
+    
+    // Page 1: Family Background
+    if (data.family_background && data.family_background.length > 0) {
+        data.family_background.forEach((member, index) => {
+            if (index < 5) { // Limit to 5 family members
+                setFieldValue(`family_name_${index + 1}`, member.name);
+                setFieldValue(`family_age_${index + 1}`, member.age);
+                setFieldValue(`family_relationship_${index + 1}`, member.relationship);
+                setFieldValue(`family_member_status_${index + 1}`, member.member_status);
+            }
+        });
+    }
+    
+    // Page 2: Address
+    if (data.address) {
+        if (data.address.full_address) {
+            setFieldValue('address', data.address.full_address);
+        }
+        if (data.address.purok) {
+            setFieldValue('purok', data.address.purok);
+        }
+        if (data.address.barangay) {
+            setFieldValue('barangay', data.address.barangay);
+        }
+        if (data.address.municipality) {
+            setFieldValue('municipality', data.address.municipality);
+        }
+        if (data.address.province) {
+            setFieldValue('province', data.address.province);
+        }
+    }
+    
+    // Page 3: Income
+    if (data.income && data.income.sources) {
+        data.income.sources.forEach((source, index) => {
+            if (index < 5) {
+                setFieldValue(`income_source_${index + 1}`, source.description);
+                setFieldValue(`income_amount_${index + 1}`, source.amount);
+            }
+        });
+        if (data.income.total) {
+            setFieldValue('total_income', data.income.total);
+        }
+    }
+    
+    // Page 3: Expenses
+    if (data.expenses && data.expenses.items) {
+        data.expenses.items.forEach((expense, index) => {
+            if (index < 5) {
+                setFieldValue(`expense_item_${index + 1}`, expense.description);
+                setFieldValue(`expense_amount_${index + 1}`, expense.amount);
+            }
+        });
+        if (data.expenses.total) {
+            setFieldValue('total_expenses', data.expenses.total);
+        }
+    }
+    
+    // Page 4: Assets
+    if (data.assets && data.assets.length > 0) {
+        data.assets.forEach((asset, index) => {
+            if (index < 5) {
+                setFieldValue(`asset_${index + 1}`, asset);
+            }
+        });
+    }
+    
+    // Page 4: Liabilities
+    if (data.liabilities && data.liabilities.length > 0) {
+        data.liabilities.forEach((liability, index) => {
+            if (index < 5) {
+                setFieldValue(`liability_${index + 1}`, liability);
+            }
+        });
+    }
+    
+    // Page 4: Co-maker
+    if (data.co_maker) {
+        setFieldValue('co_maker_name', data.co_maker.name);
+        setFieldValue('co_maker_address', data.co_maker.address);
+        setFieldValue('co_maker_contact', data.co_maker.contact);
+    }
+    
+    // Page 4: References
+    if (data.references && data.references.length > 0) {
+        data.references.forEach((reference, index) => {
+            if (index < 3) {
+                setFieldValue(`reference_${index + 1}`, reference);
+            }
+        });
+    }
+    
+    // Trigger computations
+    setTimeout(() => {
+        computeAllTotals();
+    }, 500);
+}
+
+// Helper function to set field value
+function setFieldValue(fieldName, value) {
+    if (!value) return;
+    
+    const field = document.querySelector(`[name="${fieldName}"]`);
+    if (field) {
+        field.value = value;
+        field.style.backgroundColor = '#f0fff4'; // Light green highlight
+        
+        // Remove highlight after 3 seconds
+        setTimeout(() => {
+            field.style.backgroundColor = '';
+        }, 3000);
+    }
+}
+
+// Show OCR notification
+function showOCRNotification() {
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-success alert-dismissible fade show';
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.maxWidth = '400px';
+    notification.innerHTML = `
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <h6><i class="bi bi-magic"></i> AI Auto-Fill Complete!</h6>
+        <p class="mb-0">Form fields have been automatically filled from uploaded images. Please review and correct any errors.</p>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        notification.remove();
+    }, 5000);
+}
 
 // Navigate to specific page
 function goToPage(pageNumber) {

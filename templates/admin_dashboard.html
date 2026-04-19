@@ -104,70 +104,6 @@
     <div class="col-12 mb-3">
         <div class="content-card">
             <div class="content-card-header">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                    <h5 class="mb-0"><i class="bi bi-arrow-repeat"></i> In Process (LPS → CI)</h5>
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="search-container">
-                            <div class="search-input-wrapper" id="searchWrapperInProcess">
-                                <i class="bi bi-search search-icon"></i>
-                                <input type="text" id="searchInputInProcess" placeholder="Search here" onkeyup="searchApplications('inprocess')" oninput="toggleClearButton('inprocess')">
-                                <button class="clear-search" onclick="clearSearch('inprocess')">
-                                    <i class="bi bi-x-lg"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <span class="badge bg-info" id="inProcessCount">{{ in_process_applications|length }} In Process</span>
-                    </div>
-                </div>
-            </div>
-            <div class="content-card-body">
-                <div class="alert alert-info mb-3">
-                    <i class="bi bi-info-circle"></i> These applications are between LPS and CI. You can reassign CI staff if needed (e.g., when CI is on leave).
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-hover" id="inProcessTable">
-                        <thead>
-                            <tr>
-                                <th>Member Name</th>
-                                <th>Loan Amount</th>
-                                <th>Status</th>
-                                <th>LPS</th>
-                                <th>CI Staff</th>
-                                <th>Submitted</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for app in in_process_applications %}
-                            <tr>
-                                <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
-                                <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
-                                <td>
-                                    <span class="badge bg-{% if app.status == 'submitted' %}secondary{% else %}info{% endif %}">
-                                        {{ app.status.replace('_', ' ').title() }}
-                                    </span>
-                                </td>
-                                <td>{{ app.loan_staff_name }}</td>
-                                <td>{{ app.ci_staff_name or 'Not Assigned' }}</td>
-                                <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-warning" onclick="openReassignModal({{ app.id }}, '{{ app.member_name }}', {{ app.assigned_ci_staff or 'null' }})">
-                                        <i class="bi bi-arrow-repeat"></i>
-                                        <span class="btn-text">Reassign CI</span>
-                                    </button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-12 mb-3">
-        <div class="content-card">
-            <div class="content-card-header">
                     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                         <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> For Review</h5>
                         <div class="d-flex align-items-center gap-2">
@@ -288,6 +224,70 @@
                                 </td>
                             </tr>
                             {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12">
+        <div class="content-card">
+            <div class="content-card-header">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <h5 class="mb-0"><i class="bi bi-arrow-repeat"></i> In Process (LPS → CI)</h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="search-container">
+                            <div class="search-input-wrapper" id="searchWrapperInProcess">
+                                <i class="bi bi-search search-icon"></i>
+                                <input type="text" id="searchInputInProcess" placeholder="Search here" onkeyup="searchApplications('inprocess')" oninput="toggleClearButton('inprocess')">
+                                <button class="clear-search" onclick="clearSearch('inprocess')">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <span class="badge bg-info" id="inProcessCount">{{ in_process_applications|length }} In Process</span>
+                    </div>
+                </div>
+            </div>
+            <div class="content-card-body">
+                <div class="alert alert-info mb-3">
+                    <i class="bi bi-info-circle"></i> These applications are between LPS and CI. You can reassign CI staff if needed (e.g., when CI is on leave).
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover" id="inProcessTable">
+                        <thead>
+                            <tr>
+                                <th>Member Name</th>
+                                <th>Loan Amount</th>
+                                <th>Status</th>
+                                <th>LPS</th>
+                                <th>CI Staff</th>
+                                <th>Submitted</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in in_process_applications %}
+                            <tr>
+                                <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                                <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
+                                <td>
+                                    <span class="badge bg-{% if app.status == 'submitted' %}secondary{% else %}info{% endif %}">
+                                        {{ app.status.replace('_', ' ').title() }}
+                                    </span>
+                                </td>
+                                <td>{{ app.loan_staff_name }}</td>
+                                <td>{{ app.ci_staff_name or 'Not Assigned' }}</td>
+                                <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-warning" onclick="openReassignModal({{ app.id }}, '{{ app.member_name }}', {{ app.assigned_ci_staff or 'null' }})">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                        <span class="btn-text">Reassign CI</span>
+                                    </button>
+                                </td>
+                            </tr>
                             {% endfor %}
                         </tbody>
                     </table>

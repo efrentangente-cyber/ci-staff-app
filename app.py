@@ -3660,6 +3660,84 @@ def delete_loan_type(id):
         conn.close()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# OCR API Endpoints
+@app.route('/api/ocr/extract', methods=['POST'])
+@login_required
+def ocr_extract():
+    """
+    Extract text and structured data from uploaded images using OCR
+    """
+    if current_user.role != 'loan_staff':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    if 'images' not in request.files:
+        return jsonify({'success': False, 'error': 'No images provided'}), 400
+    
+    try:
+        from ocr_service import get_ocr_service
+        
+        files = request.files.getlist('images')
+        if not files:
+            return jsonify({'success': False, 'error': 'No images provided'}), 400
+        
+        # Save uploaded images temporarily
+        temp_paths = []
+        for file in files:
+            if file and allowed_file(file.filename):
+                filename = sanitize_filename(file.filename)
+                temp_filename = f"temp_ocr_{uuid.uuid4().hex[:8]}_{filename}"
+                temp_path = os.path.join(app.config['UPLOAD_FOLDER'], temp_filename)
+                file.save(temp_path)
+                temp_paths.append(temp_path)
+        
+        if not temp_paths:
+            return jsonify({'success': False, 'error': 'No valid images uploaded'}), 400
+        
+        # Process images with OCR
+        ocr_service = get_ocr_service()
+        extracted_data = ocr_service.process_multiple_images(temp_paths)
+        
+        # Clean up temporary files
+        for temp_path in temp_paths:
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        
+        return jsonify({
+            'success': True,
+            'data': extracted_data,
+            'message': f'Successfully extracted data from {len(temp_paths)} image(s)'
+        })
+        
+    except Exception as e:
+        print(f"OCR Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'OCR processing failed: {str(e)}'
+        }), 500
+
+@app.route('/api/ocr/test', methods=['GET'])
+@login_required
+def ocr_test():
+    """Test if OCR service is configured correctly"""
+    try:
+        from ocr_service import get_ocr_service
+        ocr_service = get_ocr_service()
+        return jsonify({
+            'success': True,
+            'message': 'OCR service is configured and ready',
+            'service': 'Google Cloud Vision API'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'OCR service not configured. Please set GOOGLE_APPLICATION_CREDENTIALS environment variable.'
+        }), 500
+
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 5000))

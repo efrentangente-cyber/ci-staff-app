@@ -30,6 +30,14 @@ instance/
 # Environment variables (NEVER upload this - has secrets!)
 .env
 
+# Google Cloud credentials (NEVER upload - contains API keys!)
+google-credentials.json
+*-credentials.json
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
 # Database (DON'T upload - has user data)
 *.db
 *.sqlite
