@@ -167,9 +167,14 @@
                         <td>{{ user.email }}</td>
                         <td>
                             {% if user.role %}
-                            <span class="badge bg-primary">
-                                {{ user.role.replace('_', ' ').title() }}
-                            </span>
+                            <select class="form-select form-select-sm" 
+                                    onchange="changeUserRole({{ user.id }}, this.value, '{{ user.name }}')" 
+                                    style="width: auto; min-width: 150px;">
+                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                                <option value="loan_officer" {% if user.role == 'loan_officer' %}selected{% endif %}>Loan Officer</option>
+                                <option value="loan_staff" {% if user.role == 'loan_staff' %}selected{% endif %}>LPS</option>
+                                <option value="ci_staff" {% if user.role == 'ci_staff' %}selected{% endif %}>CI Staff</option>
+                            </select>
                             {% else %}
                             <span class="badge bg-secondary">
                                 <i class="bi bi-question-circle"></i> Not Assigned
@@ -348,6 +353,46 @@ function assignRole(userId, role) {
     .catch(error => {
         console.error('Error:', error);
         alert('Failed to assign role');
+    });
+}
+
+// Change role for active user (migration)
+function changeUserRole(userId, newRole, userName) {
+    if (!confirm(`Change role for ${userName} to ${newRole.replace('_', ' ').toUpperCase()}?`)) {
+        // Revert dropdown if cancelled
+        location.reload();
+        return;
+    }
+    
+    fetch(`/assign_role/${userId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role: newRole })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show';
+            alert.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+            alert.innerHTML = `
+                <strong>Success!</strong> Role changed successfully. Reloading page...
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            alert('Error: ' + data.error);
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to change role');
+        location.reload();
     });
 }
 
