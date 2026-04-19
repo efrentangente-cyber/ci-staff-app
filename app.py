@@ -2496,9 +2496,18 @@ def manage_permissions():
         ORDER BY name ASC
     ''').fetchall()
     
+    # Get unread notification count
+    unread_count = conn.execute('''
+        SELECT COUNT(*) as count 
+        FROM notifications 
+        WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
+    ''', (current_user.id,)).fetchone()['count']
+    
     conn.close()
     
-    return render_template('manage_permissions.html', loan_officers=loan_officers)
+    return render_template('manage_permissions.html', 
+                         loan_officers=loan_officers,
+                         unread_count=unread_count)
 
 @app.route('/update_permissions/<int:user_id>', methods=['POST'])
 @login_required
