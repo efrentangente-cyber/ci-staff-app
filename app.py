@@ -1082,7 +1082,97 @@ def ci_dashboard():
 @app.route('/ci/checklist/<int:id>', methods=['GET'])
 @login_required
 def ci_checklist(id):
-    """Display the multi-page CI checklist wizard"""
+    """Redirect to checkbox summary page first"""
+    if current_user.role != 'ci_staff':
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    # Redirect to checkbox summary
+    return redirect(url_for('ci_checklist_summary', id=id))
+
+
+@app.route('/ci/checklist/summary/<int:id>')
+@login_required
+def ci_checklist_summary(id):
+    """CI Checklist Summary - All checkboxes in one page before 5-page wizard"""
+    try:
+        # Check authorization
+        if not hasattr(current_user, 'role'):
+            flash('Session error. Please login again.', 'danger')
+            return redirect(url_for('login'))
+            
+        if current_user.role != 'ci_staff':
+            flash('Unauthorized access. CI Staff only.', 'danger')
+            return redirect(url_for('index'))
+        
+        conn = get_db()
+        
+        # Get application data with all fields
+        app_data = conn.execute('''
+            SELECT 
+                la.id,
+                la.member_name,
+                la.member_contact,
+                la.member_address,
+                la.loan_amount,
+                la.loan_type,
+                la.status,
+                la.submitted_at,
+                la.submitted_by,
+                u.name as loan_staff_name
+            FROM loan_applications la
+            LEFT JOIN users u ON la.submitted_by = u.id
+            WHERE la.id=?
+        ''', (id,)).fetchone()
+        
+        if not app_data:
+            conn.close()
+            flash('Application not found', 'danger')
+            return redirect(url_for('ci_dashboard'))
+        
+        # Convert to dict for easier access
+        application = dict(app_data)
+        
+        # Get unread notifications count safely
+        unread_count = 0
+        try:
+            result = conn.execute('''
+                SELECT COUNT(*) as count 
+                FROM notifications 
+                WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
+            ''', (current_user.id,)).fetchone()
+            if result:
+                unread_count = result['count']
+        except Exception as e:
+            print(f"Error getting unread count: {e}")
+        
+        conn.close()
+        
+        # Render simple checkbox summary template
+        return render_template('ci_checklist_summary_simple.html', 
+                             application=application,
+                             unread_count=unread_count)
+    
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"=== ERROR in ci_checklist_summary ===")
+        print(f"Error: {str(e)}")
+        print(f"Details: {error_details}")
+        print(f"=== END ERROR ===")
+        
+        flash('An error occurred while loading the page. Please try again.', 'danger')
+        
+        try:
+            return redirect(url_for('ci_dashboard'))
+        except:
+            return redirect(url_for('index'))
+
+
+@app.route('/ci/checklist/wizard/<int:id>', methods=['GET'])
+@login_required
+def ci_checklist_wizard(id):
+    """Display the multi-page CI checklist wizard (5 pages)"""
     if current_user.role != 'ci_staff':
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
@@ -1090,13 +1180,16 @@ def ci_checklist(id):
     conn = get_db()
     app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
     
-    if not app_data or app_data['assigned_ci_staff'] != current_user.id:
+    if not app_data:
         flash('Application not found', 'danger')
         conn.close()
         return redirect(url_for('ci_dashboard'))
     
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                (current_user.id,)).fetchone()['count']
+    
     conn.close()
-    return render_template('ci_checklist_wizard.html', application=app_data)
+    return render_template('ci_checklist_wizard.html', application=app_data, unread_count=unread_count)
 
 @app.route('/ci/application/<int:id>', methods=['GET','POST'])
 @login_required
