@@ -70,7 +70,7 @@
                                 <option value="" {% if not user.role %}selected{% endif %}>Select Role...</option>
                                 <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
                                 <option value="loan_officer" {% if user.role == 'loan_officer' %}selected{% endif %}>Loan Officer</option>
-                                <option value="loan_staff" {% if user.role == 'loan_staff' %}selected{% endif %}>Loan Staff</option>
+                                <option value="loan_staff" {% if user.role == 'loan_staff' %}selected{% endif %}>LPS</option>
                                 <option value="ci_staff" {% if user.role == 'ci_staff' %}selected{% endif %}>CI Staff</option>
                             </select>
                         </td>
@@ -113,9 +113,9 @@
                                     <i class="bi bi-check-circle"></i> Approve
                                 </button>
                             </form>
-                            <form method="POST" action="{{ url_for('reject_user', user_id=user.id) }}" style="display: inline;">
-                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Reject this user?')">
-                                    <i class="bi bi-x-circle"></i> Reject
+                            <form method="POST" action="{{ url_for('disapprove_user', user_id=user.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Disapprove this user?')">
+                                    <i class="bi bi-x-circle"></i> Disapprove
                                 </button>
                             </form>
                         </td>

@@ -20,12 +20,22 @@
                     <tr><th>Loan Amount:</th><td>₱{{ application.loan_amount }}</td></tr>
                     <tr><th>Status:</th><td><span class="badge bg-warning">{{ application.status.replace('_', ' ').title() }}</span></td></tr>
                     <tr><th>Submitted By:</th><td>{{ application.loan_staff_name }}</td></tr>
-                    <tr><th>CI Staff:</th><td>{{ application.ci_staff_name or 'N/A' }}</td></tr>
+                    <tr>
+                        <th>CI Staff:</th>
+                        <td>
+                            {{ application.ci_staff_name or 'N/A' }}
+                            {% if application.status in ['assigned_to_ci', 'ci_completed'] %}
+                            <button class="btn btn-sm btn-warning ms-2" data-bs-toggle="modal" data-bs-target="#reassignModal">
+                                <i class="bi bi-arrow-repeat"></i> Reassign
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
                 </table>
             </div>
         </div>
         
-        {% if application.status in ['ci_completed', 'approved', 'rejected'] and application.ci_checklist_data %}
+        {% if application.status in ['ci_completed', 'approved', 'disapproved'] and application.ci_checklist_data %}
         <div class="card mb-3">
             <div class="card-header bg-success text-white">
                 <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> CI Assessment Checklist</h5>
@@ -80,7 +90,7 @@
             </div>
         </div>
         
-        {% if application.status not in ['approved', 'rejected'] %}
+        {% if application.status not in ['approved', 'disapproved'] %}
         <div class="card mb-3">
             <div class="card-header bg-success text-white">
                 <h5>Make Decision</h5>
@@ -92,7 +102,8 @@
                         <select name="decision" class="form-select" required>
                             <option value="">-- Select Decision --</option>
                             <option value="approved">Approve</option>
-                            <option value="rejected">Reject</option>
+                            <option value="disapproved">Disapprove</option>
+                            <option value="deferred">Defer</option>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -131,6 +142,47 @@
                 </button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reassign CI Staff Modal -->
+<div class="modal fade" id="reassignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> Reassign CI Staff</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('reassign_ci_staff', app_id=application.id) }}">
+                <div class="modal-body">
+                    <p class="text-muted">Select a new CI staff member to assign this application to:</p>
+                    <div class="mb-3">
+                        <label class="form-label">CI Staff *</label>
+                        <select name="new_ci_staff_id" class="form-select" required>
+                            <option value="">-- Select CI Staff --</option>
+                            {% if ci_staff_list %}
+                                {% for ci in ci_staff_list %}
+                                <option value="{{ ci.id }}" {% if ci.id == application.assigned_ci_staff %}selected{% endif %}>
+                                    {{ ci.name }} ({{ ci.email }})
+                                    {% if ci.id == application.assigned_ci_staff %} - Currently Assigned{% endif %}
+                                </option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 
+                        <small>The new CI staff will be notified and workload counts will be updated.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-arrow-repeat"></i> Reassign
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

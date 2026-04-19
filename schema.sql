@@ -33,7 +33,7 @@ CREATE TABLE loan_applications (
     member_address TEXT,
     loan_amount REAL,
     loan_type TEXT,
-    status TEXT DEFAULT 'submitted' CHECK(status IN ('submitted', 'assigned_to_ci', 'ci_completed', 'approved', 'rejected')),
+    status TEXT DEFAULT 'submitted' CHECK(status IN ('submitted', 'assigned_to_ci', 'ci_completed', 'approved', 'disapproved', 'deferred')),
     needs_ci_interview INTEGER DEFAULT 1,
     submitted_by INTEGER,
     assigned_ci_staff INTEGER,

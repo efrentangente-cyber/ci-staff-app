@@ -121,7 +121,7 @@
                                 <th>Member Name</th>
                                 <th>Loan Amount</th>
                                 <th>Status</th>
-                                <th>Loan Staff</th>
+                                <th>LPS</th>
                                 <th>CI Staff</th>
                                 <th>Submitted</th>
                                 <th>Actions</th>
@@ -175,9 +175,9 @@
                         <select class="form-select form-select-sm" id="statusFilter" onchange="filterProcessed()" style="width: auto; padding-right: 2rem;">
                             <option value="all">All Status</option>
                             <option value="approved">Approved</option>
-                            <option value="rejected">Rejected</option>
+                            <option value="disapproved">Disapproved</option>
                         </select>
-                        <span class="badge bg-secondary" id="processedCount">{{ applications|selectattr('status', 'in', ['approved', 'rejected'])|list|length }} Processed</span>
+                        <span class="badge bg-secondary" id="processedCount">{{ applications|selectattr('status', 'in', ['approved', 'disapproved'])|list|length }} Processed</span>
                     </div>
                 </div>
             </div>
@@ -189,7 +189,7 @@
                                 <th>Member Name</th>
                                 <th>Loan Amount</th>
                                 <th>Status</th>
-                                <th>Loan Staff</th>
+                                <th>LPS</th>
                                 <th>CI Staff</th>
                                 <th>Submitted</th>
                                 <th>Actions</th>
@@ -197,7 +197,7 @@
                         </thead>
                         <tbody>
                             {% for app in applications %}
-                            {% if app.status in ['approved', 'rejected'] %}
+                            {% if app.status in ['approved', 'disapproved'] %}
                             <tr>
                                 <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
@@ -495,7 +495,7 @@ function filterProcessed() {
                 visibleCount++;
             } else {
                 const showRow = (filterValue === 'approved' && statusText === 'approved') || 
-                               (filterValue === 'rejected' && statusText === 'rejected');
+                               (filterValue === 'disapproved' && statusText === 'disapproved');
                 rows[i].style.display = showRow ? '' : 'none';
                 if (showRow) visibleCount++;
             }

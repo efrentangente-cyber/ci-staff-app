@@ -124,7 +124,7 @@ function updateApplicationsTable(applications) {
         // Status badge color
         let badgeClass = 'warning';
         if (app.status === 'approved') badgeClass = 'success';
-        else if (app.status === 'rejected') badgeClass = 'danger';
+        else if (app.status === 'disapproved') badgeClass = 'danger';
         else if (app.status === 'ci_completed') badgeClass = 'info';
         
         // Build row based on dashboard type

@@ -478,7 +478,7 @@ Flask-based loan management system for DCCCO Multipurpose Cooperative with real-
 
 ### loan_applications table
 - id, member_name, member_contact, member_address, loan_amount
-- status: submitted, assigned_to_ci, ci_completed, approved, rejected
+- status: submitted, assigned_to_ci, ci_completed, approved, disapproved
 - needs_ci_interview, submitted_by, assigned_ci_staff
 - ci_notes, ci_checklist_data, ci_signature, ci_completed_at
 - admin_notes, admin_decision_at, submitted_at
@@ -872,12 +872,12 @@ def submit_application():
             existing = conn.execute('''
                 SELECT id, member_name FROM loan_applications 
                 WHERE LOWER(member_name) = LOWER(?) 
-                AND status NOT IN ('rejected', 'approved')
+                AND status NOT IN ('disapproved', 'approved')
             ''', (member_name,)).fetchone()
             
             if existing:
                 conn.close()
-                flash(f'An active application for "{member_name}" already exists (ID: #{existing["id"]}). Please complete or reject the existing application first.', 'warning')
+                flash(f'An active application for "{member_name}" already exists (ID: #{existing["id"]}). Please complete or disapprove the existing application first.', 'warning')
                 return redirect(url_for('submit_application'))
             
             # Check if specific CI staff was selected
@@ -1211,7 +1211,7 @@ def admin_dashboard():
         FROM loan_applications la
         LEFT JOIN users u1 ON la.submitted_by = u1.id
         LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
-        WHERE la.status IN ('ci_completed', 'approved', 'rejected')
+        WHERE la.status IN ('ci_completed', 'approved', 'disapproved')
            OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
         ORDER BY la.submitted_at ASC
     ''').fetchall()
@@ -1278,8 +1278,8 @@ def admin_application(id):
             if app_data['member_contact']:
                 if decision == 'approved':
                     sms_message = f"Good news! Your loan application for {app_data['member_name']} has been APPROVED. Amount: ₱{app_data['loan_amount']:,.2f}. Please visit DCCCO office for processing. - DCCCO Coop"
-                elif decision == 'rejected':
-                    sms_message = f"We regret to inform you that your loan application for {app_data['member_name']} has been REJECTED. Reason: {admin_notes[:100] if admin_notes else 'See office for details'}. - DCCCO Coop"
+                elif decision == 'disapproved':
+                    sms_message = f"We regret to inform you that your loan application for {app_data['member_name']} has been DISAPPROVED. Reason: {admin_notes[:100] if admin_notes else 'See office for details'}. - DCCCO Coop"
                 else:
                     sms_message = None
                 
@@ -1308,11 +1308,82 @@ def admin_application(id):
         WHERE m.loan_application_id=?
         ORDER BY m.sent_at ASC
     ''', (id,)).fetchall()
+    
+    # Get CI staff list for reassignment
+    ci_staff_list = conn.execute('''
+        SELECT id, name, email 
+        FROM users 
+        WHERE role='ci_staff' AND is_approved=1
+        ORDER BY name ASC
+    ''').fetchall()
+    
     unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     
-    return render_template('admin_application.html', application=app_data, documents=documents, messages=messages, unread_count=unread_count)
+    return render_template('admin_application.html', 
+                         application=app_data, 
+                         documents=documents, 
+                         messages=messages, 
+                         ci_staff_list=ci_staff_list,
+                         unread_count=unread_count)
+
+@app.route('/reassign_ci_staff/<int:app_id>', methods=['POST'])
+@login_required
+def reassign_ci_staff(app_id):
+    """Reassign application to different CI staff (admin/loan officer only)"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    new_ci_staff_id = request.form.get('new_ci_staff_id')
+    
+    if not new_ci_staff_id:
+        flash('Please select a CI staff member', 'warning')
+        return redirect(url_for('admin_application', id=app_id))
+    
+    conn = get_db()
+    
+    try:
+        # Get current assignment
+        app = conn.execute('SELECT assigned_ci_staff, member_name FROM loan_applications WHERE id=?', (app_id,)).fetchone()
+        old_ci_staff_id = app['assigned_ci_staff']
+        
+        # Update assignment
+        conn.execute('''
+            UPDATE loan_applications 
+            SET assigned_ci_staff=? 
+            WHERE id=?
+        ''', (new_ci_staff_id, app_id))
+        
+        # Update workload counts
+        if old_ci_staff_id:
+            conn.execute('UPDATE users SET current_workload = current_workload - 1 WHERE id=?', (old_ci_staff_id,))
+        
+        conn.execute('UPDATE users SET current_workload = current_workload + 1 WHERE id=?', (new_ci_staff_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        # Notify new CI staff
+        create_notification(int(new_ci_staff_id),
+                          f'Application reassigned to you: {app["member_name"]}',
+                          f'/ci/application/{app_id}')
+        
+        # Notify old CI staff if exists
+        if old_ci_staff_id:
+            create_notification(old_ci_staff_id,
+                              f'Application {app["member_name"]} has been reassigned',
+                              f'/ci/dashboard')
+        
+        flash('CI staff reassigned successfully!', 'success')
+        return redirect(url_for('admin_application', id=app_id))
+        
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        flash(f'Error reassigning CI staff: {str(e)}', 'danger')
+        return redirect(url_for('admin_application', id=app_id))
 
 # SHARED ROUTES
 @app.route('/application/<int:id>')
@@ -2261,9 +2332,9 @@ def approve_user(user_id):
     flash(f'User {user["name"]} approved successfully!', 'success')
     return redirect(url_for('manage_users'))
 
-@app.route('/reject_user/<int:user_id>', methods=['POST'])
+@app.route('/disapprove_user/<int:user_id>', methods=['POST'])
 @login_required
-def reject_user(user_id):
+def disapprove_user(user_id):
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
@@ -2281,7 +2352,7 @@ def reject_user(user_id):
     conn.commit()
     conn.close()
     
-    flash(f'User {user["name"]} rejected and removed.', 'info')
+    flash(f'User {user["name"]} disapproved and removed.', 'info')
     return redirect(url_for('manage_users'))
 
 @app.route('/assign_role/<int:user_id>', methods=['POST'])
@@ -3248,7 +3319,7 @@ def api_admin_applications():
         FROM loan_applications la
         LEFT JOIN users u1 ON la.submitted_by = u1.id
         LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
-        WHERE la.status IN ('ci_completed', 'approved', 'rejected')
+        WHERE la.status IN ('ci_completed', 'approved', 'disapproved')
            OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
         ORDER BY la.submitted_at ASC
     ''').fetchall()
