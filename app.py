@@ -1147,30 +1147,54 @@ def ci_review_application(id):
 @login_required
 def ci_checklist_summary(id):
     """CI Checklist Summary - All checkboxes in one page before 5-page wizard"""
-    if current_user.role != 'ci_staff':
-        flash('Unauthorized', 'danger')
-        return redirect(url_for('index'))
-    
-    conn = get_db()
-    app_data = conn.execute('''
-        SELECT la.*, u.name as loan_staff_name
-        FROM loan_applications la
-        LEFT JOIN users u ON la.submitted_by = u.id
-        WHERE la.id=? AND la.assigned_ci_staff=?
-    ''', (id, current_user.id)).fetchone()
-    
-    if not app_data:
-        flash('Application not found or not assigned to you', 'danger')
+    try:
+        # Check authorization
+        if not hasattr(current_user, 'role') or current_user.role != 'ci_staff':
+            flash('Unauthorized access. CI Staff only.', 'danger')
+            return redirect(url_for('index'))
+        
+        conn = get_db()
+        
+        # Get application data
+        app_data = conn.execute('''
+            SELECT la.*, u.name as loan_staff_name
+            FROM loan_applications la
+            LEFT JOIN users u ON la.submitted_by = u.id
+            WHERE la.id=?
+        ''', (id,)).fetchone()
+        
+        if not app_data:
+            conn.close()
+            flash('Application not found', 'danger')
+            return redirect(url_for('ci_dashboard'))
+        
+        # Get unread notifications count
+        try:
+            unread_count = conn.execute('''
+                SELECT COUNT(*) as count 
+                FROM notifications 
+                WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
+            ''', (current_user.id,)).fetchone()['count']
+        except:
+            unread_count = 0
+        
         conn.close()
-        return redirect(url_for('ci_dashboard'))
+        
+        return render_template('ci_checklist_summary.html', 
+                             application=app_data,
+                             unread_count=unread_count,
+                             current_user=current_user)
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
-                                (current_user.id,)).fetchone()['count']
-    conn.close()
-    
-    return render_template('ci_checklist_summary.html', 
-                         application=app_data,
-                         unread_count=unread_count)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in ci_checklist_summary: {str(e)}")
+        print(error_details)
+        flash(f'An error occurred while loading the page. Please try again.', 'danger')
+        try:
+            return redirect(url_for('ci_dashboard'))
+        except:
+            return redirect(url_for('index'))
 
 
 @app.route('/view/checklist/<int:id>')

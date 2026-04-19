@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}CI Checklist Summary - {{ application.member_name }}{% endblock %}
+{% block title %}CI Checklist Summary - {{ application.member_name|default('Unknown') }}{% endblock %}
 
 {% block content %}
 <style>
@@ -131,7 +131,7 @@
         <div class="summary-header">
             <h3><i class="bi bi-check2-square"></i> CI Checklist Summary</h3>
             <p class="mb-0">Complete all checkboxes below before proceeding to the detailed 5-page form</p>
-            <small>Application: {{ application.member_name }} - {{ application.loan_type }}</small>
+            <small>Application: {{ application.member_name|default('Unknown') }} - {{ application.loan_type|default('N/A') }}</small>
         </div>
 
         <form id="checklistSummaryForm">
@@ -728,7 +728,7 @@ function proceedToWizard() {
     sessionStorage.setItem('ci_checkbox_data', JSON.stringify(checkboxData));
     
     // Redirect to wizard
-    window.location.href = "{{ url_for('ci_checklist_wizard', id=application.id) }}";
+    window.location.href = "{{ url_for('ci_checklist_wizard', id=application.id|default(0)) }}";
 }
 </script>
 
