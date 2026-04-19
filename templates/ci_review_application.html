@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% block title %}Review Application - {{ application.member_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-12">
+            <a href="{{ url_for('ci_dashboard') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Left Column: Application Info & Documents -->
+        <div class="col-lg-8">
+            <!-- Application Information Card -->
+            <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-person-badge"></i> Application Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small">Application ID</label>
+                            <h6>#{{ application.id }}</h6>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small">Status</label>
+                            <h6>
+                                <span class="badge bg-info">{{ application.status.replace('_', ' ').title() }}</span>
+                            </h6>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small">Member Name</label>
+                            <h6>{{ application.member_name }}</h6>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small">Contact Number</label>
+                            <h6>{{ application.member_contact or 'N/A' }}</h6>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <label class="text-muted small">Address</label>
+                            <h6>{{ application.member_address or 'N/A' }}</h6>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small">Loan Amount</label>
+                            <h6 class="text-success">₱{{ "{:,.2f}".format(application.loan_amount) }}</h6>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small">Loan Type</label>
+                            <h6>{{ application.loan_type or 'N/A' }}</h6>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small">Submitted By (LPS)</label>
+                            <h6>{{ application.loan_staff_name }}</h6>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="text-muted small">Submitted Date</label>
+                            <h6>{{ application.submitted_at[:16] }}</h6>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Uploaded Documents Card -->
+            <div class="card mb-3">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-images"></i> Uploaded Documents & Photos</h5>
+                </div>
+                <div class="card-body">
+                    {% if documents %}
+                    <div class="row g-3">
+                        {% for doc in documents %}
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card h-100">
+                                {% if doc.file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+                                <!-- Image Preview -->
+                                <img src="{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}" 
+                                     class="card-img-top" 
+                                     style="height: 200px; object-fit: cover; cursor: pointer;"
+                                     onclick="openImageModal('{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}', '{{ doc.file_name }}')"
+                                     alt="{{ doc.file_name }}">
+                                {% else %}
+                                <!-- PDF/Document Icon -->
+                                <div class="card-img-top d-flex align-items-center justify-content-center bg-light" style="height: 200px;">
+                                    <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 4rem;"></i>
+                                </div>
+                                {% endif %}
+                                <div class="card-body p-2">
+                                    <p class="card-text small mb-1 text-truncate" title="{{ doc.file_name }}">
+                                        <i class="bi bi-file-earmark"></i> {{ doc.file_name }}
+                                    </p>
+                                    <small class="text-muted">{{ doc.uploaded_at[:16] }}</small>
+                                    <div class="mt-2">
+                                        <a href="{{ url_for('download_document', doc_id=doc.id) }}" 
+                                           class="btn btn-sm btn-primary w-100">
+                                            <i class="bi bi-download"></i> Download
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> No documents uploaded for this application.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Verification Checklist -->
+        <div class="col-lg-4">
+            <div class="card sticky-top" style="top: 20px;">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-check2-square"></i> Document Verification</h5>
+                </div>
+                <div class="card-body">
+                    <form id="verificationForm">
+                        <p class="text-muted small mb-3">
+                            <i class="bi bi-info-circle"></i> Check all items before proceeding to interview
+                        </p>
+
+                        <!-- Required Documents Checklist -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Required Documents</h6>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_valid_id" name="valid_id_verified">
+                                <label class="form-check-label" for="check_valid_id">
+                                    Valid ID Verified
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_proof_income" name="proof_income_verified">
+                                <label class="form-check-label" for="check_proof_income">
+                                    Proof of Income
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_proof_residence" name="proof_residence_verified">
+                                <label class="form-check-label" for="check_proof_residence">
+                                    Proof of Residence
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_application_form" name="application_form_verified">
+                                <label class="form-check-label" for="check_application_form">
+                                    Application Form Complete
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Identity Verification -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Identity Verification</h6>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_identity" name="identity_confirmed">
+                                <label class="form-check-label" for="check_identity">
+                                    Identity Confirmed
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_address" name="address_verified">
+                                <label class="form-check-label" for="check_address">
+                                    Address Verified
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_contact" name="contact_verified">
+                                <label class="form-check-label" for="check_contact">
+                                    Contact Number Verified
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Additional Checks -->
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">Additional Verification</h6>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_member_status" name="member_status_checked">
+                                <label class="form-check-label" for="check_member_status">
+                                    Member Status Checked
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_credit_history" name="credit_history_checked">
+                                <label class="form-check-label" for="check_credit_history">
+                                    Credit History Reviewed
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="check_comaker" name="comaker_verified">
+                                <label class="form-check-label" for="check_comaker">
+                                    Co-maker Information Verified
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Notes -->
+                        <div class="mb-3">
+                            <label class="form-label">Verification Notes (Optional)</label>
+                            <textarea class="form-control" id="verification_notes" name="verification_notes" rows="3" placeholder="Add any notes or observations..."></textarea>
+                        </div>
+
+                        <!-- Progress Indicator -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small class="text-muted">Verification Progress</small>
+                                <small class="text-muted"><span id="checkedCount">0</span>/10</small>
+                            </div>
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-success" id="progressBar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-success btn-lg" id="proceedBtn" disabled>
+                                <i class="bi bi-arrow-right-circle"></i> Proceed to Interview Form
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='{{ url_for('ci_dashboard') }}'">
+                                <i class="bi bi-x-circle"></i> Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalLabel">Document Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" class="img-fluid" style="max-height: 80vh;">
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.sticky-top {
+    position: sticky;
+    top: 20px;
+    z-index: 100;
+}
+
+.form-check-input:checked {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.card-img-top {
+    transition: transform 0.2s;
+}
+
+.card-img-top:hover {
+    transform: scale(1.05);
+}
+</style>
+
+<script>
+// Track checkbox progress
+const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+const progressBar = document.getElementById('progressBar');
+const checkedCount = document.getElementById('checkedCount');
+const proceedBtn = document.getElementById('proceedBtn');
+const totalCheckboxes = checkboxes.length;
+
+// Update progress
+function updateProgress() {
+    const checked = document.querySelectorAll('input[type="checkbox"]:checked').length;
+    const percentage = (checked / totalCheckboxes) * 100;
+    
+    progressBar.style.width = percentage + '%';
+    checkedCount.textContent = checked;
+    
+    // Enable proceed button only if all checkboxes are checked
+    if (checked === totalCheckboxes) {
+        proceedBtn.disabled = false;
+        proceedBtn.classList.add('pulse');
+    } else {
+        proceedBtn.disabled = true;
+        proceedBtn.classList.remove('pulse');
+    }
+}
+
+// Add event listeners to all checkboxes
+checkboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', updateProgress);
+});
+
+// Proceed to interview form
+proceedBtn.addEventListener('click', function() {
+    // Save verification data to session storage
+    const verificationData = {
+        valid_id_verified: document.getElementById('check_valid_id').checked,
+        proof_income_verified: document.getElementById('check_proof_income').checked,
+        proof_residence_verified: document.getElementById('check_proof_residence').checked,
+        application_form_verified: document.getElementById('check_application_form').checked,
+        identity_confirmed: document.getElementById('check_identity').checked,
+        address_verified: document.getElementById('check_address').checked,
+        contact_verified: document.getElementById('check_contact').checked,
+        member_status_checked: document.getElementById('check_member_status').checked,
+        credit_history_checked: document.getElementById('check_credit_history').checked,
+        comaker_verified: document.getElementById('check_comaker').checked,
+        verification_notes: document.getElementById('verification_notes').value
+    };
+    
+    sessionStorage.setItem('ci_verification_data', JSON.stringify(verificationData));
+    
+    // Redirect to CI checklist wizard
+    window.location.href = '{{ url_for("ci_checklist", id=application.id) }}';
+});
+
+// Open image in modal
+function openImageModal(imageUrl, imageName) {
+    document.getElementById('modalImage').src = imageUrl;
+    document.getElementById('imageModalLabel').textContent = imageName;
+    new bootstrap.Modal(document.getElementById('imageModal')).show();
+}
+
+// Pulse animation for proceed button
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+    .pulse {
+        animation: pulse 1.5s infinite;
+    }
+`;
+document.head.appendChild(style);
+</script>
+{% endblock %}

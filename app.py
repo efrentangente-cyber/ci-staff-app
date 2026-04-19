@@ -1101,13 +1101,47 @@ def ci_checklist(id):
 @app.route('/ci/application/<int:id>', methods=['GET','POST'])
 @login_required
 def ci_application(id):
-    """Redirect directly to the 5-page wizard - no intermediate page"""
+    """Show review page with documents and verification checkboxes"""
     if current_user.role != 'ci_staff':
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
-    # Redirect directly to the wizard
-    return redirect(url_for('ci_checklist', id=id))
+    # Redirect to review page
+    return redirect(url_for('ci_review_application', id=id))
+
+@app.route('/ci/review/<int:id>')
+@login_required
+def ci_review_application(id):
+    """CI Review Page - View documents and verify before interview"""
+    if current_user.role != 'ci_staff':
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    app_data = conn.execute('''
+        SELECT la.*, u.name as loan_staff_name
+        FROM loan_applications la
+        LEFT JOIN users u ON la.submitted_by = u.id
+        WHERE la.id=? AND la.assigned_ci_staff=?
+    ''', (id, current_user.id)).fetchone()
+    
+    if not app_data:
+        flash('Application not found or not assigned to you', 'danger')
+        conn.close()
+        return redirect(url_for('ci_dashboard'))
+    
+    # Get uploaded documents
+    documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC', (id,)).fetchall()
+    
+    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                (current_user.id,)).fetchone()['count']
+    conn.close()
+    
+    return render_template('ci_review_application.html', 
+                         application=app_data, 
+                         documents=documents,
+                         unread_count=unread_count)
+
 
 @app.route('/view/checklist/<int:id>')
 @login_required

@@ -8,10 +8,56 @@ let checklistData = {};
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedData();
     loadOCRData(); // Load OCR extracted data if available
+    loadVerificationData(); // Load CI verification checkbox data
     updateProgressBar();
     setupAutoSave();
     setupComputationListeners();
 });
+
+// Load CI verification data from session storage
+function loadVerificationData() {
+    const verificationData = sessionStorage.getItem('ci_verification_data');
+    if (verificationData) {
+        try {
+            const data = JSON.parse(verificationData);
+            
+            // Show notification that verification was completed
+            showVerificationNotification(data);
+            
+            // You can use this data to pre-fill or validate fields
+            console.log('Verification data loaded:', data);
+            
+            // Clear session storage after loading
+            sessionStorage.removeItem('ci_verification_data');
+        } catch (e) {
+            console.error('Error loading verification data:', e);
+        }
+    }
+}
+
+// Show verification notification
+function showVerificationNotification(data) {
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-success alert-dismissible fade show';
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.maxWidth = '400px';
+    notification.innerHTML = `
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <h6><i class="bi bi-check-circle"></i> Document Verification Complete!</h6>
+        <p class="mb-0 small">All required documents have been verified. You can now proceed with the interview.</p>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        notification.remove();
+    }, 5000);
+}
+
 
 // Load OCR extracted data from session storage
 function loadOCRData() {
