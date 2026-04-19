@@ -1204,6 +1204,8 @@ def admin_dashboard():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     conn = get_db()
+    
+    # Get applications for review (ci_completed, approved, disapproved, or direct submissions)
     applications = conn.execute('''
         SELECT la.*, 
                u1.name as loan_staff_name,
@@ -1213,6 +1215,18 @@ def admin_dashboard():
         LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
         WHERE la.status IN ('ci_completed', 'approved', 'disapproved')
            OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
+        ORDER BY la.submitted_at ASC
+    ''').fetchall()
+    
+    # Get "In Process" applications (between LPS and CI)
+    in_process_applications = conn.execute('''
+        SELECT la.*, 
+               u1.name as loan_staff_name,
+               u2.name as ci_staff_name
+        FROM loan_applications la
+        LEFT JOIN users u1 ON la.submitted_by = u1.id
+        LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
+        WHERE la.status IN ('submitted', 'assigned_to_ci')
         ORDER BY la.submitted_at ASC
     ''').fetchall()
     
@@ -1227,7 +1241,11 @@ def admin_dashboard():
     unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
                                 (current_user.id,)).fetchone()['count']
     conn.close()
-    return render_template('admin_dashboard.html', applications=applications, ci_staff=ci_staff, unread_count=unread_count)
+    return render_template('admin_dashboard.html', 
+                         applications=applications, 
+                         in_process_applications=in_process_applications,
+                         ci_staff=ci_staff, 
+                         unread_count=unread_count)
 
 @app.route('/admin/application/<int:id>', methods=['GET','POST'])
 @login_required
@@ -1396,7 +1414,7 @@ def view_application(id):
     else:
         return redirect(url_for('loan_application', id=id))
 
-@app.route('/loan/application/<int:id>')
+@app.route('/loan/application/<int:id>', methods=['GET', 'POST'])
 @login_required
 def loan_application(id):
     if current_user.role != 'loan_staff':
@@ -1408,14 +1426,162 @@ def loan_application(id):
         SELECT la.*, u.name as ci_staff_name
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
-        WHERE la.id=?
-    ''', (id,)).fetchone()
+        WHERE la.id=? AND la.submitted_by=?
+    ''', (id, current_user.id)).fetchone()
     
     if not app_data:
-        flash('Application not found', 'danger')
+        flash('Application not found or you do not have permission to edit it', 'danger')
         conn.close()
         return redirect(url_for('loan_dashboard'))
     
+    # Handle POST request (update application)
+    if request.method == 'POST':
+        # Check if application can still be edited
+        if app_data['status'] not in ['submitted', 'assigned_to_ci']:
+            flash('Cannot edit application - it has already been processed by CI or admin', 'warning')
+            conn.close()
+            return redirect(url_for('loan_application', id=id))
+        
+        try:
+            member_name = request.form['member_name']
+            member_contact = request.form.get('member_contact')
+            member_address = request.form.get('member_address')
+            loan_amount = request.form.get('loan_amount')
+            loan_type = request.form.get('loan_type')
+            needs_ci_value = request.form.get('needs_ci', '1')
+            
+            # Check for duplicate member name (excluding current application)
+            existing = conn.execute('''
+                SELECT id, member_name FROM loan_applications 
+                WHERE LOWER(member_name) = LOWER(?) 
+                AND status NOT IN ('disapproved', 'approved')
+                AND id != ?
+            ''', (member_name, id)).fetchone()
+            
+            if existing:
+                conn.close()
+                flash(f'An active application for "{member_name}" already exists (ID: #{existing["id"]}). Please use a different name.', 'warning')
+                return redirect(url_for('loan_application', id=id))
+            
+            # Check if specific CI staff was selected
+            specific_ci_id = None
+            if needs_ci_value.startswith('ci_'):
+                specific_ci_id = int(needs_ci_value.replace('ci_', ''))
+                needs_ci = 1
+            else:
+                needs_ci = int(needs_ci_value)
+            
+            # Update application
+            conn.execute('''
+                UPDATE loan_applications 
+                SET member_name=?, member_contact=?, member_address=?, 
+                    loan_amount=?, loan_type=?, needs_ci_interview=?
+                WHERE id=?
+            ''', (member_name, member_contact, member_address, loan_amount, loan_type, needs_ci, id))
+            
+            # Handle new file uploads
+            if 'documents' in request.files:
+                files = request.files.getlist('documents')
+                for file in files:
+                    if file and file.filename:
+                        if not allowed_file(file.filename):
+                            conn.rollback()
+                            conn.close()
+                            flash('Invalid file type. Allowed: PNG, JPG, JPEG, GIF, PDF, DOC, DOCX', 'danger')
+                            return redirect(url_for('loan_application', id=id))
+                        
+                        filename = sanitize_filename(file.filename)
+                        unique_filename = f"{id}_{uuid.uuid4().hex[:8]}_{filename}"
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+                        file.save(filepath)
+                        conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
+                                   (id, filename, filepath, current_user.id))
+            
+            # Update CI staff assignment if changed
+            old_ci_staff = app_data['assigned_ci_staff']
+            new_ci_staff_id = None
+            
+            if needs_ci:
+                if specific_ci_id:
+                    new_ci_staff_id = specific_ci_id
+                else:
+                    # Route-based assignment
+                    if member_address:
+                        address_lower = member_address.lower()
+                        route_matches = {
+                            'route_1_bayawan_kalumboyan': ['kalumboyan', 'kalamtukan', 'malabugas', 'bugay', 'nangka'],
+                            'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
+                            'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
+                            'route_4_bayawan_santa_catalina': ['santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon', 'milagrosa', 'obat', 'talalak'],
+                            'route_5_bayawan_center': ['ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon', 'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba', 'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol'],
+                            'route_6_bayawan_omod': ['omod', 'tamisu']
+                        }
+                        
+                        matched_route = None
+                        for route_id, keywords in route_matches.items():
+                            for keyword in keywords:
+                                if keyword in address_lower:
+                                    matched_route = route_id
+                                    break
+                            if matched_route:
+                                break
+                        
+                        if matched_route:
+                            ci_staff = conn.execute('''
+                                SELECT id FROM users 
+                                WHERE role='ci_staff' AND is_approved=1 
+                                AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
+                                LIMIT 1
+                            ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
+                            new_ci_staff_id = ci_staff['id'] if ci_staff else None
+                    
+                    # Fallback to workload-based
+                    if not new_ci_staff_id:
+                        ci_staff = conn.execute('''
+                            SELECT id FROM users 
+                            WHERE role='ci_staff' AND is_approved=1
+                            ORDER BY current_workload ASC 
+                            LIMIT 1
+                        ''').fetchone()
+                        new_ci_staff_id = ci_staff['id'] if ci_staff else None
+                
+                # Update CI staff assignment if changed
+                if new_ci_staff_id and new_ci_staff_id != old_ci_staff:
+                    # Decrease old CI staff workload
+                    if old_ci_staff:
+                        conn.execute('UPDATE users SET current_workload = current_workload - 1 WHERE id=?', (old_ci_staff,))
+                    
+                    # Increase new CI staff workload
+                    conn.execute('UPDATE users SET current_workload = current_workload + 1 WHERE id=?', (new_ci_staff_id,))
+                    
+                    # Update assignment
+                    conn.execute('UPDATE loan_applications SET assigned_ci_staff=?, status=? WHERE id=?',
+                               (new_ci_staff_id, 'assigned_to_ci', id))
+                    
+                    # Notify new CI staff
+                    create_notification(new_ci_staff_id, 
+                                      f'Loan application reassigned to you: {member_name}',
+                                      f'/ci/application/{id}')
+            
+            conn.commit()
+            conn.close()
+            
+            flash('Application updated successfully!', 'success')
+            socketio.emit('application_updated', {'id': id, 'member_name': member_name})
+            
+            return redirect(url_for('loan_application', id=id))
+            
+        except Exception as e:
+            print(f"ERROR updating application: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            if 'conn' in locals():
+                conn.rollback()
+                conn.close()
+            flash(f'Error updating application: {str(e)}', 'danger')
+            return redirect(url_for('loan_application', id=id))
+    
+    # GET request - show form
     documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=?', (id,)).fetchall()
     messages = conn.execute('''
         SELECT m.*, u.name as sender_name 
@@ -1424,11 +1590,29 @@ def loan_application(id):
         WHERE m.loan_application_id=?
         ORDER BY m.sent_at ASC
     ''', (id,)).fetchall()
+    
+    # Get all CI staff for dropdown
+    ci_staff_list = conn.execute('''
+        SELECT id, name, email, is_approved 
+        FROM users 
+        WHERE role='ci_staff' 
+        ORDER BY name ASC
+    ''').fetchall()
+    
     unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                                 (current_user.id,)).fetchone()['count']
     conn.close()
     
-    return render_template('loan_application.html', application=app_data, documents=documents, messages=messages, unread_count=unread_count)
+    # Check if application can be edited
+    can_edit = app_data['status'] in ['submitted', 'assigned_to_ci']
+    
+    return render_template('loan_application.html', 
+                         application=app_data, 
+                         documents=documents, 
+                         messages=messages, 
+                         unread_count=unread_count,
+                         ci_staff_list=ci_staff_list,
+                         can_edit=can_edit)
 
 @app.route('/messages')
 @login_required

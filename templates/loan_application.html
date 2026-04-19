@@ -1,39 +1,162 @@
 {% extends "base.html" %}
-{% block title %}Application Details{% endblock %}
+{% block title %}{% if can_edit %}Edit{% else %}View{% endif %} Application #{{ application.id }}{% endblock %}
+
+<style>
+#address_suggestions {
+    max-width: 100%;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-top: 2px;
+}
+
+#address_suggestions .list-group-item {
+    border-left: none;
+    border-right: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#address_suggestions .list-group-item:first-child {
+    border-top: none;
+    border-top-left-radius: 0.25rem;
+    border-top-right-radius: 0.25rem;
+}
+
+#address_suggestions .list-group-item:last-child {
+    border-bottom: none;
+    border-bottom-left-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem;
+}
+
+#address_suggestions .list-group-item:hover {
+    background-color: #f8f9fa;
+}
+
+#address_suggestions h6 {
+    font-size: 0.95rem;
+    color: #212529;
+    margin-bottom: 0.25rem;
+}
+
+#address_suggestions small {
+    font-size: 0.8rem;
+}
+
+.position-relative {
+    position: relative;
+}
+
+.read-only-field {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+}
+</style>
+
 {% block content %}
-<h2>Application #{{ application.id }}</h2>
+<h2>{% if can_edit %}Edit{% else %}View{% endif %} Application #{{ application.id }}</h2>
 <a href="{{ url_for('loan_dashboard') }}" class="btn btn-secondary mb-3">
     <i class="bi bi-arrow-left"></i> Back to Dashboard
 </a>
 
+{% if not can_edit %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> This application cannot be edited because it has been processed by CI or admin.
+</div>
+{% endif %}
+
 <div class="row">
     <div class="col-md-8">
-        <div class="card mb-3">
-            <div class="card-header">
+        <div class="card position-relative mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5>Application Details</h5>
+                <span class="badge bg-{% if application.status == 'approved' %}success{% elif application.status == 'disapproved' %}danger{% else %}warning{% endif %}">
+                    {{ application.status.replace('_', ' ').title() }}
+                </span>
             </div>
             <div class="card-body">
-                <table class="table">
-                    <tr><th>Member Name:</th><td>{{ application.member_name }}</td></tr>
-                    <tr><th>Contact:</th><td>{{ application.member_contact }}</td></tr>
-                    <tr><th>Address:</th><td>{{ application.member_address }}</td></tr>
-                    <tr><th>Loan Amount:</th><td>₱{{ application.loan_amount }}</td></tr>
-                    <tr><th>Status:</th><td><span class="badge bg-{% if application.status == 'approved' %}success{% elif application.status == 'rejected' %}danger{% else %}warning{% endif %}">{{ application.status.replace('_', ' ').title() }}</span></td></tr>
-                    <tr><th>CI Staff:</th><td>{{ application.ci_staff_name or 'N/A' }}</td></tr>
-                    <tr><th>Submitted:</th><td>{{ application.submitted_at }}</td></tr>
-                </table>
-                
-                {% if application.ci_notes %}
-                <div class="alert alert-info">
-                    <strong>CI Notes:</strong><br>{{ application.ci_notes }}
-                </div>
-                {% endif %}
-                
-                {% if application.admin_notes %}
-                <div class="alert alert-{% if application.status == 'approved' %}success{% else %}danger{% endif %}">
-                    <strong>Admin Decision:</strong><br>{{ application.admin_notes }}
-                </div>
-                {% endif %}
+                <form method="POST" enctype="multipart/form-data" id="editForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Member Name *</label>
+                            <input type="text" name="member_name" class="form-control" value="{{ application.member_name }}" required {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contact Number</label>
+                            <input type="text" name="member_contact" class="form-control" value="{{ application.member_contact or '' }}" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Address (Purok/Barangay, Municipality, Province) *</label>
+                        <input type="text" name="member_address" id="member_address" class="form-control" value="{{ application.member_address or '' }}" required autocomplete="off" placeholder="Start typing purok or barangay..." {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                        {% if can_edit %}
+                        <div id="address_suggestions" class="list-group position-absolute" style="z-index: 1000; max-height: 300px; overflow-y: auto; display: none;"></div>
+                        <small class="text-muted">Type purok or barangay name (e.g., "Purok 1", "Maninihon", "Poblacion")</small>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Loan Amount *</label>
+                        <input type="text" name="loan_amount_display" id="loan_amount" class="form-control" value="{{ '{:,.0f}'.format(application.loan_amount|float) }}" required placeholder="e.g., 14,000" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                        <input type="hidden" name="loan_amount" id="loan_amount_raw" value="{{ application.loan_amount }}">
+                        {% if can_edit %}<small class="text-muted">Enter amount with or without commas</small>{% endif %}
+                    </div>
+                    <div class="mb-3 position-relative">
+                        <label class="form-label">Loan Type *</label>
+                        <input type="text" name="loan_type" id="loanTypeInput" class="form-control" placeholder="Type to search loan types..." value="{{ application.loan_type or '' }}" required autocomplete="off" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                        {% if can_edit %}
+                        <div id="loanTypeDropdown" class="list-group position-absolute" style="z-index: 1000; max-height: 300px; overflow-y: auto; display: none; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #dee2e6; border-radius: 0.25rem; margin-top: 2px;"></div>
+                        <small class="text-muted">Start typing to filter loan types</small>
+                        {% endif %}
+                    </div>
+                    
+                    {% if can_edit %}
+                    <div class="mb-3">
+                        <label class="form-label"><i class="bi bi-images"></i> Upload Additional Documents/Photos</label>
+                        <input type="file" name="documents" class="form-control" multiple accept="image/*,.pdf" id="documentUpload">
+                        <small class="text-muted">You can add more images or PDF files</small>
+                        <div id="document_preview" class="mt-3 row g-2"></div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Assign to CI Staff *</label>
+                        <select name="needs_ci" class="form-select" required {% if not can_edit %}disabled{% endif %}>
+                            <option value="1" {% if application.assigned_ci_staff is none %}selected{% endif %}>Auto-assign to available CI Staff</option>
+                            <optgroup label="Or assign to specific CI Staff:">
+                                {% for ci in ci_staff_list %}
+                                <option value="ci_{{ ci.id }}" {% if application.assigned_ci_staff == ci.id %}selected{% endif %}>
+                                    {{ ci.name }} ({{ ci.email }})
+                                    {% if ci.is_approved == 0 %} - Pending Approval{% endif %}
+                                </option>
+                                {% endfor %}
+                            </optgroup>
+                        </select>
+                        {% if can_edit %}<small class="text-muted">All applications must go through CI interview process</small>{% endif %}
+                    </div>
+                    
+                    {% if application.ci_notes %}
+                    <div class="alert alert-info">
+                        <strong>CI Notes:</strong><br>{{ application.ci_notes }}
+                    </div>
+                    {% endif %}
+                    
+                    {% if application.admin_notes %}
+                    <div class="alert alert-{% if application.status == 'approved' %}success{% else %}danger{% endif %}">
+                        <strong>Admin Decision:</strong><br>{{ application.admin_notes }}
+                    </div>
+                    {% endif %}
+                    
+                    <div class="d-flex gap-2">
+                        {% if can_edit %}
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-save"></i> Update Application
+                        </button>
+                        {% endif %}
+                        <a href="{{ url_for('loan_dashboard') }}" class="btn btn-secondary">
+                            {% if can_edit %}Cancel{% else %}Back{% endif %}
+                        </a>
+                    </div>
+                </form>
             </div>
         </div>
         
@@ -88,6 +211,319 @@
         </div>
     </div>
 </div>
+
+{% if can_edit %}
+<script src="{{ url_for('static', filename='addresses.js') }}"></script>
+<script>
+// Wait for addresses to load, then setup autocomplete
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if addressDatabase is loaded
+    if (typeof addressDatabase === 'undefined' || addressDatabase.length === 0) {
+        console.error('Address database not loaded!');
+        return;
+    }
+    
+    console.log(`Address database loaded with ${addressDatabase.length} addresses`);
+    
+    // Address autocomplete functionality
+    document.getElementById('member_address')?.addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase().trim();
+    const suggestionsDiv = document.getElementById('address_suggestions');
+    
+    if (searchTerm.length < 2) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+    
+    // Filter addresses based on search term
+    const matches = addressDatabase.filter(addr => {
+        const purokMatch = addr.purok && addr.purok.toLowerCase().includes(searchTerm);
+        const barangayMatch = addr.barangay.toLowerCase().includes(searchTerm);
+        const municipalityMatch = addr.municipality.toLowerCase().includes(searchTerm);
+        return purokMatch || barangayMatch || municipalityMatch;
+    }).slice(0, 10); // Limit to 10 results
+    
+    if (matches.length === 0) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+    
+    // Display suggestions
+    suggestionsDiv.innerHTML = '';
+    matches.forEach(addr => {
+        const item = document.createElement('a');
+        item.href = '#';
+        item.className = 'list-group-item list-group-item-action';
+        
+        const fullAddress = addr.purok 
+            ? `${addr.purok}, ${addr.barangay}, ${addr.municipality}, ${addr.province}`
+            : `${addr.barangay}, ${addr.municipality}, ${addr.province}`;
+        
+        item.innerHTML = `
+            <div class="d-flex w-100 justify-content-between">
+                <h6 class="mb-1">${addr.purok || addr.barangay}</h6>
+                <small class="text-muted">${addr.municipality}</small>
+            </div>
+            <small class="text-muted">${fullAddress}</small>
+        `;
+        
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.getElementById('member_address').value = fullAddress;
+            suggestionsDiv.style.display = 'none';
+        });
+        
+        suggestionsDiv.appendChild(item);
+    });
+    
+    suggestionsDiv.style.display = 'block';
+    });
+    
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', function(e) {
+        const addressInput = document.getElementById('member_address');
+        const suggestionsDiv = document.getElementById('address_suggestions');
+        if (e.target !== addressInput && !suggestionsDiv.contains(e.target)) {
+            suggestionsDiv.style.display = 'none';
+        }
+    });
+});
+
+// Loan amount formatting with commas
+const loanAmountInput = document.getElementById('loan_amount');
+const loanAmountRaw = document.getElementById('loan_amount_raw');
+
+loanAmountInput?.addEventListener('input', function(e) {
+    // Remove all non-digit characters except decimal point
+    let value = e.target.value.replace(/[^\d.]/g, '');
+    
+    // Ensure only one decimal point
+    const parts = value.split('.');
+    if (parts.length > 2) {
+        value = parts[0] + '.' + parts.slice(1).join('');
+    }
+    
+    // Store raw value for form submission
+    loanAmountRaw.value = value;
+    
+    // Format with commas for display
+    const [integerPart, decimalPart] = value.split('.');
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    e.target.value = decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
+});
+
+// Store accumulated files
+let accumulatedFiles = [];
+
+// Document preview functionality - ACCUMULATE files instead of replacing
+document.getElementById('documentUpload')?.addEventListener('change', function(e) {
+    const preview = document.getElementById('document_preview');
+    const newFiles = Array.from(e.target.files);
+    
+    // Add new files to accumulated list
+    accumulatedFiles = accumulatedFiles.concat(newFiles);
+    
+    // Clear preview and rebuild with all accumulated files
+    preview.innerHTML = '';
+    
+    accumulatedFiles.forEach((file, index) => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 col-6 position-relative';
+        col.dataset.fileIndex = index;
+        
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                col.innerHTML = `
+                    <div class="card">
+                        <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${index})" style="z-index: 10; padding: 2px 6px;">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                        <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                        <div class="card-body p-2">
+                            <small class="text-muted text-truncate d-block">${file.name}</small>
+                        </div>
+                    </div>
+                `;
+                preview.appendChild(col);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            col.innerHTML = `
+                <div class="card">
+                    <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${index})" style="z-index: 10; padding: 2px 6px;">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <div class="card-body text-center" style="height: 150px; display: flex; align-items: center; justify-content: center; background: #f8f9fa;">
+                        <div>
+                            <i class="bi bi-file-pdf" style="font-size: 3rem; color: #dc3545;"></i>
+                            <div class="mt-2"><small class="text-muted text-truncate d-block">${file.name}</small></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            preview.appendChild(col);
+        }
+    });
+    
+    // Update the file input with accumulated files
+    updateFileInput();
+});
+
+// Function to remove a file from the accumulated list
+function removeFile(index) {
+    accumulatedFiles.splice(index, 1);
+    
+    // Rebuild preview
+    const preview = document.getElementById('document_preview');
+    preview.innerHTML = '';
+    
+    accumulatedFiles.forEach((file, idx) => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 col-6 position-relative';
+        col.dataset.fileIndex = idx;
+        
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                col.innerHTML = `
+                    <div class="card">
+                        <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${idx})" style="z-index: 10; padding: 2px 6px;">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                        <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                        <div class="card-body p-2">
+                            <small class="text-muted text-truncate d-block">${file.name}</small>
+                        </div>
+                    </div>
+                `;
+                preview.appendChild(col);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            col.innerHTML = `
+                <div class="card">
+                    <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${idx})" style="z-index: 10; padding: 2px 6px;">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <div class="card-body text-center" style="height: 150px; display: flex; align-items: center; justify-content: center; background: #f8f9fa;">
+                        <div>
+                            <i class="bi bi-file-pdf" style="font-size: 3rem; color: #dc3545;"></i>
+                            <div class="mt-2"><small class="text-muted text-truncate d-block">${file.name}</small></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            preview.appendChild(col);
+        }
+    });
+    
+    updateFileInput();
+}
+
+// Update the file input with accumulated files
+function updateFileInput() {
+    const input = document.getElementById('documentUpload');
+    const dataTransfer = new DataTransfer();
+    
+    accumulatedFiles.forEach(file => {
+        dataTransfer.items.add(file);
+    });
+    
+    input.files = dataTransfer.files;
+}
+
+// Add form submission handler with real-time progress feedback
+document.querySelector('#editForm')?.addEventListener('submit', function(e) {
+    const submitBtn = this.querySelector('button[type="submit"]');
+    
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        
+        // Show different messages based on file count
+        const fileCount = accumulatedFiles.length;
+        if (fileCount > 0) {
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading files...';
+        } else {
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Updating...';
+        }
+    }
+});
+
+// Load loan types from database
+let allLoanTypes = [];
+
+async function loadLoanTypes() {
+    try {
+        const response = await fetch('/api/loan-types');
+        allLoanTypes = await response.json();
+        console.log(`Loaded ${allLoanTypes.length} loan types`);
+    } catch (error) {
+        console.error('Error loading loan types:', error);
+    }
+}
+
+// Loan type autocomplete with custom dropdown
+const loanTypeInput = document.getElementById('loanTypeInput');
+const loanTypeDropdown = document.getElementById('loanTypeDropdown');
+
+loanTypeInput?.addEventListener('focus', function() {
+    if (allLoanTypes.length === 0) {
+        loadLoanTypes().then(() => showLoanTypeDropdown(''));
+    } else {
+        showLoanTypeDropdown(this.value);
+    }
+});
+
+loanTypeInput?.addEventListener('input', function(e) {
+    showLoanTypeDropdown(e.target.value);
+});
+
+function showLoanTypeDropdown(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    
+    // Filter loan types
+    const matches = allLoanTypes.filter(lt => 
+        lt.name.toLowerCase().includes(term)
+    );
+    
+    if (matches.length === 0) {
+        loanTypeDropdown.style.display = 'none';
+        return;
+    }
+    
+    // Build dropdown
+    loanTypeDropdown.innerHTML = '';
+    matches.forEach(lt => {
+        const item = document.createElement('a');
+        item.href = '#';
+        item.className = 'list-group-item list-group-item-action';
+        item.textContent = lt.name;
+        item.style.cursor = 'pointer';
+        
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            loanTypeInput.value = lt.name;
+            loanTypeDropdown.style.display = 'none';
+        });
+        
+        loanTypeDropdown.appendChild(item);
+    });
+    
+    loanTypeDropdown.style.display = 'block';
+}
+
+// Hide dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    if (e.target !== loanTypeInput && !loanTypeDropdown.contains(e.target)) {
+        loanTypeDropdown.style.display = 'none';
+    }
+});
+
+// Load loan types on page load
+loadLoanTypes();
+</script>
+{% endif %}
 
 {% endblock %}
 {% block scripts %}

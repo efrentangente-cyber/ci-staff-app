@@ -36,15 +36,22 @@
         <div class="stat-card-icon blue">
             <i class="bi bi-file-earmark-text"></i>
         </div>
-        <h3>{{ applications|length }}</h3>
+        <h3>{{ applications|length + in_process_applications|length }}</h3>
         <p>Total Applications</p>
     </div>
     <div class="stat-card">
         <div class="stat-card-icon yellow">
             <i class="bi bi-clock-history"></i>
         </div>
-        <h3>{{ applications|selectattr('status', 'in', ['submitted', 'ci_completed'])|list|length }}</h3>
+        <h3>{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length + (applications|selectattr('needs_ci_interview', 'equalto', 0)|selectattr('status', 'equalto', 'submitted')|list|length) }}</h3>
         <p>For Review</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon orange">
+            <i class="bi bi-arrow-repeat"></i>
+        </div>
+        <h3>{{ in_process_applications|length }}</h3>
+        <p>In Process</p>
     </div>
     <div class="stat-card">
         <div class="stat-card-icon blue">
@@ -97,8 +104,72 @@
     <div class="col-12 mb-3">
         <div class="content-card">
             <div class="content-card-header">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <h5 class="mb-0"><i class="bi bi-arrow-repeat"></i> In Process (LPS → CI)</h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="search-container">
+                            <div class="search-input-wrapper" id="searchWrapperInProcess">
+                                <i class="bi bi-search search-icon"></i>
+                                <input type="text" id="searchInputInProcess" placeholder="Search here" onkeyup="searchApplications('inprocess')" oninput="toggleClearButton('inprocess')">
+                                <button class="clear-search" onclick="clearSearch('inprocess')">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <span class="badge bg-info" id="inProcessCount">{{ in_process_applications|length }} In Process</span>
+                    </div>
+                </div>
+            </div>
+            <div class="content-card-body">
+                <div class="alert alert-info mb-3">
+                    <i class="bi bi-info-circle"></i> These applications are between LPS and CI. You can reassign CI staff if needed (e.g., when CI is on leave).
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover" id="inProcessTable">
+                        <thead>
+                            <tr>
+                                <th>Member Name</th>
+                                <th>Loan Amount</th>
+                                <th>Status</th>
+                                <th>LPS</th>
+                                <th>CI Staff</th>
+                                <th>Submitted</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in in_process_applications %}
+                            <tr>
+                                <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                                <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
+                                <td>
+                                    <span class="badge bg-{% if app.status == 'submitted' %}secondary{% else %}info{% endif %}">
+                                        {{ app.status.replace('_', ' ').title() }}
+                                    </span>
+                                </td>
+                                <td>{{ app.loan_staff_name }}</td>
+                                <td>{{ app.ci_staff_name or 'Not Assigned' }}</td>
+                                <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-warning" onclick="openReassignModal({{ app.id }}, '{{ app.member_name }}', {{ app.assigned_ci_staff or 'null' }})">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                        <span class="btn-text">Reassign CI</span>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 mb-3">
+        <div class="content-card">
+            <div class="content-card-header">
                     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                        <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Pending Applications</h5>
+                        <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> For Review</h5>
                         <div class="d-flex align-items-center gap-2">
                             <div class="search-container">
                                 <div class="search-input-wrapper" id="searchWrapperPending">
@@ -109,7 +180,7 @@
                                     </button>
                                 </div>
                             </div>
-                            <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'in', ['submitted', 'assigned_to_ci', 'ci_completed'])|list|length }} Pending</span>
+                            <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length + (applications|selectattr('needs_ci_interview', 'equalto', 0)|selectattr('status', 'equalto', 'submitted')|list|length) }} For Review</span>
                         </div>
                     </div>
             </div>
@@ -129,7 +200,7 @@
                         </thead>
                         <tbody>
                             {% for app in applications %}
-                            {% if app.status in ['submitted', 'assigned_to_ci', 'ci_completed'] %}
+                            {% if app.status == 'ci_completed' or (app.needs_ci_interview == 0 and app.status == 'submitted') %}
                             <tr>
                                 <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
@@ -221,6 +292,40 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reassign CI Staff Modal -->
+<div class="modal fade" id="reassignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Reassign CI Staff</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Reassigning CI Staff for: <strong id="reassignMemberName"></strong></p>
+                <form id="reassignForm" method="POST">
+                    <input type="hidden" id="reassignAppId" name="app_id">
+                    <div class="mb-3">
+                        <label class="form-label">Select New CI Staff *</label>
+                        <select name="new_ci_staff" id="newCiStaffSelect" class="form-select" required>
+                            <option value="">-- Select CI Staff --</option>
+                            {% for staff in ci_staff %}
+                            <option value="{{ staff.id }}">
+                                {{ staff.name }} ({{ staff.email }})
+                                {% if staff.is_online %} - Online{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Reassign</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -423,8 +528,25 @@ function updateCIStaffStatus(userId, isOnline, userName) {
 
 // Search applications
 function searchApplications(tableType) {
-    const searchValue = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`).value.toLowerCase();
-    const table = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}Table`);
+    let searchValue, table, countBadge, countLabel;
+    
+    if (tableType === 'pending') {
+        searchValue = document.getElementById('searchInputPending').value.toLowerCase();
+        table = document.getElementById('pendingTable');
+        countBadge = document.getElementById('pendingCount');
+        countLabel = 'Pending';
+    } else if (tableType === 'inprocess') {
+        searchValue = document.getElementById('searchInputInProcess').value.toLowerCase();
+        table = document.getElementById('inProcessTable');
+        countBadge = document.getElementById('inProcessCount');
+        countLabel = 'In Process';
+    } else {
+        searchValue = document.getElementById('searchInputProcessed').value.toLowerCase();
+        table = document.getElementById('processedTable');
+        countBadge = document.getElementById('processedCount');
+        countLabel = 'Processed';
+    }
+    
     const tbody = table.getElementsByTagName('tbody')[0];
     
     if (!tbody) return; // Exit if no tbody found
@@ -451,16 +573,25 @@ function searchApplications(tableType) {
         }
     }
     
-    const countBadge = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}Count`);
     if (countBadge) {
-        countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Processed')}`;
+        countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : countLabel}`;
     }
 }
 
 // Toggle clear button visibility
 function toggleClearButton(tableType) {
-    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
-    const wrapper = document.getElementById(`searchWrapper${tableType === 'pending' ? 'Pending' : 'Processed'}`);
+    let input, wrapper;
+    
+    if (tableType === 'pending') {
+        input = document.getElementById('searchInputPending');
+        wrapper = document.getElementById('searchWrapperPending');
+    } else if (tableType === 'inprocess') {
+        input = document.getElementById('searchInputInProcess');
+        wrapper = document.getElementById('searchWrapperInProcess');
+    } else {
+        input = document.getElementById('searchInputProcessed');
+        wrapper = document.getElementById('searchWrapperProcessed');
+    }
     
     if (input.value.length > 0) {
         wrapper.classList.add('has-value');
@@ -471,7 +602,16 @@ function toggleClearButton(tableType) {
 
 // Clear search input
 function clearSearch(tableType) {
-    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
+    let input;
+    
+    if (tableType === 'pending') {
+        input = document.getElementById('searchInputPending');
+    } else if (tableType === 'inprocess') {
+        input = document.getElementById('searchInputInProcess');
+    } else {
+        input = document.getElementById('searchInputProcessed');
+    }
+    
     input.value = '';
     toggleClearButton(tableType);
     searchApplications(tableType);
@@ -504,6 +644,82 @@ function filterProcessed() {
     
     document.getElementById('processedCount').textContent = `${visibleCount} ${filterValue === 'all' ? 'Processed' : 'Filtered'}`;
 }
+
+// Reassign CI Staff Modal Functions
+function openReassignModal(appId, memberName, currentCiStaffId) {
+    document.getElementById('reassignAppId').value = appId;
+    document.getElementById('reassignMemberName').textContent = memberName;
+    
+    // Pre-select current CI staff if assigned
+    const select = document.getElementById('newCiStaffSelect');
+    if (currentCiStaffId) {
+        select.value = currentCiStaffId;
+    } else {
+        select.value = '';
+    }
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('reassignModal'));
+    modal.show();
+}
+
+// Handle reassign form submission
+document.getElementById('reassignForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const appId = document.getElementById('reassignAppId').value;
+    const newCiStaffId = document.getElementById('newCiStaffSelect').value;
+    
+    if (!newCiStaffId) {
+        alert('Please select a CI Staff');
+        return;
+    }
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Reassigning...';
+    
+    fetch(`/reassign_ci_staff/${appId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            new_ci_staff_id: newCiStaffId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Close modal
+            bootstrap.Modal.getInstance(document.getElementById('reassignModal')).hide();
+            
+            // Show success message
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show';
+            alertDiv.innerHTML = `
+                <i class="bi bi-check-circle"></i> ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.querySelector('.top-bar').after(alertDiv);
+            
+            // Reload page after 1 second
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alert('Error: ' + data.message);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Reassign';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while reassigning');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Reassign';
+    });
+});
 </script>
 
 <!-- Real-time Dashboard Updates -->
