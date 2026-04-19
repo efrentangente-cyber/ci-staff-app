@@ -23,6 +23,24 @@ import requests  # For SMS API
 # Load environment variables
 load_dotenv()
 
+# Setup Google Cloud credentials for OCR
+# Handle both file path and JSON string (for Render deployment)
+if 'GOOGLE_APPLICATION_CREDENTIALS_JSON' in os.environ:
+    # Credentials passed as JSON string (Render)
+    import json
+    import tempfile
+    creds_json = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
+    # Write to temporary file
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+        f.write(creds_json)
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = f.name
+elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
+    # Credentials file path (local development)
+    pass
+else:
+    # No credentials configured - OCR will not work
+    print("WARNING: Google Cloud Vision credentials not configured. OCR features will not work.")
+
 # Always store UTC - JS will convert to local time for display
 def now_ph():
     """Return current UTC time for DB storage (JS handles timezone display)"""
