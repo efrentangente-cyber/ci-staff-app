@@ -2987,6 +2987,59 @@ def run_permissions_migration():
         flash(f'❌ Migration failed: {str(e)}', 'danger')
         return redirect(url_for('admin_dashboard'))
 
+@app.route('/get_user_permissions/<int:user_id>', methods=['GET'])
+@login_required
+def get_user_permissions(user_id):
+    """Get current permissions for a user (super admin only)"""
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    conn = get_db()
+    user = conn.execute('SELECT permissions FROM users WHERE id=? AND role="loan_officer"', (user_id,)).fetchone()
+    conn.close()
+    
+    if not user:
+        return jsonify({'success': False, 'error': 'User not found'}), 404
+    
+    permissions = user['permissions'].split(',') if user['permissions'] else []
+    return jsonify({'success': True, 'permissions': permissions})
+
+@app.route('/update_permissions_inline/<int:user_id>', methods=['POST'])
+@login_required
+def update_permissions_inline(user_id):
+    """Update loan officer permissions inline (super admin only)"""
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    permissions = data.get('permissions', [])
+    
+    # Validate permissions
+    valid_permissions = ['manage_users', 'system_settings']
+    for perm in permissions:
+        if perm not in valid_permissions:
+            return jsonify({'success': False, 'error': f'Invalid permission: {perm}'}), 400
+    
+    conn = get_db()
+    
+    # Verify user is a loan officer
+    user = conn.execute('SELECT name FROM users WHERE id=? AND role="loan_officer"', (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({'success': False, 'error': 'User not found or not a loan officer'}), 404
+    
+    # Update permissions
+    permissions_str = ','.join(permissions) if permissions else None
+    conn.execute('UPDATE users SET permissions=? WHERE id=?', (permissions_str, user_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        'success': True, 
+        'message': f'Permissions updated for {user["name"]}',
+        'permissions': permissions
+    })
+
 @app.route('/generate_report/<report_type>', methods=['POST'])
 @login_required
 def generate_report(report_type):
@@ -3882,6 +3935,306 @@ def ocr_test():
             'error': str(e),
             'message': 'OCR service not configured. Please set GOOGLE_APPLICATION_CREDENTIALS environment variable.'
         }), 500
+
+# Autocomplete API Endpoints - Auto-fill from previous applications
+@app.route('/api/autocomplete/names', methods=['GET'])
+@login_required
+def autocomplete_names():
+    """Get member names matching query"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    results = conn.execute('''
+        SELECT DISTINCT member_name, member_contact, member_address
+        FROM loan_applications
+        WHERE member_name LIKE ? 
+        ORDER BY submitted_at DESC
+        LIMIT 10
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    suggestions = [{
+        'value': row['member_name'],
+        'context': f"{row['member_contact']} - {row['member_address'][:50]}..." if row['member_address'] else row['member_contact']
+    } for row in results]
+    
+    return jsonify({'success': True, 'suggestions': suggestions})
+
+@app.route('/api/autocomplete/contacts', methods=['GET'])
+@login_required
+def autocomplete_contacts():
+    """Get contact numbers matching query"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    results = conn.execute('''
+        SELECT DISTINCT member_contact, member_name
+        FROM loan_applications
+        WHERE member_contact LIKE ?
+        ORDER BY submitted_at DESC
+        LIMIT 10
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    suggestions = [{
+        'value': row['member_contact'],
+        'context': row['member_name']
+    } for row in results if row['member_contact']]
+    
+    return jsonify({'success': True, 'suggestions': suggestions})
+
+@app.route('/api/autocomplete/addresses', methods=['GET'])
+@login_required
+def autocomplete_addresses():
+    """Get addresses matching query"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    results = conn.execute('''
+        SELECT DISTINCT member_address, member_name
+        FROM loan_applications
+        WHERE member_address LIKE ?
+        ORDER BY submitted_at DESC
+        LIMIT 10
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    suggestions = [{
+        'value': row['member_address'],
+        'context': row['member_name']
+    } for row in results if row['member_address']]
+    
+    return jsonify({'success': True, 'suggestions': suggestions})
+
+@app.route('/api/autocomplete/member_details', methods=['GET'])
+@login_required
+def autocomplete_member_details():
+    """Get full member details by name for auto-fill"""
+    name = request.args.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'Name required'})
+    
+    conn = get_db()
+    # Get most recent application for this member
+    result = conn.execute('''
+        SELECT member_name, member_contact, member_address
+        FROM loan_applications
+        WHERE member_name = ?
+        ORDER BY submitted_at DESC
+        LIMIT 1
+    ''', (name,)).fetchone()
+    conn.close()
+    
+    if result:
+        return jsonify({
+            'success': True,
+            'details': {
+                'name': result['member_name'],
+                'contact': result['member_contact'],
+                'address': result['member_address']
+            }
+        })
+    
+    return jsonify({'success': False, 'error': 'Member not found'})
+
+@app.route('/api/autocomplete/last_names', methods=['GET'])
+@login_required
+def autocomplete_last_names():
+    """Get last names from CI checklist data"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    # Search in ci_checklist_data JSON field
+    results = conn.execute('''
+        SELECT DISTINCT ci_checklist_data
+        FROM loan_applications
+        WHERE ci_checklist_data IS NOT NULL
+        AND ci_checklist_data LIKE ?
+        LIMIT 20
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    last_names = set()
+    for row in results:
+        try:
+            import json
+            data = json.loads(row['ci_checklist_data'])
+            if 'applicant_last_name' in data and query.lower() in data['applicant_last_name'].lower():
+                last_names.add(data['applicant_last_name'])
+            if 'spouse_last_name' in data and query.lower() in data['spouse_last_name'].lower():
+                last_names.add(data['spouse_last_name'])
+        except:
+            pass
+    
+    suggestions = [{'value': name, 'context': ''} for name in sorted(last_names)[:10]]
+    return jsonify({'success': True, 'suggestions': suggestions})
+
+@app.route('/api/autocomplete/first_names', methods=['GET'])
+@login_required
+def autocomplete_first_names():
+    """Get first names from CI checklist data"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    results = conn.execute('''
+        SELECT DISTINCT ci_checklist_data
+        FROM loan_applications
+        WHERE ci_checklist_data IS NOT NULL
+        AND ci_checklist_data LIKE ?
+        LIMIT 20
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    first_names = set()
+    for row in results:
+        try:
+            import json
+            data = json.loads(row['ci_checklist_data'])
+            if 'applicant_first_name' in data and query.lower() in data['applicant_first_name'].lower():
+                first_names.add(data['applicant_first_name'])
+            if 'spouse_first_name' in data and query.lower() in data['spouse_first_name'].lower():
+                first_names.add(data['spouse_first_name'])
+        except:
+            pass
+    
+    suggestions = [{'value': name, 'context': ''} for name in sorted(first_names)[:10]]
+    return jsonify({'success': True, 'suggestions': suggestions})
+
+@app.route('/api/autocomplete/middle_names', methods=['GET'])
+@login_required
+def autocomplete_middle_names():
+    """Get middle names from CI checklist data"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    results = conn.execute('''
+        SELECT DISTINCT ci_checklist_data
+        FROM loan_applications
+        WHERE ci_checklist_data IS NOT NULL
+        AND ci_checklist_data LIKE ?
+        LIMIT 20
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    middle_names = set()
+    for row in results:
+        try:
+            import json
+            data = json.loads(row['ci_checklist_data'])
+            if 'applicant_middle_name' in data and query.lower() in data['applicant_middle_name'].lower():
+                middle_names.add(data['applicant_middle_name'])
+            if 'spouse_middle_name' in data and query.lower() in data['spouse_middle_name'].lower():
+                middle_names.add(data['spouse_middle_name'])
+        except:
+            pass
+    
+    suggestions = [{'value': name, 'context': ''} for name in sorted(middle_names)[:10]]
+    return jsonify({'success': True, 'suggestions': suggestions})
+
+@app.route('/api/autocomplete/barangays', methods=['GET'])
+@login_required
+def autocomplete_barangays():
+    """Get barangays from CI checklist data"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    results = conn.execute('''
+        SELECT DISTINCT ci_checklist_data
+        FROM loan_applications
+        WHERE ci_checklist_data IS NOT NULL
+        AND ci_checklist_data LIKE ?
+        LIMIT 20
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    barangays = set()
+    for row in results:
+        try:
+            import json
+            data = json.loads(row['ci_checklist_data'])
+            if 'barangay' in data and query.lower() in data['barangay'].lower():
+                barangays.add(data['barangay'])
+        except:
+            pass
+    
+    suggestions = [{'value': name, 'context': ''} for name in sorted(barangays)[:10]]
+    return jsonify({'success': True, 'suggestions': suggestions})
+
+@app.route('/api/autocomplete/municipalities', methods=['GET'])
+@login_required
+def autocomplete_municipalities():
+    """Get municipalities from CI checklist data"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    results = conn.execute('''
+        SELECT DISTINCT ci_checklist_data
+        FROM loan_applications
+        WHERE ci_checklist_data IS NOT NULL
+        AND ci_checklist_data LIKE ?
+        LIMIT 20
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    municipalities = set()
+    for row in results:
+        try:
+            import json
+            data = json.loads(row['ci_checklist_data'])
+            if 'municipality' in data and query.lower() in data['municipality'].lower():
+                municipalities.add(data['municipality'])
+        except:
+            pass
+    
+    suggestions = [{'value': name, 'context': ''} for name in sorted(municipalities)[:10]]
+    return jsonify({'success': True, 'suggestions': suggestions})
+
+@app.route('/api/autocomplete/provinces', methods=['GET'])
+@login_required
+def autocomplete_provinces():
+    """Get provinces from CI checklist data"""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'suggestions': []})
+    
+    conn = get_db()
+    results = conn.execute('''
+        SELECT DISTINCT ci_checklist_data
+        FROM loan_applications
+        WHERE ci_checklist_data IS NOT NULL
+        AND ci_checklist_data LIKE ?
+        LIMIT 20
+    ''', (f'%{query}%',)).fetchall()
+    conn.close()
+    
+    provinces = set()
+    for row in results:
+        try:
+            import json
+            data = json.loads(row['ci_checklist_data'])
+            if 'province' in data and query.lower() in data['province'].lower():
+                provinces.add(data['province'])
+        except:
+            pass
+    
+    suggestions = [{'value': name, 'context': ''} for name in sorted(provinces)[:10]]
+    return jsonify({'success': True, 'suggestions': suggestions})
 
 if __name__ == '__main__':
     import os

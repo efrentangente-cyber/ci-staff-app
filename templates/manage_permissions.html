@@ -42,32 +42,53 @@
                                     </td>
                                     <td>{{ officer.email }}</td>
                                     <td>
-                                        {% if officer.permissions and 'manage_users' in officer.permissions %}
-                                        <span class="badge bg-success">
-                                            <i class="bi bi-check-circle"></i> Granted
-                                        </span>
-                                        {% else %}
-                                        <span class="badge bg-secondary">
-                                            <i class="bi bi-x-circle"></i> Denied
-                                        </span>
-                                        {% endif %}
+                                        <!-- Inline toggle for Manage Users permission -->
+                                        <div class="form-check form-switch d-inline-block">
+                                            <input class="form-check-input" 
+                                                   type="checkbox" 
+                                                   id="manage_users_toggle_{{ officer.id }}"
+                                                   {% if officer.permissions and 'manage_users' in officer.permissions %}checked{% endif %}
+                                                   onchange="togglePermission({{ officer.id }}, 'manage_users', this.checked, '{{ officer.name }}')">
+                                            <label class="form-check-label" for="manage_users_toggle_{{ officer.id }}">
+                                                {% if officer.permissions and 'manage_users' in officer.permissions %}
+                                                <span class="badge bg-success">
+                                                    <i class="bi bi-check-circle"></i> Granted
+                                                </span>
+                                                {% else %}
+                                                <span class="badge bg-secondary">
+                                                    <i class="bi bi-x-circle"></i> Denied
+                                                </span>
+                                                {% endif %}
+                                            </label>
+                                        </div>
                                     </td>
                                     <td>
-                                        {% if officer.permissions and 'system_settings' in officer.permissions %}
-                                        <span class="badge bg-success">
-                                            <i class="bi bi-check-circle"></i> Granted
-                                        </span>
-                                        {% else %}
-                                        <span class="badge bg-secondary">
-                                            <i class="bi bi-x-circle"></i> Denied
-                                        </span>
-                                        {% endif %}
+                                        <!-- Inline toggle for System Settings permission -->
+                                        <div class="form-check form-switch d-inline-block">
+                                            <input class="form-check-input" 
+                                                   type="checkbox" 
+                                                   id="system_settings_toggle_{{ officer.id }}"
+                                                   {% if officer.permissions and 'system_settings' in officer.permissions %}checked{% endif %}
+                                                   onchange="togglePermission({{ officer.id }}, 'system_settings', this.checked, '{{ officer.name }}')">
+                                            <label class="form-check-label" for="system_settings_toggle_{{ officer.id }}">
+                                                {% if officer.permissions and 'system_settings' in officer.permissions %}
+                                                <span class="badge bg-success">
+                                                    <i class="bi bi-check-circle"></i> Granted
+                                                </span>
+                                                {% else %}
+                                                <span class="badge bg-secondary">
+                                                    <i class="bi bi-x-circle"></i> Denied
+                                                </span>
+                                                {% endif %}
+                                            </label>
+                                        </div>
                                     </td>
                                     <td>
-                                        <button class="btn btn-sm btn-primary" 
+                                        <button class="btn btn-sm btn-outline-primary" 
                                                 data-bs-toggle="modal" 
-                                                data-bs-target="#editPermissionsModal{{ officer.id }}">
-                                            <i class="bi bi-pencil"></i> Edit
+                                                data-bs-target="#editPermissionsModal{{ officer.id }}"
+                                                title="Edit all permissions">
+                                            <i class="bi bi-pencil"></i> Edit All
                                         </button>
                                     </td>
                                 </tr>
@@ -209,6 +230,113 @@
     background-color: #198754;
     border-color: #198754;
 }
+
+.form-switch .form-check-input {
+    cursor: pointer;
+    width: 3rem;
+    height: 1.5rem;
+}
+
+.form-switch .form-check-input:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
 </style>
+
+<script>
+// Toggle permission inline
+function togglePermission(userId, permissionType, isGranted, userName) {
+    const action = isGranted ? 'grant' : 'revoke';
+    const permissionName = permissionType === 'manage_users' ? 'Manage Users' : 'System Settings';
+    
+    if (!confirm(`${action.toUpperCase()} "${permissionName}" permission for ${userName}?`)) {
+        // Revert toggle if cancelled
+        const toggle = document.getElementById(`${permissionType}_toggle_${userId}`);
+        toggle.checked = !isGranted;
+        return;
+    }
+    
+    // Get current permissions
+    fetch(`/get_user_permissions/${userId}`)
+        .then(response => response.json())
+        .then(data => {
+            let permissions = data.permissions || [];
+            
+            // Update permissions array
+            if (isGranted) {
+                if (!permissions.includes(permissionType)) {
+                    permissions.push(permissionType);
+                }
+            } else {
+                permissions = permissions.filter(p => p !== permissionType);
+            }
+            
+            // Send update request
+            return fetch(`/update_permissions_inline/${userId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ permissions: permissions })
+            });
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success notification
+                showNotification('success', `Permission ${action}ed successfully for ${userName}!`);
+                
+                // Update badge
+                updatePermissionBadge(userId, permissionType, isGranted);
+            } else {
+                throw new Error(data.error || 'Failed to update permission');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('error', 'Failed to update permission: ' + error.message);
+            
+            // Revert toggle on error
+            const toggle = document.getElementById(`${permissionType}_toggle_${userId}`);
+            toggle.checked = !isGranted;
+        });
+}
+
+// Update permission badge
+function updatePermissionBadge(userId, permissionType, isGranted) {
+    const toggle = document.getElementById(`${permissionType}_toggle_${userId}`);
+    const label = toggle.nextElementSibling;
+    const badge = label.querySelector('.badge');
+    
+    if (isGranted) {
+        badge.className = 'badge bg-success';
+        badge.innerHTML = '<i class="bi bi-check-circle"></i> Granted';
+    } else {
+        badge.className = 'badge bg-secondary';
+        badge.innerHTML = '<i class="bi bi-x-circle"></i> Denied';
+    }
+}
+
+// Show notification
+function showNotification(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const icon = type === 'success' ? 'check-circle' : 'exclamation-triangle';
+    
+    const notification = document.createElement('div');
+    notification.className = `alert ${alertClass} alert-dismissible fade show`;
+    notification.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="bi bi-${icon}"></i> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-dismiss after 3 seconds
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
+}
+</script>
 
 {% endblock %}

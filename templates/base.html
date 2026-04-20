@@ -1342,6 +1342,10 @@
     <!-- Session Security Script -->
     <script src="{{ url_for('static', filename='session-security.js') }}"></script>
     
+    <!-- Autocomplete CSS and JS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='autocomplete.css') }}">
+    <script src="{{ url_for('static', filename='autocomplete.js') }}"></script>
+    
     {% if current_user.is_authenticated %}
     <script>
         // Set login time to prevent immediate logout on successful login
