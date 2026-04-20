@@ -549,10 +549,15 @@
                 <div class="col-md-6 text-center">
                     <h5>Signature</h5>
                     {% if application.ci_signature %}
-                    <img src="{{ application.ci_signature }}" style="max-width: 100%; max-height: 200px; border: 2px solid #198754; border-radius: 8px; padding: 10px;">
-                    <p style="margin-top: 10px; font-weight: bold; color: #198754;">
-                        Sign-------- {{ application.ci_staff_name }}
-                    </p>
+                    <div style="display: inline-block; position: relative;">
+                        <!-- Signature image -->
+                        <img src="{{ application.ci_signature }}" style="max-width: 100%; max-height: 150px; display: block; margin: 0 auto;">
+                        <!-- Printed name line below signature -->
+                        <div style="border-top: 2px solid #000; margin-top: 5px; padding-top: 5px; text-align: center; min-width: 250px;">
+                            <strong style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">{{ application.ci_staff_name }}</strong>
+                            <div style="font-size: 12px; color: #666; margin-top: 2px;">CI Staff</div>
+                        </div>
+                    </div>
                     {% else %}
                     <p class="text-muted">No signature available</p>
                     {% endif %}
