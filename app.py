@@ -4236,42 +4236,68 @@ def manage_sms_templates():
     
     conn = get_db()
     
-    # Get all templates
-    templates = conn.execute('''
-        SELECT * FROM sms_templates 
-        ORDER BY category, name
-    ''').fetchall()
+    try:
+        # Check if sms_templates table exists
+        table_check = conn.execute('''
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='sms_templates'
+        ''').fetchone()
+        
+        if not table_check:
+            # Create sms_templates table
+            conn.execute('''
+                CREATE TABLE sms_templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL CHECK(category IN ('approved', 'disapproved', 'deferred', 'custom')),
+                    message TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+            flash('SMS Templates system initialized successfully!', 'success')
+        
+        # Get all templates
+        templates = conn.execute('''
+            SELECT * FROM sms_templates 
+            ORDER BY category, name
+        ''').fetchall()
+        
+        # Categorize templates
+        approved_templates = [t for t in templates if t['category'] == 'approved']
+        disapproved_templates = [t for t in templates if t['category'] == 'disapproved']
+        deferred_templates = [t for t in templates if t['category'] == 'deferred']
+        custom_templates = [t for t in templates if t['category'] == 'custom']
+        
+        # Get counts
+        approved_count = len(approved_templates)
+        disapproved_count = len(disapproved_templates)
+        deferred_count = len(deferred_templates)
+        custom_count = len(custom_templates)
+        
+        unread_count = conn.execute('''
+            SELECT COUNT(*) as count FROM notifications 
+            WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
+        ''', (current_user.id,)).fetchone()['count']
+        
+        conn.close()
+        
+        return render_template('manage_sms_templates.html', 
+                             templates=templates,
+                             approved_templates=approved_templates,
+                             disapproved_templates=disapproved_templates,
+                             deferred_templates=deferred_templates,
+                             custom_templates=custom_templates,
+                             approved_count=approved_count,
+                             disapproved_count=disapproved_count,
+                             deferred_count=deferred_count,
+                             custom_count=custom_count,
+                             unread_count=unread_count)
     
-    # Categorize templates
-    approved_templates = [t for t in templates if t['category'] == 'approved']
-    disapproved_templates = [t for t in templates if t['category'] == 'disapproved']
-    deferred_templates = [t for t in templates if t['category'] == 'deferred']
-    custom_templates = [t for t in templates if t['category'] == 'custom']
-    
-    # Get counts
-    approved_count = len(approved_templates)
-    disapproved_count = len(disapproved_templates)
-    deferred_count = len(deferred_templates)
-    custom_count = len(custom_templates)
-    
-    unread_count = conn.execute('''
-        SELECT COUNT(*) as count FROM notifications 
-        WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
-    ''', (current_user.id,)).fetchone()['count']
-    
-    conn.close()
-    
-    return render_template('manage_sms_templates.html', 
-                         templates=templates,
-                         approved_templates=approved_templates,
-                         disapproved_templates=disapproved_templates,
-                         deferred_templates=deferred_templates,
-                         custom_templates=custom_templates,
-                         approved_count=approved_count,
-                         disapproved_count=disapproved_count,
-                         deferred_count=deferred_count,
-                         custom_count=custom_count,
-                         unread_count=unread_count)
+    except Exception as e:
+        conn.close()
+        flash(f'Error loading SMS templates: {str(e)}', 'danger')
+        return redirect(url_for('admin_dashboard'))
 
 @app.route('/api/get_sms_templates/<category>')
 @login_required
