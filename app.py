@@ -2888,32 +2888,26 @@ def manage_permissions():
     
     conn = get_db()
     
-    try:
-        # Get all loan officers
-        loan_officers = conn.execute('''
-            SELECT id, name, email, permissions
-            FROM users
-            WHERE role = 'loan_officer' AND is_approved = 1
-            ORDER BY name ASC
-        ''').fetchall()
-        
-        # Get unread notification count
-        unread_count = conn.execute('''
-            SELECT COUNT(*) as count 
-            FROM notifications 
-            WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
-        ''', (current_user.id,)).fetchone()['count']
-        
-        conn.close()
-        
-        return render_template('manage_permissions.html', 
-                             loan_officers=loan_officers,
-                             unread_count=unread_count)
-    except Exception as e:
-        conn.close()
-        # If permissions column doesn't exist, show error
-        flash(f'Database error: {str(e)}. Please run the migration script first.', 'danger')
-        return redirect(url_for('admin_dashboard'))
+    # Get all loan officers
+    loan_officers = conn.execute('''
+        SELECT id, name, email, permissions
+        FROM users
+        WHERE role = 'loan_officer' AND is_approved = 1
+        ORDER BY name ASC
+    ''').fetchall()
+    
+    # Get unread notification count
+    unread_count = conn.execute('''
+        SELECT COUNT(*) as count 
+        FROM notifications 
+        WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
+    ''', (current_user.id,)).fetchone()['count']
+    
+    conn.close()
+    
+    return render_template('manage_permissions.html', 
+                         loan_officers=loan_officers,
+                         unread_count=unread_count)
 
 @app.route('/update_permissions/<int:user_id>', methods=['POST'])
 @login_required
@@ -2945,47 +2939,8 @@ def update_permissions(user_id):
     flash(f'Permissions updated successfully for {user["name"]}!', 'success')
     return redirect(url_for('manage_permissions'))
 
-@app.route('/run_permissions_migration')
-@login_required
-def run_permissions_migration():
-    """Run the permissions column migration (super admin only)"""
-    if current_user.role != 'admin':
-        flash('Unauthorized - Super Admin access required', 'danger')
-        return redirect(url_for('index'))
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    try:
-        # Check if column already exists
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [col[1] for col in cursor.fetchall()]
-        
-        if 'permissions' not in columns:
-            # Add permissions column
-            cursor.execute('ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT NULL')
-            conn.commit()
-            
-            # Set default permissions for existing loan officers
-            cursor.execute('''
-                UPDATE users 
-                SET permissions = 'manage_users,system_settings'
-                WHERE role = 'loan_officer'
-            ''')
-            conn.commit()
-            
-            flash('✅ Migration successful! Permissions column added and default permissions set for loan officers.', 'success')
-        else:
-            flash('ℹ️ Migration already completed. Permissions column already exists.', 'info')
-        
-        conn.close()
-        return redirect(url_for('manage_permissions'))
-        
-    except Exception as e:
-        conn.rollback()
-        conn.close()
-        flash(f'❌ Migration failed: {str(e)}', 'danger')
-        return redirect(url_for('admin_dashboard'))
+# Migration route removed - permissions column already exists in database
+# Superadmin has full access without needing migrations
 
 @app.route('/get_user_permissions/<int:user_id>', methods=['GET'])
 @login_required
@@ -3761,9 +3716,8 @@ def manage_loan_types():
     return render_template('manage_loan_types.html', loan_types=loan_types, unread_count=unread_count)
 
 @app.route('/api/loan-types')
-@login_required
 def get_loan_types():
-    """Get all active loan types for dropdowns"""
+    """Get all active loan types for dropdowns - Public API for submit form"""
     conn = get_db()
     loan_types = conn.execute('SELECT id, name FROM loan_types WHERE is_active=1 ORDER BY name ASC').fetchall()
     conn.close()
