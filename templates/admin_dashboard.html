@@ -210,7 +210,7 @@
                                 <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                                 <td>
-                                    <span class="badge bg-{% if app.status == 'approved' %}success{% elif app.status == 'disapproved' %}danger{% else %}warning{% endif %}">
+                                    <span class="badge bg-{% if app.status == 'approved' %}success{% elif app.status == 'deferred' %}warning{% else %}danger{% endif %}">
                                         {{ app.status.replace('_', ' ').title() }}
                                     </span>
                                 </td>

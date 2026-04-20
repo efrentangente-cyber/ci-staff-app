@@ -4236,6 +4236,206 @@ def autocomplete_provinces():
     suggestions = [{'value': name, 'context': ''} for name in sorted(provinces)[:10]]
     return jsonify({'success': True, 'suggestions': suggestions})
 
+# SMS Templates Management Routes
+@app.route('/manage_sms_templates')
+@login_required
+def manage_sms_templates():
+    """Manage SMS templates page"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    templates = conn.execute('''
+        SELECT * FROM sms_templates 
+        ORDER BY category, name
+    ''').fetchall()
+    
+    unread_count = conn.execute('''
+        SELECT COUNT(*) as count FROM notifications 
+        WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
+    ''', (current_user.id,)).fetchone()['count']
+    
+    conn.close()
+    return render_template('manage_sms_templates.html', templates=templates, unread_count=unread_count)
+
+@app.route('/api/get_sms_templates/<category>')
+@login_required
+def get_sms_templates(category):
+    """Get SMS templates by category (approved, disapproved, deferred)"""
+    conn = get_db()
+    templates = conn.execute('''
+        SELECT id, name, message, category 
+        FROM sms_templates 
+        WHERE category = ? AND is_active = 1
+        ORDER BY name
+    ''', (category,)).fetchall()
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'templates': [dict(t) for t in templates]
+    })
+
+@app.route('/send_sms_and_update_status/<int:app_id>', methods=['POST'])
+@login_required
+def send_sms_and_update_status(app_id):
+    """Send SMS and update application status (approve/disapprove/defer)"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        data = request.get_json()
+        action = data.get('action')  # 'approved', 'disapproved', or 'deferred'
+        message = data.get('message', '').strip()
+        notes = data.get('notes', '').strip()
+        
+        if not action or action not in ['approved', 'disapproved', 'deferred']:
+            return jsonify({'success': False, 'error': 'Invalid action'}), 400
+        
+        if not message:
+            return jsonify({'success': False, 'error': 'SMS message is required'}), 400
+        
+        conn = get_db()
+        
+        # Get application details
+        app_data = conn.execute('''
+            SELECT * FROM loan_applications WHERE id = ?
+        ''', (app_id,)).fetchone()
+        
+        if not app_data:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Application not found'}), 404
+        
+        # Update application status
+        conn.execute('''
+            UPDATE loan_applications 
+            SET status = ?, admin_notes = ?, admin_decision_at = ?
+            WHERE id = ?
+        ''', (action, notes, now_ph().isoformat(), app_id))
+        
+        conn.commit()
+        conn.close()
+        
+        # Send SMS notification
+        if app_data['member_contact']:
+            sms_sent = send_sms(app_data['member_contact'], message)
+            if not sms_sent:
+                print(f"Warning: SMS failed to send to {app_data['member_contact']}")
+        
+        # Emit real-time update
+        socketio.emit('application_updated', {
+            'id': app_id,
+            'status': action,
+            'member_name': app_data['member_name'],
+            'loan_amount': float(app_data['loan_amount']),
+            'timestamp': now_ph().isoformat()
+        })
+        
+        return jsonify({
+            'success': True,
+            'message': f'Application {action} and SMS sent successfully'
+        })
+        
+    except Exception as e:
+        print(f"Error in send_sms_and_update_status: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/add_sms_template', methods=['POST'])
+@login_required
+def add_sms_template():
+    """Add new SMS template"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    name = request.form.get('name', '').strip()
+    category = request.form.get('category', '').strip()
+    message = request.form.get('message', '').strip()
+    
+    if not name or not category or not message:
+        flash('All fields are required', 'danger')
+        return redirect(url_for('manage_sms_templates'))
+    
+    conn = get_db()
+    conn.execute('''
+        INSERT INTO sms_templates (name, category, message, is_active)
+        VALUES (?, ?, ?, 1)
+    ''', (name, category, message))
+    conn.commit()
+    conn.close()
+    
+    flash('SMS template added successfully', 'success')
+    return redirect(url_for('manage_sms_templates'))
+
+@app.route('/update_sms_template', methods=['POST'])
+@login_required
+def update_sms_template():
+    """Update existing SMS template"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    template_id = request.form.get('template_id')
+    name = request.form.get('name', '').strip()
+    category = request.form.get('category', '').strip()
+    message = request.form.get('message', '').strip()
+    
+    if not template_id or not name or not category or not message:
+        flash('All fields are required', 'danger')
+        return redirect(url_for('manage_sms_templates'))
+    
+    conn = get_db()
+    conn.execute('''
+        UPDATE sms_templates 
+        SET name = ?, category = ?, message = ?
+        WHERE id = ?
+    ''', (name, category, message, template_id))
+    conn.commit()
+    conn.close()
+    
+    flash('SMS template updated successfully', 'success')
+    return redirect(url_for('manage_sms_templates'))
+
+@app.route('/delete_sms_template/<int:template_id>', methods=['POST'])
+@login_required
+def delete_sms_template(template_id):
+    """Delete SMS template"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+    
+    conn = get_db()
+    conn.execute('DELETE FROM sms_templates WHERE id = ?', (template_id,))
+    conn.commit()
+    conn.close()
+    
+    flash('SMS template deleted successfully', 'success')
+    return redirect(url_for('manage_sms_templates'))
+
+@app.route('/toggle_sms_template/<int:template_id>', methods=['POST'])
+@login_required
+def toggle_sms_template(template_id):
+    """Toggle SMS template active status"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    conn = get_db()
+    template = conn.execute('SELECT is_active FROM sms_templates WHERE id = ?', (template_id,)).fetchone()
+    
+    if not template:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Template not found'}), 404
+    
+    new_status = 0 if template['is_active'] else 1
+    conn.execute('UPDATE sms_templates SET is_active = ? WHERE id = ?', (new_status, template_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True, 'is_active': new_status})
+
 if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 5000))

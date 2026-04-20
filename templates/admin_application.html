@@ -35,7 +35,7 @@
             </div>
         </div>
         
-        {% if application.status in ['ci_completed', 'approved', 'disapproved', 'deferred'] and application.ci_checklist_data %}
+        {% if application.status in ['ci_completed', 'approved', 'disapproved'] and application.ci_checklist_data %}
         <div class="card mb-3">
             <div class="card-header bg-success text-white">
                 <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> CI Assessment Checklist</h5>
@@ -90,7 +90,7 @@
             </div>
         </div>
         
-        {% if application.status not in ['approved', 'disapproved', 'deferred'] %}
+        {% if application.status not in ['approved', 'disapproved'] %}
         <div class="card mb-3">
             <div class="card-header bg-success text-white">
                 <h5>Make Decision</h5>
@@ -116,7 +116,7 @@
             </div>
         </div>
         {% else %}
-        <div class="alert alert-{% if application.status == 'approved' %}success{% elif application.status == 'disapproved' %}danger{% else %}warning{% endif %}">
+        <div class="alert alert-{% if application.status == 'approved' %}success{% else %}danger{% endif %}">
             <strong>Decision: {{ application.status.title() }}</strong><br>
             {% if application.admin_notes %}Notes: {{ application.admin_notes }}{% endif %}
         </div>
