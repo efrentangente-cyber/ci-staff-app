@@ -424,28 +424,39 @@ async function loadLoanTypes() {
 const loanTypeInput = document.getElementById('loanTypeInput');
 const loanTypeDropdown = document.getElementById('loanTypeDropdown');
 
-loanTypeInput?.addEventListener('focus', function() {
-    if (allLoanTypes.length === 0) {
-        loadLoanTypes().then(() => showLoanTypeDropdown(''));
-    } else {
-        showLoanTypeDropdown(this.value);
-    }
-});
+// Load loan types on page load (but don't show dropdown)
+loadLoanTypes();
 
+// Only show dropdown when user types (not on focus)
 loanTypeInput?.addEventListener('input', function(e) {
-    showLoanTypeDropdown(e.target.value);
+    const searchTerm = e.target.value.trim();
+    
+    // Only show dropdown if user has typed at least 2 characters
+    if (searchTerm.length < 2) {
+        loanTypeDropdown.style.display = 'none';
+        return;
+    }
+    
+    showLoanTypeDropdown(searchTerm);
 });
 
 function showLoanTypeDropdown(searchTerm) {
     const term = searchTerm.toLowerCase().trim();
     
-    // Filter loan types
+    // Don't show anything if search term is too short
+    if (term.length < 2) {
+        loanTypeDropdown.style.display = 'none';
+        return;
+    }
+    
+    // Filter loan types - match if term appears anywhere in the name
     const matches = allLoanTypes.filter(lt => 
         lt.name.toLowerCase().includes(term)
     );
     
     if (matches.length === 0) {
-        loanTypeDropdown.style.display = 'none';
+        loanTypeDropdown.innerHTML = '<div class="list-group-item text-muted">No matching loan types found</div>';
+        loanTypeDropdown.style.display = 'block';
         return;
     }
     
@@ -476,9 +487,6 @@ document.addEventListener('click', function(e) {
         loanTypeDropdown.style.display = 'none';
     }
 });
-
-// Load loan types on page load
-loadLoanTypes();
 
 // OCR Functionality
 let ocrImageFiles = [];
