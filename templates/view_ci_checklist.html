@@ -550,6 +550,9 @@
                     <h5>Signature</h5>
                     {% if application.ci_signature %}
                     <img src="{{ application.ci_signature }}" style="max-width: 100%; max-height: 200px; border: 2px solid #198754; border-radius: 8px; padding: 10px;">
+                    <p style="margin-top: 10px; font-weight: bold; color: #198754;">
+                        Sign-------- {{ application.ci_staff_name }}
+                    </p>
                     {% else %}
                     <p class="text-muted">No signature available</p>
                     {% endif %}

@@ -1286,11 +1286,17 @@ def submit_ci_checklist(id):
         ci_latitude = request.form.get('ci_latitude')
         ci_longitude = request.form.get('ci_longitude')
         
-        # Validate signature
+        # Use registered signature if not provided
         if not ci_signature:
-            flash('Signature is required', 'danger')
-            conn.close()
-            return redirect(url_for('ci_checklist', id=id))
+            if current_user.signature_path:
+                # Use the registered signature URL
+                ci_signature = url_for('serve_signature', 
+                                      filename=current_user.signature_path.split('/')[-1].split('\\')[-1], 
+                                      _external=True)
+            else:
+                flash('Signature is required. Please update your signature in Change Password page.', 'danger')
+                conn.close()
+                return redirect(url_for('ci_checklist', id=id))
         
         # Update application
         conn.execute('''

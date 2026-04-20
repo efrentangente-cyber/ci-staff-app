@@ -989,18 +989,28 @@
                     </ul>
                 </div>
 
-                <div class="section-title">CI STAFF SIGNATURE (Required)</div>
+                <div class="section-title">CI STAFF SIGNATURE (Auto-Applied)</div>
                 <div style="border: 2px solid #10b981; padding: 20px; margin: 20px 0; background: #f0fdf4; border-radius: 8px;">
                     <div id="signaturePreview" style="text-align: center; min-height: 100px;">
-                        <p style="color: #6b7280; margin: 20px 0;">
-                            <i class="bi bi-pen" style="font-size: 48px;"></i><br>
-                            No signature yet
+                        {% if current_user.signature_path %}
+                        <div style="text-align: center;">
+                            <img src="{{ url_for('serve_signature', filename=current_user.signature_path.split('/')[-1].split('\\')[-1]) }}" 
+                                 style="max-width: 300px; border: 2px solid #10b981; border-radius: 8px; padding: 10px; background: white;">
+                            <p style="color: #10b981; margin-top: 10px; font-weight: bold;">
+                                Sign-------- {{ current_user.name }}
+                            </p>
+                            <p class="text-muted" style="font-size: 0.9rem;">
+                                <i class="bi bi-info-circle"></i> Your registered signature will be used automatically
+                            </p>
+                        </div>
+                        <!-- Hidden input with signature data -->
+                        <input type="hidden" id="ci_signature" name="ci_signature" value="{{ url_for('serve_signature', filename=current_user.signature_path.split('/')[-1].split('\\')[-1], _external=True) }}">
+                        {% else %}
+                        <p style="color: #dc2626; margin: 20px 0;">
+                            <i class="bi bi-exclamation-triangle" style="font-size: 48px;"></i><br>
+                            No signature registered. Please update your signature in <a href="{{ url_for('change_password') }}">Change Password</a> page.
                         </p>
-                    </div>
-                    <div class="text-center mt-3">
-                        <button type="button" class="btn btn-primary btn-lg" onclick="openSignaturePad('ci_signature', 'signaturePreview')">
-                            <i class="bi bi-pen"></i> Click to Sign
-                        </button>
+                        {% endif %}
                     </div>
                 </div>
 
