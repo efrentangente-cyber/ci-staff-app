@@ -2888,26 +2888,42 @@ def manage_permissions():
     
     conn = get_db()
     
-    # Get all loan officers
-    loan_officers = conn.execute('''
-        SELECT id, name, email, permissions
-        FROM users
-        WHERE role = 'loan_officer' AND is_approved = 1
-        ORDER BY name ASC
-    ''').fetchall()
+    try:
+        # Check if permissions column exists, if not add it
+        columns = conn.execute('PRAGMA table_info(users)').fetchall()
+        column_names = [col[1] for col in columns]
+        
+        if 'permissions' not in column_names:
+            # Add permissions column
+            conn.execute('ALTER TABLE users ADD COLUMN permissions TEXT')
+            conn.commit()
+            flash('Permissions system initialized successfully!', 'success')
+        
+        # Get all loan officers
+        loan_officers = conn.execute('''
+            SELECT id, name, email, permissions
+            FROM users
+            WHERE role = 'loan_officer' AND is_approved = 1
+            ORDER BY name ASC
+        ''').fetchall()
+        
+        # Get unread notification count
+        unread_count = conn.execute('''
+            SELECT COUNT(*) as count 
+            FROM notifications 
+            WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
+        ''', (current_user.id,)).fetchone()['count']
+        
+        conn.close()
+        
+        return render_template('manage_permissions.html', 
+                             loan_officers=loan_officers,
+                             unread_count=unread_count)
     
-    # Get unread notification count
-    unread_count = conn.execute('''
-        SELECT COUNT(*) as count 
-        FROM notifications 
-        WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
-    ''', (current_user.id,)).fetchone()['count']
-    
-    conn.close()
-    
-    return render_template('manage_permissions.html', 
-                         loan_officers=loan_officers,
-                         unread_count=unread_count)
+    except Exception as e:
+        conn.close()
+        flash(f'Error loading permissions page: {str(e)}', 'danger')
+        return redirect(url_for('admin_dashboard'))
 
 @app.route('/update_permissions/<int:user_id>', methods=['POST'])
 @login_required
@@ -2917,27 +2933,32 @@ def update_permissions(user_id):
         flash('Unauthorized - Super Admin access required', 'danger')
         return redirect(url_for('index'))
     
-    conn = get_db()
+    try:
+        conn = get_db()
+        
+        # Get selected permissions
+        permissions = []
+        if request.form.get('manage_users'):
+            permissions.append('manage_users')
+        if request.form.get('system_settings'):
+            permissions.append('system_settings')
+        
+        # Update user permissions
+        permissions_str = ','.join(permissions) if permissions else None
+        conn.execute('UPDATE users SET permissions=? WHERE id=? AND role="loan_officer"', 
+                     (permissions_str, user_id))
+        conn.commit()
+        
+        # Get user name for flash message
+        user = conn.execute('SELECT name FROM users WHERE id=?', (user_id,)).fetchone()
+        conn.close()
+        
+        flash(f'Permissions updated successfully for {user["name"]}!', 'success')
+        return redirect(url_for('manage_permissions'))
     
-    # Get selected permissions
-    permissions = []
-    if request.form.get('manage_users'):
-        permissions.append('manage_users')
-    if request.form.get('system_settings'):
-        permissions.append('system_settings')
-    
-    # Update user permissions
-    permissions_str = ','.join(permissions) if permissions else None
-    conn.execute('UPDATE users SET permissions=? WHERE id=? AND role="loan_officer"', 
-                 (permissions_str, user_id))
-    conn.commit()
-    
-    # Get user name for flash message
-    user = conn.execute('SELECT name FROM users WHERE id=?', (user_id,)).fetchone()
-    conn.close()
-    
-    flash(f'Permissions updated successfully for {user["name"]}!', 'success')
-    return redirect(url_for('manage_permissions'))
+    except Exception as e:
+        flash(f'Error updating permissions: {str(e)}', 'danger')
+        return redirect(url_for('manage_permissions'))
 
 # Migration route removed - permissions column already exists in database
 # Superadmin has full access without needing migrations
@@ -2949,15 +2970,19 @@ def get_user_permissions(user_id):
     if current_user.role != 'admin':
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
-    conn = get_db()
-    user = conn.execute('SELECT permissions FROM users WHERE id=? AND role="loan_officer"', (user_id,)).fetchone()
-    conn.close()
+    try:
+        conn = get_db()
+        user = conn.execute('SELECT permissions FROM users WHERE id=? AND role="loan_officer"', (user_id,)).fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+        
+        permissions = user['permissions'].split(',') if user['permissions'] else []
+        return jsonify({'success': True, 'permissions': permissions})
     
-    if not user:
-        return jsonify({'success': False, 'error': 'User not found'}), 404
-    
-    permissions = user['permissions'].split(',') if user['permissions'] else []
-    return jsonify({'success': True, 'permissions': permissions})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/update_permissions_inline/<int:user_id>', methods=['POST'])
 @login_required
@@ -2966,34 +2991,38 @@ def update_permissions_inline(user_id):
     if current_user.role != 'admin':
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
-    data = request.get_json()
-    permissions = data.get('permissions', [])
-    
-    # Validate permissions
-    valid_permissions = ['manage_users', 'system_settings']
-    for perm in permissions:
-        if perm not in valid_permissions:
-            return jsonify({'success': False, 'error': f'Invalid permission: {perm}'}), 400
-    
-    conn = get_db()
-    
-    # Verify user is a loan officer
-    user = conn.execute('SELECT name FROM users WHERE id=? AND role="loan_officer"', (user_id,)).fetchone()
-    if not user:
+    try:
+        data = request.get_json()
+        permissions = data.get('permissions', [])
+        
+        # Validate permissions
+        valid_permissions = ['manage_users', 'system_settings']
+        for perm in permissions:
+            if perm not in valid_permissions:
+                return jsonify({'success': False, 'error': f'Invalid permission: {perm}'}), 400
+        
+        conn = get_db()
+        
+        # Verify user is a loan officer
+        user = conn.execute('SELECT name FROM users WHERE id=? AND role="loan_officer"', (user_id,)).fetchone()
+        if not user:
+            conn.close()
+            return jsonify({'success': False, 'error': 'User not found or not a loan officer'}), 404
+        
+        # Update permissions
+        permissions_str = ','.join(permissions) if permissions else None
+        conn.execute('UPDATE users SET permissions=? WHERE id=?', (permissions_str, user_id))
+        conn.commit()
         conn.close()
-        return jsonify({'success': False, 'error': 'User not found or not a loan officer'}), 404
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Permissions updated for {user["name"]}',
+            'permissions': permissions
+        })
     
-    # Update permissions
-    permissions_str = ','.join(permissions) if permissions else None
-    conn.execute('UPDATE users SET permissions=? WHERE id=?', (permissions_str, user_id))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({
-        'success': True, 
-        'message': f'Permissions updated for {user["name"]}',
-        'permissions': permissions
-    })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/generate_report/<report_type>', methods=['POST'])
 @login_required
