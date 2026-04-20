@@ -13,125 +13,234 @@
 
     <div class="card">
         <div class="card-header bg-primary text-white">
-            <h4 class="mb-0">CI Checklist Summary</h4>
+            <h4 class="mb-0">CI Checklist Summary - Complete Checkbox Review</h4>
             <small>Application: {{ application.member_name }} - {{ application.loan_type }}</small>
         </div>
         <div class="card-body">
             <p class="alert alert-info">
-                <i class="bi bi-info-circle"></i> Complete all checkboxes below, then proceed to the detailed 5-page form.
+                <i class="bi bi-info-circle"></i> Complete all checkboxes below before proceeding to the detailed 5-page form. This summary contains ALL checkboxes from the 5 pages for quick review.
             </p>
 
             <form id="checklistSummaryForm">
-                <!-- Residence Status -->
+                <!-- PAGE 1 CHECKBOXES -->
                 <div class="mb-4">
-                    <h5 class="border-bottom pb-2"><i class="bi bi-house-door"></i> Residence Status</h5>
+                    <h5 class="border-bottom pb-2 bg-light p-2"><i class="bi bi-house-door"></i> PAGE 1: PERSONAL DATA</h5>
+                    
+                    <h6 class="mt-3"><i class="bi bi-house-check"></i> Residence Status</h6>
                     <div class="row">
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="res_owned" id="res_owned">
-                                <label class="form-check-label" for="res_owned">Owned</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="res_rented" id="res_rented">
-                                <label class="form-check-label" for="res_rented">Rented</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="res_living_parents" id="res_living_parents">
-                                <label class="form-check-label" for="res_living_parents">Living with Parents</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="res_mortgaged" id="res_mortgaged">
-                                <label class="form-check-label" for="res_mortgaged">Mortgaged</label>
-                            </div>
-                        </div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="res_owned" id="res_owned"><label class="form-check-label" for="res_owned">Owned</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="res_rented" id="res_rented"><label class="form-check-label" for="res_rented">Rented</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="res_living_parents" id="res_living_parents"><label class="form-check-label" for="res_living_parents">Living with Parents</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="res_mortgaged" id="res_mortgaged"><label class="form-check-label" for="res_mortgaged">Mortgaged</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-building"></i> Type of House</h6>
+                    <div class="row">
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="house_concrete" id="house_concrete"><label class="form-check-label" for="house_concrete">Concrete</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="house_semi" id="house_semi"><label class="form-check-label" for="house_semi">Semi-Concrete</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="house_wood" id="house_wood"><label class="form-check-label" for="house_wood">Wood</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="house_shanty" id="house_shanty"><label class="form-check-label" for="house_shanty">Shanty</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-bank"></i> Court & Government Agency Checking</h6>
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="court_1_yes" id="court_1_yes"><label class="form-check-label" for="court_1_yes">Has record of complaints (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="court_1_no" id="court_1_no"><label class="form-check-label" for="court_1_no">Has record of complaints (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="court_2_yes" id="court_2_yes"><label class="form-check-label" for="court_2_yes">Has pending case (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="court_2_no" id="court_2_no"><label class="form-check-label" for="court_2_no">Has pending case (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="court_3_yes" id="court_3_yes"><label class="form-check-label" for="court_3_yes">Has criminal record (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="court_3_no" id="court_3_no"><label class="form-check-label" for="court_3_no">Has criminal record (NO)</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-briefcase"></i> Employment Status - Applicant</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="app_permanent" id="app_permanent"><label class="form-check-label" for="app_permanent">Permanent</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="app_casual" id="app_casual"><label class="form-check-label" for="app_casual">Casual</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="app_contractual" id="app_contractual"><label class="form-check-label" for="app_contractual">Contractual</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-briefcase-fill"></i> Employment Status - Spouse</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="spouse_permanent" id="spouse_permanent"><label class="form-check-label" for="spouse_permanent">Permanent</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="spouse_casual" id="spouse_casual"><label class="form-check-label" for="spouse_casual">Casual</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="spouse_contractual" id="spouse_contractual"><label class="form-check-label" for="spouse_contractual">Contractual</label></div></div>
                     </div>
                 </div>
 
-                <!-- Type of House -->
+                <!-- PAGE 2 CHECKBOXES -->
                 <div class="mb-4">
-                    <h5 class="border-bottom pb-2"><i class="bi bi-building"></i> Type of House</h5>
+                    <h5 class="border-bottom pb-2 bg-light p-2"><i class="bi bi-clipboard-data"></i> PAGE 2: CREDIT CHECKING & MEMBERSHIP</h5>
+                    
+                    <h6 class="mt-3"><i class="bi bi-shop"></i> Business Nature</h6>
                     <div class="row">
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="house_concrete" id="house_concrete">
-                                <label class="form-check-label" for="house_concrete">Concrete</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="house_semi" id="house_semi">
-                                <label class="form-check-label" for="house_semi">Semi-Concrete</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="house_wood" id="house_wood">
-                                <label class="form-check-label" for="house_wood">Wood</label>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="house_shanty" id="house_shanty">
-                                <label class="form-check-label" for="house_shanty">Shanty</label>
-                            </div>
-                        </div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="nature_sole" id="nature_sole"><label class="form-check-label" for="nature_sole">Sole Proprietorship</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="nature_partnership" id="nature_partnership"><label class="form-check-label" for="nature_partnership">Partnership</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="nature_corp" id="nature_corp"><label class="form-check-label" for="nature_corp">Corporation</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="nature_service" id="nature_service"><label class="form-check-label" for="nature_service">Service</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-credit-card-2-front"></i> Credit Checking</h6>
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_electric_updated" id="credit_electric_updated"><label class="form-check-label" for="credit_electric_updated">Electric - Updated</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_electric_delayed" id="credit_electric_delayed"><label class="form-check-label" for="credit_electric_delayed">Electric - Delayed</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_water_updated" id="credit_water_updated"><label class="form-check-label" for="credit_water_updated">Water - Updated</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_water_delayed" id="credit_water_delayed"><label class="form-check-label" for="credit_water_delayed">Water - Delayed</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_coop_updated" id="credit_coop_updated"><label class="form-check-label" for="credit_coop_updated">Cooperatives - Updated</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_coop_delayed" id="credit_coop_delayed"><label class="form-check-label" for="credit_coop_delayed">Cooperatives - Delayed</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_banks_updated" id="credit_banks_updated"><label class="form-check-label" for="credit_banks_updated">Banks - Updated</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_banks_delayed" id="credit_banks_delayed"><label class="form-check-label" for="credit_banks_delayed">Banks - Delayed</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_financial_updated" id="credit_financial_updated"><label class="form-check-label" for="credit_financial_updated">Financial Institutions - Updated</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_financial_delayed" id="credit_financial_delayed"><label class="form-check-label" for="credit_financial_delayed">Financial Institutions - Delayed</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_store_updated" id="credit_store_updated"><label class="form-check-label" for="credit_store_updated">Sari-sari Store - Updated</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_store_delayed" id="credit_store_delayed"><label class="form-check-label" for="credit_store_delayed">Sari-sari Store - Delayed</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_informal_updated" id="credit_informal_updated"><label class="form-check-label" for="credit_informal_updated">Informal Lenders - Updated</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="credit_informal_delayed" id="credit_informal_delayed"><label class="form-check-label" for="credit_informal_delayed">Informal Lenders - Delayed</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-person-badge"></i> Membership Classification</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="member_new" id="member_new"><label class="form-check-label" for="member_new">New Member</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="member_nrcs" id="member_nrcs"><label class="form-check-label" for="member_nrcs">NRCS</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="member_non_nrcs" id="member_non_nrcs"><label class="form-check-label" for="member_non_nrcs">Non-NRCS</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-cash-stack"></i> Loan Accounts with DCCCO</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="loan_no_loan" id="loan_no_loan"><label class="form-check-label" for="loan_no_loan">No Loan</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="loan_1_2" id="loan_1_2"><label class="form-check-label" for="loan_1_2">1-2 Filers</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="loan_more_2" id="loan_more_2"><label class="form-check-label" for="loan_more_2">More than 2 Filers</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="loan_past_due" id="loan_past_due"><label class="form-check-label" for="loan_past_due">Past Due</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="loan_restructured" id="loan_restructured"><label class="form-check-label" for="loan_restructured">Restructured</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-wallet2"></i> Outstanding Loan Accounts</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="outstanding_no" id="outstanding_no"><label class="form-check-label" for="outstanding_no">No Loan</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="outstanding_1_2" id="outstanding_1_2"><label class="form-check-label" for="outstanding_1_2">1-2 Filers</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="outstanding_more" id="outstanding_more"><label class="form-check-label" for="outstanding_more">More than 2 Filers</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="outstanding_past" id="outstanding_past"><label class="form-check-label" for="outstanding_past">Past Due</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="outstanding_restr" id="outstanding_restr"><label class="form-check-label" for="outstanding_restr">Restructured</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-piggy-bank"></i> Other Loan Accounts</h6>
+                    <div class="row">
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="other_niskal" id="other_niskal"><label class="form-check-label" for="other_niskal">Niskal</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="other_bronze" id="other_bronze"><label class="form-check-label" for="other_bronze">Bronze</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="other_silver" id="other_silver"><label class="form-check-label" for="other_silver">Silver</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="other_gold" id="other_gold"><label class="form-check-label" for="other_gold">Gold</label></div></div>
+                        <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="other_platinum" id="other_platinum"><label class="form-check-label" for="other_platinum">Platinum</label></div></div>
                     </div>
                 </div>
 
-                <!-- Employment Status -->
+                <!-- PAGE 3: NO CHECKBOXES (All numeric calculations) -->
+
+                <!-- PAGE 4 CHECKBOXES -->
                 <div class="mb-4">
-                    <h5 class="border-bottom pb-2"><i class="bi bi-briefcase"></i> Employment Status - Applicant</h5>
+                    <h5 class="border-bottom pb-2 bg-light p-2"><i class="bi bi-clipboard-check"></i> PAGE 4: CREDIT ASSESSMENT SUMMARY</h5>
+                    
+                    <h6 class="mt-3"><i class="bi bi-calculator"></i> CAPACITY</h6>
                     <div class="row">
-                        <div class="col-md-4">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="app_permanent" id="app_permanent">
-                                <label class="form-check-label" for="app_permanent">Permanent</label>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="app_casual" id="app_casual">
-                                <label class="form-check-label" for="app_casual">Casual</label>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="app_contractual" id="app_contractual">
-                                <label class="form-check-label" for="app_contractual">Contractual</label>
-                            </div>
-                        </div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="capacity_deir_yes" id="capacity_deir_yes"><label class="form-check-label" for="capacity_deir_yes">DEIR within limit (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="capacity_deir_no" id="capacity_deir_no"><label class="form-check-label" for="capacity_deir_no">DEIR within limit (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="capacity_nthp_yes" id="capacity_nthp_yes"><label class="form-check-label" for="capacity_nthp_yes">Net Take Home Pay within limit (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="capacity_nthp_no" id="capacity_nthp_no"><label class="form-check-label" for="capacity_nthp_no">Net Take Home Pay within limit (NO)</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-person-check"></i> CHARACTER - DCCCO Credit History</h6>
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_current_yes" id="character_current_yes"><label class="form-check-label" for="character_current_yes">Loans current, never fined (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_current_no" id="character_current_no"><label class="form-check-label" for="character_current_no">Loans current, never fined (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_fined_yes" id="character_fined_yes"><label class="form-check-label" for="character_fined_yes">Loans fined/past due (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_fined_no" id="character_fined_no"><label class="form-check-label" for="character_fined_no">Loans fined/past due (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_fined_1" id="character_fined_1"><label class="form-check-label" for="character_fined_1">1 fine</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_fined_2plus" id="character_fined_2plus"><label class="form-check-label" for="character_fined_2plus">2 or more fines</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_psm_yes" id="character_psm_yes"><label class="form-check-label" for="character_psm_yes">PSM Loan (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_psm_no" id="character_psm_no"><label class="form-check-label" for="character_psm_no">PSM Loan (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_no_negative_inst_yes" id="character_no_negative_inst_yes"><label class="form-check-label" for="character_no_negative_inst_yes">No negative feedback from institutions (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_no_negative_inst_no" id="character_no_negative_inst_no"><label class="form-check-label" for="character_no_negative_inst_no">No negative feedback from institutions (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_no_negative_neighbors_yes" id="character_no_negative_neighbors_yes"><label class="form-check-label" for="character_no_negative_neighbors_yes">No negative feedback from neighbors (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="character_no_negative_neighbors_no" id="character_no_negative_neighbors_no"><label class="form-check-label" for="character_no_negative_neighbors_no">No negative feedback from neighbors (NO)</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-shield-check"></i> COLLATERAL</h6>
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="collateral_right_way_yes" id="collateral_right_way_yes"><label class="form-check-label" for="collateral_right_way_yes">With Right of Way (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="collateral_right_way_no" id="collateral_right_way_no"><label class="form-check-label" for="collateral_right_way_no">With Right of Way (NO)</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-heart-pulse"></i> CONDITION - Health</h6>
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="condition_health_able_yes" id="condition_health_able_yes"><label class="form-check-label" for="condition_health_able_yes">Able to perform daily tasks (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="condition_health_able_no" id="condition_health_able_no"><label class="form-check-label" for="condition_health_able_no">Able to perform daily tasks (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="condition_health_medication_yes" id="condition_health_medication_yes"><label class="form-check-label" for="condition_health_medication_yes">Not taking regular medication (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="condition_health_medication_no" id="condition_health_medication_no"><label class="form-check-label" for="condition_health_medication_no">Not taking regular medication (NO)</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-shop-window"></i> CONDITION - Business</h6>
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="condition_business_permits_yes" id="condition_business_permits_yes"><label class="form-check-label" for="condition_business_permits_yes">Business has updated permits (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="condition_business_permits_no" id="condition_business_permits_no"><label class="form-check-label" for="condition_business_permits_no">Business has updated permits (NO)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="condition_business_legal_yes" id="condition_business_legal_yes"><label class="form-check-label" for="condition_business_legal_yes">Nature of business is legal (YES)</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="condition_business_legal_no" id="condition_business_legal_no"><label class="form-check-label" for="condition_business_legal_no">Nature of business is legal (NO)</label></div></div>
                     </div>
                 </div>
 
-                <!-- Membership Classification -->
+                <!-- PAGE 5 CHECKBOXES -->
                 <div class="mb-4">
-                    <h5 class="border-bottom pb-2"><i class="bi bi-person-badge"></i> Membership Classification</h5>
+                    <h5 class="border-bottom pb-2 bg-light p-2"><i class="bi bi-clipboard2-check"></i> PAGE 5: RECOMMENDATION/ACTION</h5>
+                    
+                    <h6 class="mt-3"><i class="bi bi-person-workspace"></i> Credit Officer</h6>
                     <div class="row">
-                        <div class="col-md-4">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="member_new" id="member_new">
-                                <label class="form-check-label" for="member_new">New Member</label>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="member_nrcs" id="member_nrcs">
-                                <label class="form-check-label" for="member_nrcs">NRCS</label>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="member_non_nrcs" id="member_non_nrcs">
-                                <label class="form-check-label" for="member_non_nrcs">Non-NRCS</label>
-                            </div>
-                        </div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="co_approve" id="co_approve"><label class="form-check-label" for="co_approve">Approve</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="co_disapprove" id="co_disapprove"><label class="form-check-label" for="co_disapprove">Disapprove</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="co_defer" id="co_defer"><label class="form-check-label" for="co_defer">Defer</label></div></div>
                     </div>
+
+                    <h6 class="mt-3"><i class="bi bi-person-badge-fill"></i> CM (Credit Manager)</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="cm_approve" id="cm_approve"><label class="form-check-label" for="cm_approve">Approve</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="cm_disapprove" id="cm_disapprove"><label class="form-check-label" for="cm_disapprove">Disapprove</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="cm_defer" id="cm_defer"><label class="form-check-label" for="cm_defer">Defer</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-person-gear"></i> OM (Operations Manager)</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="om_approve" id="om_approve"><label class="form-check-label" for="om_approve">Approve</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="om_disapprove" id="om_disapprove"><label class="form-check-label" for="om_disapprove">Disapprove</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="om_defer" id="om_defer"><label class="form-check-label" for="om_defer">Defer</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-people-fill"></i> Management Credit Committee</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="mcc_approve" id="mcc_approve"><label class="form-check-label" for="mcc_approve">Approve</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="mcc_disapprove" id="mcc_disapprove"><label class="form-check-label" for="mcc_disapprove">Disapprove</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="mcc_defer" id="mcc_defer"><label class="form-check-label" for="mcc_defer">Defer</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-cash-coin"></i> FTM (Finance & Treasury Manager)</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="ftm_approve" id="ftm_approve"><label class="form-check-label" for="ftm_approve">Approve</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="ftm_disapprove" id="ftm_disapprove"><label class="form-check-label" for="ftm_disapprove">Disapprove</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="ftm_defer" id="ftm_defer"><label class="form-check-label" for="ftm_defer">Defer</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-award-fill"></i> CEO (Chief Executive Officer)</h6>
+                    <div class="row">
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="ceo_approve" id="ceo_approve"><label class="form-check-label" for="ceo_approve">Approve</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="ceo_disapprove" id="ceo_disapprove"><label class="form-check-label" for="ceo_disapprove">Disapprove</label></div></div>
+                        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="ceo_defer" id="ceo_defer"><label class="form-check-label" for="ceo_defer">Defer</label></div></div>
+                    </div>
+
+                    <h6 class="mt-3"><i class="bi bi-building-fill"></i> Board of Directors</h6>
+                    <div class="row">
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="bod_approve" id="bod_approve"><label class="form-check-label" for="bod_approve">Approve</label></div></div>
+                        <div class="col-md-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="bod_disapprove" id="bod_disapprove"><label class="form-check-label" for="bod_disapprove">Disapprove</label></div></div>
+                    </div>
+                </div>
+
+                <div class="alert alert-success mt-4">
+                    <h6><i class="bi bi-check-circle"></i> Summary Complete!</h6>
+                    <p class="mb-0">You've reviewed all <strong>~100 checkboxes</strong> from the 5-page form. Click below to proceed to the detailed form where you can fill in text fields, numbers, and upload photos.</p>
                 </div>
 
                 <div class="text-center mt-5">

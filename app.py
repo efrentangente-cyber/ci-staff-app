@@ -23,24 +23,6 @@ import requests  # For SMS API
 # Load environment variables
 load_dotenv()
 
-# Setup Google Cloud credentials for OCR
-# Handle both file path and JSON string (for Render deployment)
-if 'GOOGLE_APPLICATION_CREDENTIALS_JSON' in os.environ:
-    # Credentials passed as JSON string (Render)
-    import json
-    import tempfile
-    creds_json = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
-    # Write to temporary file
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
-        f.write(creds_json)
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = f.name
-elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-    # Credentials file path (local development)
-    pass
-else:
-    # No credentials configured - OCR will not work
-    print("WARNING: Google Cloud Vision credentials not configured. OCR features will not work.")
-
 # Always store UTC - JS will convert to local time for display
 def now_ph():
     """Return current UTC time for DB storage (JS handles timezone display)"""
@@ -3846,84 +3828,6 @@ def delete_loan_type(id):
     except Exception as e:
         conn.close()
         return jsonify({'success': False, 'error': str(e)}), 500
-
-# OCR API Endpoints
-@app.route('/api/ocr/extract', methods=['POST'])
-@login_required
-def ocr_extract():
-    """
-    Extract text and structured data from uploaded images using OCR
-    """
-    if current_user.role != 'loan_staff':
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    if 'images' not in request.files:
-        return jsonify({'success': False, 'error': 'No images provided'}), 400
-    
-    try:
-        from ocr_service import get_ocr_service
-        
-        files = request.files.getlist('images')
-        if not files:
-            return jsonify({'success': False, 'error': 'No images provided'}), 400
-        
-        # Save uploaded images temporarily
-        temp_paths = []
-        for file in files:
-            if file and allowed_file(file.filename):
-                filename = sanitize_filename(file.filename)
-                temp_filename = f"temp_ocr_{uuid.uuid4().hex[:8]}_{filename}"
-                temp_path = os.path.join(app.config['UPLOAD_FOLDER'], temp_filename)
-                file.save(temp_path)
-                temp_paths.append(temp_path)
-        
-        if not temp_paths:
-            return jsonify({'success': False, 'error': 'No valid images uploaded'}), 400
-        
-        # Process images with OCR
-        ocr_service = get_ocr_service()
-        extracted_data = ocr_service.process_multiple_images(temp_paths)
-        
-        # Clean up temporary files
-        for temp_path in temp_paths:
-            try:
-                os.remove(temp_path)
-            except:
-                pass
-        
-        return jsonify({
-            'success': True,
-            'data': extracted_data,
-            'message': f'Successfully extracted data from {len(temp_paths)} image(s)'
-        })
-        
-    except Exception as e:
-        print(f"OCR Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': f'OCR processing failed: {str(e)}'
-        }), 500
-
-@app.route('/api/ocr/test', methods=['GET'])
-@login_required
-def ocr_test():
-    """Test if OCR service is configured correctly"""
-    try:
-        from ocr_service import get_ocr_service
-        ocr_service = get_ocr_service()
-        return jsonify({
-            'success': True,
-            'message': 'OCR service is configured and ready',
-            'service': 'Google Cloud Vision API'
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'message': 'OCR service not configured. Please set GOOGLE_APPLICATION_CREDENTIALS environment variable.'
-        }), 500
 
 # Autocomplete API Endpoints - Auto-fill from previous applications
 @app.route('/api/autocomplete/names', methods=['GET'])
