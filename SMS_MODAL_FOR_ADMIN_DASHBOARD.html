@@ -1,0 +1,147 @@
+<!-- SMS Modal - Add this at the end of admin_dashboard.html, before {% endblock %} -->
+
+<!-- Include SMS Modal JavaScript -->
+<script src="{{ url_for('static', filename='sms-modal.js') }}"></script>
+
+<!-- SMS Modal -->
+<div class="modal fade" id="smsModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-check-circle"></i> Approve & Send SMS</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Member Information -->
+                <div class="alert alert-info">
+                    <h6 class="mb-2"><i class="bi bi-person"></i> Member Information</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Name:</strong> <span id="sms_member_name"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Contact:</strong> <span id="sms_member_contact"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Loan Amount:</strong> <span id="sms_loan_amount"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Loan Type:</strong> <span id="sms_loan_type"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SMS Templates -->
+                <div class="mb-3">
+                    <h6><i class="bi bi-chat-square-text"></i> Select SMS Template</h6>
+                    <div id="sms_templates_list" class="templates-container">
+                        <!-- Templates will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- SMS Message -->
+                <div class="mb-3">
+                    <label class="form-label"><i class="bi bi-envelope"></i> SMS Message</label>
+                    <textarea class="form-control" id="sms_message" rows="4" placeholder="Select a template above or write your custom message here..."></textarea>
+                    <div class="mt-2">
+                        <span class="badge bg-secondary" id="sms_char_count">0 / 160 characters</span>
+                        <small class="text-muted ms-2">
+                            <i class="bi bi-info-circle"></i> Keep under 160 characters to avoid multiple SMS charges
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Notes (Optional) -->
+                <div class="mb-3">
+                    <label class="form-label"><i class="bi bi-sticky"></i> Notes (Optional)</label>
+                    <textarea class="form-control" id="sms_notes" rows="2" placeholder="Add internal notes about this decision..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-success" id="send_sms_btn" onclick="sendSMSAndUpdate()">
+                    <i class="bi bi-send"></i> Send SMS & Approve
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* SMS Modal Styles */
+.templates-container {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 10px;
+    background: #f8f9fa;
+}
+
+.template-option {
+    background: white;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.template-option:hover {
+    border-color: #0d6efd;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.template-option.active {
+    border-color: #0d6efd;
+    background: #e7f3ff;
+}
+
+.template-name {
+    font-weight: bold;
+    color: #0d6efd;
+    margin-bottom: 5px;
+}
+
+.template-preview {
+    font-size: 14px;
+    color: #666;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+</style>
+
+<!-- 
+INSTRUCTIONS TO MODIFY APPROVE/DISAPPROVE/DEFER BUTTONS:
+
+Find the buttons in admin_dashboard.html that look like this:
+
+OLD:
+<form method="POST" action="{{ url_for('approve_application', id=app.id) }}">
+    <button type="submit" class="btn btn-sm btn-success">Approve</button>
+</form>
+
+NEW:
+<button type="button" class="btn btn-sm btn-success" 
+        onclick="showSMSModal({{ app.id }}, 'approved', '{{ app.member_name }}', '{{ app.loan_amount }}', '{{ app.loan_type }}', '{{ app.member_contact }}')">
+    <i class="bi bi-check-circle"></i> Approve
+</button>
+
+Similarly for Disapprove and Defer buttons:
+
+Disapprove:
+<button type="button" class="btn btn-sm btn-danger" 
+        onclick="showSMSModal({{ app.id }}, 'disapproved', '{{ app.member_name }}', '{{ app.loan_amount }}', '{{ app.loan_type }}', '{{ app.member_contact }}')">
+    <i class="bi bi-x-circle"></i> Disapprove
+</button>
+
+Defer:
+<button type="button" class="btn btn-sm btn-warning" 
+        onclick="showSMSModal({{ app.id }}, 'deferred', '{{ app.member_name }}', '{{ app.loan_amount }}', '{{ app.loan_type }}', '{{ app.member_contact }}')">
+    <i class="bi bi-clock"></i> Defer
+</button>
+-->

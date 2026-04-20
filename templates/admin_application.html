@@ -96,24 +96,23 @@
                 <h5>Make Decision</h5>
             </div>
             <div class="card-body">
-                <form method="POST">
-                    <div class="mb-3">
-                        <label class="form-label">Decision *</label>
-                        <select name="decision" class="form-select" required>
-                            <option value="">-- Select Decision --</option>
-                            <option value="approved">Approve</option>
-                            <option value="disapproved">Disapprove</option>
-                            <option value="deferred">Defer</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Admin Notes</label>
-                        <textarea name="admin_notes" class="form-control" rows="3"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-success">
-                        <i class="bi bi-check-circle"></i> Submit Decision
+                <p class="text-muted mb-3">
+                    <i class="bi bi-info-circle"></i> Click a decision button below to send SMS notification to the member.
+                </p>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-success btn-lg" 
+                            onclick="showSMSModal({{ application.id }}, 'approved', '{{ application.member_name }}', '{{ application.loan_amount }}', '{{ application.loan_type or 'Loan' }}', '{{ application.member_contact }}')">
+                        <i class="bi bi-check-circle"></i> Approve
                     </button>
-                </form>
+                    <button type="button" class="btn btn-danger btn-lg" 
+                            onclick="showSMSModal({{ application.id }}, 'disapproved', '{{ application.member_name }}', '{{ application.loan_amount }}', '{{ application.loan_type or 'Loan' }}', '{{ application.member_contact }}')">
+                        <i class="bi bi-x-circle"></i> Disapprove
+                    </button>
+                    <button type="button" class="btn btn-warning btn-lg" 
+                            onclick="showSMSModal({{ application.id }}, 'deferred', '{{ application.member_name }}', '{{ application.loan_amount }}', '{{ application.loan_type or 'Loan' }}', '{{ application.member_contact }}')">
+                        <i class="bi bi-clock"></i> Defer
+                    </button>
+                </div>
             </div>
         </div>
         {% else %}
@@ -187,8 +186,123 @@
     </div>
 </div>
 
+<!-- SMS Modal -->
+<div class="modal fade" id="smsModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-check-circle"></i> Approve & Send SMS</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Member Information -->
+                <div class="alert alert-info">
+                    <h6 class="mb-2"><i class="bi bi-person"></i> Member Information</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Name:</strong> <span id="sms_member_name"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Contact:</strong> <span id="sms_member_contact"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Loan Amount:</strong> <span id="sms_loan_amount"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Loan Type:</strong> <span id="sms_loan_type"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SMS Templates -->
+                <div class="mb-3">
+                    <h6><i class="bi bi-chat-square-text"></i> Select SMS Template</h6>
+                    <div id="sms_templates_list" class="templates-container">
+                        <!-- Templates will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- SMS Message -->
+                <div class="mb-3">
+                    <label class="form-label"><i class="bi bi-envelope"></i> SMS Message</label>
+                    <textarea class="form-control" id="sms_message" rows="4" placeholder="Select a template above or write your custom message here..."></textarea>
+                    <div class="mt-2">
+                        <span class="badge bg-secondary" id="sms_char_count">0 / 160 characters</span>
+                        <small class="text-muted ms-2">
+                            <i class="bi bi-info-circle"></i> Keep under 160 characters to avoid multiple SMS charges
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Notes (Optional) -->
+                <div class="mb-3">
+                    <label class="form-label"><i class="bi bi-sticky"></i> Notes (Optional)</label>
+                    <textarea class="form-control" id="sms_notes" rows="2" placeholder="Add internal notes about this decision..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-success" id="send_sms_btn" onclick="sendSMSAndUpdate()">
+                    <i class="bi bi-send"></i> Send SMS & Approve
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* SMS Modal Styles */
+.templates-container {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 10px;
+    background: #f8f9fa;
+}
+
+.template-option {
+    background: white;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.template-option:hover {
+    border-color: #0d6efd;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.template-option.active {
+    border-color: #0d6efd;
+    background: #e7f3ff;
+}
+
+.template-name {
+    font-weight: bold;
+    color: #0d6efd;
+    margin-bottom: 5px;
+}
+
+.template-preview {
+    font-size: 14px;
+    color: #666;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+</style>
+
 {% endblock %}
 {% block scripts %}
+<!-- Include SMS Modal JavaScript -->
+<script src="{{ url_for('static', filename='sms-modal.js') }}"></script>
+
 <script>
 // Lightbox functions
 let currentImageSrc = '';

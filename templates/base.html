@@ -961,6 +961,9 @@
                 <a href="{{ url_for('manage_permissions') }}">
                     <i class="bi bi-shield-lock"></i> Manage Permissions
                 </a>
+                <a href="{{ url_for('manage_sms_templates') }}">
+                    <i class="bi bi-chat-dots"></i> SMS Templates
+                </a>
                 <a href="{{ url_for('system_settings') }}">
                     <i class="bi bi-gear"></i> System Settings
                 </a>
@@ -968,6 +971,9 @@
                     <i class="bi bi-tags"></i> Loan Types
                 </a>
                 {% elif current_user.role == 'loan_officer' %}
+                    <a href="{{ url_for('manage_sms_templates') }}">
+                        <i class="bi bi-chat-dots"></i> SMS Templates
+                    </a>
                     {% if current_user.permissions and 'system_settings' in current_user.permissions %}
                     <a href="{{ url_for('system_settings') }}">
                         <i class="bi bi-gear"></i> System Settings

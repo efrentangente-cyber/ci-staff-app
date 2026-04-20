@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+{% block title %}SMS Templates{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-chat-dots"></i> SMS Templates</h2>
+        <div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTemplateModal">
+                <i class="bi bi-plus-circle"></i> New Template
+            </button>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> 
+        <strong>SMS Templates:</strong> Create reusable message templates for loan decisions. Use variables like {member_name}, {loan_amount}, {loan_type}, and {date} to personalize messages.
+    </div>
+
+    <!-- Tabs for Categories -->
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#approved-tab">
+                <i class="bi bi-check-circle text-success"></i> Approved ({{ approved_count }})
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#disapproved-tab">
+                <i class="bi bi-x-circle text-danger"></i> Disapproved ({{ disapproved_count }})
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#deferred-tab">
+                <i class="bi bi-clock text-warning"></i> Deferred ({{ deferred_count }})
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#custom-tab">
+                <i class="bi bi-pencil text-primary"></i> Custom ({{ custom_count }})
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+        <!-- Approved Templates -->
+        <div class="tab-pane fade show active" id="approved-tab">
+            <div class="row">
+                {% for template in approved_templates %}
+                <div class="col-md-6 mb-3">
+                    <div class="template-card">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="mb-0">{{ template.name }}</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editTemplate({{ template.id }}, '{{ template.name }}', '{{ template.category }}', `{{ template.message }}`)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteTemplate({{ template.id }}, '{{ template.name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="template-message">{{ template.message }}</div>
+                        <small class="text-muted mt-2 d-block">
+                            <i class="bi bi-clock"></i> Created: {{ template.created_at }}
+                        </small>
+                    </div>
+                </div>
+                {% else %}
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> No templates in this category yet. Click "New Template" to create one.
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Disapproved Templates -->
+        <div class="tab-pane fade" id="disapproved-tab">
+            <div class="row">
+                {% for template in disapproved_templates %}
+                <div class="col-md-6 mb-3">
+                    <div class="template-card">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="mb-0">{{ template.name }}</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editTemplate({{ template.id }}, '{{ template.name }}', '{{ template.category }}', `{{ template.message }}`)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteTemplate({{ template.id }}, '{{ template.name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="template-message">{{ template.message }}</div>
+                        <small class="text-muted mt-2 d-block">
+                            <i class="bi bi-clock"></i> Created: {{ template.created_at }}
+                        </small>
+                    </div>
+                </div>
+                {% else %}
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> No templates in this category yet. Click "New Template" to create one.
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Deferred Templates -->
+        <div class="tab-pane fade" id="deferred-tab">
+            <div class="row">
+                {% for template in deferred_templates %}
+                <div class="col-md-6 mb-3">
+                    <div class="template-card">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="mb-0">{{ template.name }}</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editTemplate({{ template.id }}, '{{ template.name }}', '{{ template.category }}', `{{ template.message }}`)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteTemplate({{ template.id }}, '{{ template.name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="template-message">{{ template.message }}</div>
+                        <small class="text-muted mt-2 d-block">
+                            <i class="bi bi-clock"></i> Created: {{ template.created_at }}
+                        </small>
+                    </div>
+                </div>
+                {% else %}
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> No templates in this category yet. Click "New Template" to create one.
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Custom Templates -->
+        <div class="tab-pane fade" id="custom-tab">
+            <div class="row">
+                {% for template in custom_templates %}
+                <div class="col-md-6 mb-3">
+                    <div class="template-card">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="mb-0">{{ template.name }}</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editTemplate({{ template.id }}, '{{ template.name }}', '{{ template.category }}', `{{ template.message }}`)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteTemplate({{ template.id }}, '{{ template.name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="template-message">{{ template.message }}</div>
+                        <small class="text-muted mt-2 d-block">
+                            <i class="bi bi-clock"></i> Created: {{ template.created_at }}
+                        </small>
+                    </div>
+                </div>
+                {% else %}
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> No templates in this category yet. Click "New Template" to create one.
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Template Modal -->
+<div class="modal fade" id="editTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Edit SMS Template</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('update_sms_template') }}">
+                <input type="hidden" name="template_id" id="edit_template_id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Template Name</label>
+                        <input type="text" class="form-control" name="name" id="edit_name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Category</label>
+                        <select class="form-select" name="category" id="edit_category" required>
+                            <option value="approved">Approved</option>
+                            <option value="disapproved">Disapproved</option>
+                            <option value="deferred">Deferred</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Message</label>
+                        <textarea class="form-control" name="message" id="edit_message" rows="5" required></textarea>
+                        <small class="text-muted">
+                            <strong>Available variables:</strong> {member_name}, {loan_amount}, {loan_type}, {date}
+                        </small>
+                        <div class="mt-2">
+                            <span class="badge bg-secondary" id="editCharCount">0 / 160 characters</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Update Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Template Modal -->
+<div class="modal fade" id="addTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> New SMS Template</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_sms_template') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Template Name</label>
+                        <input type="text" class="form-control" name="name" required placeholder="e.g., Loan Approved - Standard">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Category</label>
+                        <select class="form-select" name="category" required>
+                            <option value="">-- Select Category --</option>
+                            <option value="approved">Approved</option>
+                            <option value="disapproved">Disapproved</option>
+                            <option value="deferred">Deferred</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Message</label>
+                        <textarea class="form-control" name="message" rows="5" required placeholder="Enter your SMS message here..."></textarea>
+                        <small class="text-muted">
+                            <strong>Available variables:</strong> {member_name}, {loan_amount}, {loan_type}, {date}
+                        </small>
+                        <div class="mt-2">
+                            <span class="badge bg-secondary" id="charCount">0 / 160 characters</span>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        <strong>SMS Limit:</strong> Keep messages under 160 characters to avoid multiple SMS charges.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.template-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    transition: all 0.2s;
+}
+
+.template-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-color: #0d6efd;
+}
+
+.template-message {
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.variable-tag {
+    background: #fff3cd;
+    color: #856404;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+</style>
+
+<script>
+// Character counter for add modal
+document.querySelector('[name="message"]').addEventListener('input', function() {
+    const count = this.value.length;
+    const counter = document.getElementById('charCount');
+    counter.textContent = `${count} / 160 characters`;
+    
+    if (count > 160) {
+        counter.classList.remove('bg-secondary');
+        counter.classList.add('bg-warning');
+    } else {
+        counter.classList.remove('bg-warning');
+        counter.classList.add('bg-secondary');
+    }
+});
+
+// Character counter for edit modal
+document.getElementById('edit_message').addEventListener('input', function() {
+    const count = this.value.length;
+    const counter = document.getElementById('editCharCount');
+    counter.textContent = `${count} / 160 characters`;
+    
+    if (count > 160) {
+        counter.classList.remove('bg-secondary');
+        counter.classList.add('bg-warning');
+    } else {
+        counter.classList.remove('bg-warning');
+        counter.classList.add('bg-secondary');
+    }
+});
+
+// Edit template function
+function editTemplate(id, name, category, message) {
+    document.getElementById('edit_template_id').value = id;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_category').value = category;
+    document.getElementById('edit_message').value = message;
+    
+    // Update character count
+    const count = message.length;
+    const counter = document.getElementById('editCharCount');
+    counter.textContent = `${count} / 160 characters`;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('editTemplateModal'));
+    modal.show();
+}
+
+// Delete template function
+function deleteTemplate(id, name) {
+    if (confirm(`Delete template "${name}"?`)) {
+        // Create form and submit
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/delete_sms_template/' + id;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}
