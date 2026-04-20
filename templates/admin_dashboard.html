@@ -183,8 +183,9 @@
                             <option value="all">All Status</option>
                             <option value="approved">Approved</option>
                             <option value="disapproved">Disapproved</option>
+                            <option value="deferred">Deferred</option>
                         </select>
-                        <span class="badge bg-secondary" id="processedCount">{{ applications|selectattr('status', 'in', ['approved', 'disapproved'])|list|length }} Processed</span>
+                        <span class="badge bg-secondary" id="processedCount">{{ applications|selectattr('status', 'in', ['approved', 'disapproved', 'deferred'])|list|length }} Processed</span>
                     </div>
                 </div>
             </div>
@@ -204,12 +205,12 @@
                         </thead>
                         <tbody>
                             {% for app in applications %}
-                            {% if app.status in ['approved', 'disapproved'] %}
+                            {% if app.status in ['approved', 'disapproved', 'deferred'] %}
                             <tr>
                                 <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                                 <td>
-                                    <span class="badge bg-{% if app.status == 'approved' %}success{% else %}danger{% endif %}">
+                                    <span class="badge bg-{% if app.status == 'approved' %}success{% elif app.status == 'disapproved' %}danger{% else %}warning{% endif %}">
                                         {{ app.status.replace('_', ' ').title() }}
                                     </span>
                                 </td>
@@ -635,7 +636,8 @@ function filterProcessed() {
                 visibleCount++;
             } else {
                 const showRow = (filterValue === 'approved' && statusText === 'approved') || 
-                               (filterValue === 'disapproved' && statusText === 'disapproved');
+                               (filterValue === 'disapproved' && statusText === 'disapproved') ||
+                               (filterValue === 'deferred' && statusText === 'deferred');
                 rows[i].style.display = showRow ? '' : 'none';
                 if (showRow) visibleCount++;
             }

@@ -84,8 +84,19 @@
             </div>
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-images"></i> Upload Documents/Photos (Requirements/Papers)</label>
-                <input type="file" name="documents" class="form-control" multiple accept="image/*,.pdf" id="documentUpload">
-                <small class="text-muted">You can select multiple images or PDF files</small>
+                
+                <!-- Camera and File Upload Buttons -->
+                <div class="d-flex gap-2 mb-2">
+                    <button type="button" class="btn btn-primary" id="openCameraBtn">
+                        <i class="bi bi-camera"></i> Open Camera
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('documentUpload').click()">
+                        <i class="bi bi-folder2-open"></i> Choose Files
+                    </button>
+                </div>
+                
+                <input type="file" name="documents" class="form-control d-none" multiple accept="image/*,.pdf" id="documentUpload">
+                <small class="text-muted">You can capture photos using camera or select multiple images/PDF files</small>
                 
                 <!-- OCR Extract Button -->
                 <div class="mt-2">
@@ -608,6 +619,261 @@ function highlightFilledFields() {
             }, 3000);
         }
     });
+}
+</script>
+
+<!-- Camera Modal -->
+<div class="modal fade" id="cameraModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-camera"></i> Capture Photo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <div id="cameraContainer" style="position: relative; max-width: 100%; margin: 0 auto;">
+                    <video id="cameraVideo" autoplay playsinline style="width: 100%; max-width: 640px; border-radius: 8px; background: #000;"></video>
+                    <canvas id="cameraCanvas" style="display: none;"></canvas>
+                    
+                    <!-- Camera controls overlay -->
+                    <div id="cameraControls" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10;">
+                        <button type="button" class="btn btn-light btn-lg rounded-circle" id="captureBtn" style="width: 70px; height: 70px;">
+                            <i class="bi bi-camera-fill" style="font-size: 1.5rem;"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Preview captured image -->
+                    <div id="capturedPreview" style="display: none;">
+                        <img id="capturedImage" src="" style="width: 100%; max-width: 640px; border-radius: 8px;">
+                        <div class="mt-3 d-flex gap-2 justify-content-center">
+                            <button type="button" class="btn btn-success" id="usePhotoBtn">
+                                <i class="bi bi-check-lg"></i> Use This Photo
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="retakeBtn">
+                                <i class="bi bi-arrow-counterclockwise"></i> Retake
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="cameraError" class="alert alert-danger mt-3" style="display: none;">
+                    <i class="bi bi-exclamation-triangle"></i> <span id="cameraErrorText"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Camera functionality
+let cameraStream = null;
+let cameraModal = null;
+
+document.getElementById('openCameraBtn')?.addEventListener('click', function() {
+    openCamera();
+});
+
+async function openCamera() {
+    cameraModal = new bootstrap.Modal(document.getElementById('cameraModal'));
+    cameraModal.show();
+    
+    const video = document.getElementById('cameraVideo');
+    const errorDiv = document.getElementById('cameraError');
+    const errorText = document.getElementById('cameraErrorText');
+    
+    try {
+        // Request camera access
+        cameraStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                facingMode: 'environment', // Use back camera on mobile
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            } 
+        });
+        
+        video.srcObject = cameraStream;
+        video.style.display = 'block';
+        document.getElementById('cameraControls').style.display = 'block';
+        errorDiv.style.display = 'none';
+        
+    } catch (error) {
+        console.error('Camera error:', error);
+        video.style.display = 'none';
+        document.getElementById('cameraControls').style.display = 'none';
+        errorDiv.style.display = 'block';
+        
+        if (error.name === 'NotAllowedError') {
+            errorText.textContent = 'Camera access denied. Please allow camera access in your browser settings.';
+        } else if (error.name === 'NotFoundError') {
+            errorText.textContent = 'No camera found on this device.';
+        } else {
+            errorText.textContent = 'Failed to access camera: ' + error.message;
+        }
+    }
+}
+
+// Capture photo
+document.getElementById('captureBtn')?.addEventListener('click', function() {
+    const video = document.getElementById('cameraVideo');
+    const canvas = document.getElementById('cameraCanvas');
+    const capturedImage = document.getElementById('capturedImage');
+    const capturedPreview = document.getElementById('capturedPreview');
+    
+    // Set canvas size to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw video frame to canvas
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert to image
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    capturedImage.src = imageDataUrl;
+    
+    // Show preview, hide video
+    video.style.display = 'none';
+    document.getElementById('cameraControls').style.display = 'none';
+    capturedPreview.style.display = 'block';
+});
+
+// Retake photo
+document.getElementById('retakeBtn')?.addEventListener('click', function() {
+    const video = document.getElementById('cameraVideo');
+    const capturedPreview = document.getElementById('capturedPreview');
+    
+    video.style.display = 'block';
+    document.getElementById('cameraControls').style.display = 'block';
+    capturedPreview.style.display = 'none';
+});
+
+// Use captured photo
+document.getElementById('usePhotoBtn')?.addEventListener('click', function() {
+    const canvas = document.getElementById('cameraCanvas');
+    
+    // Convert canvas to blob
+    canvas.toBlob(function(blob) {
+        // Create file from blob
+        const timestamp = new Date().getTime();
+        const file = new File([blob], `camera_${timestamp}.jpg`, { type: 'image/jpeg' });
+        
+        // Add to accumulated files
+        accumulatedFiles.push(file);
+        
+        // Update preview
+        updateDocumentPreview();
+        
+        // Update file input
+        updateFileInput();
+        
+        // Close modal
+        closeCamera();
+        cameraModal.hide();
+        
+        // Show success message
+        showNotification('success', 'Photo captured successfully!');
+        
+    }, 'image/jpeg', 0.9);
+});
+
+// Close camera and stop stream
+function closeCamera() {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+    }
+    
+    const video = document.getElementById('cameraVideo');
+    const capturedPreview = document.getElementById('capturedPreview');
+    
+    video.srcObject = null;
+    video.style.display = 'block';
+    document.getElementById('cameraControls').style.display = 'block';
+    capturedPreview.style.display = 'none';
+}
+
+// Clean up camera when modal is closed
+document.getElementById('cameraModal')?.addEventListener('hidden.bs.modal', function() {
+    closeCamera();
+});
+
+// Update document preview (refactored to be reusable)
+function updateDocumentPreview() {
+    const preview = document.getElementById('document_preview');
+    preview.innerHTML = '';
+    
+    accumulatedFiles.forEach((file, index) => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 col-6 position-relative';
+        col.dataset.fileIndex = index;
+        
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                col.innerHTML = `
+                    <div class="card">
+                        <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${index})" style="z-index: 10; padding: 2px 6px;">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                        <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                        <div class="card-body p-2">
+                            <small class="text-muted text-truncate d-block">${file.name}</small>
+                        </div>
+                    </div>
+                `;
+                preview.appendChild(col);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            col.innerHTML = `
+                <div class="card">
+                    <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeFile(${index})" style="z-index: 10; padding: 2px 6px;">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <div class="card-body text-center" style="height: 150px; display: flex; align-items: center; justify-content: center; background: #f8f9fa;">
+                        <div>
+                            <i class="bi bi-file-pdf" style="font-size: 3rem; color: #dc3545;"></i>
+                            <div class="mt-2"><small class="text-muted text-truncate d-block">${file.name}</small></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            preview.appendChild(col);
+        }
+    });
+    
+    // Show OCR button if there are images
+    const imageFiles = accumulatedFiles.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length > 0) {
+        ocrImageFiles = imageFiles;
+        document.getElementById('extractDataBtn').style.display = 'inline-block';
+        document.getElementById('ocrHint').style.display = 'block';
+    }
+}
+
+// Show notification helper
+function showNotification(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const icon = type === 'success' ? 'check-circle' : 'exclamation-triangle';
+    
+    const notification = document.createElement('div');
+    notification.className = `alert ${alertClass} alert-dismissible fade show`;
+    notification.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="bi bi-${icon}"></i> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
 }
 </script>
 {% endblock %}

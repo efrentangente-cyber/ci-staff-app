@@ -1006,8 +1006,21 @@
 
                 <div class="section-title">UPLOAD PHOTOS (Optional)</div>
                 <div style="margin: 20px 0;">
-                    <input type="file" name="ci_photos" accept="image/*" multiple class="form-control">
-                    <small class="text-muted">You can upload multiple photos from the CI visit</small>
+                    <!-- Camera and File Upload Buttons -->
+                    <div class="d-flex gap-2 mb-2">
+                        <button type="button" class="btn btn-primary" id="openCICameraBtn">
+                            <i class="bi bi-camera"></i> Open Camera
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('ci_photos').click()">
+                            <i class="bi bi-folder2-open"></i> Choose Files
+                        </button>
+                    </div>
+                    
+                    <input type="file" name="ci_photos" id="ci_photos" accept="image/*" multiple class="form-control d-none">
+                    <small class="text-muted">You can capture photos using camera or select multiple images from your device</small>
+                    
+                    <!-- Image Preview -->
+                    <div id="ci_photos_preview" class="row g-2 mt-3"></div>
                 </div>
 
                 <div class="section-title">GPS LOCATION</div>
@@ -1073,7 +1086,248 @@ function submitChecklist() {
         }
     }
 }
+
+// CI Photo Upload with Camera Capture
+let ciAccumulatedFiles = [];
+
+// Handle file selection
+document.getElementById('ci_photos')?.addEventListener('change', function(e) {
+    const newFiles = Array.from(e.target.files);
+    ciAccumulatedFiles = ciAccumulatedFiles.concat(newFiles);
+    updateCIPhotoPreview();
+    updateCIFileInput();
+});
+
+// Update photo preview
+function updateCIPhotoPreview() {
+    const preview = document.getElementById('ci_photos_preview');
+    preview.innerHTML = '';
+    
+    ciAccumulatedFiles.forEach((file, index) => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 col-6 position-relative';
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            col.innerHTML = `
+                <div class="card">
+                    <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1" onclick="removeCIPhoto(${index})" style="z-index: 10; padding: 2px 6px;">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                    <div class="card-body p-2">
+                        <small class="text-muted text-truncate d-block">${file.name}</small>
+                    </div>
+                </div>
+            `;
+            preview.appendChild(col);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// Remove photo
+function removeCIPhoto(index) {
+    ciAccumulatedFiles.splice(index, 1);
+    updateCIPhotoPreview();
+    updateCIFileInput();
+}
+
+// Update file input
+function updateCIFileInput() {
+    const input = document.getElementById('ci_photos');
+    const dataTransfer = new DataTransfer();
+    
+    ciAccumulatedFiles.forEach(file => {
+        dataTransfer.items.add(file);
+    });
+    
+    input.files = dataTransfer.files;
+}
+
+// Camera functionality for CI
+let ciCameraStream = null;
+let ciCameraModal = null;
+
+document.getElementById('openCICameraBtn')?.addEventListener('click', function() {
+    openCICamera();
+});
+
+async function openCICamera() {
+    ciCameraModal = new bootstrap.Modal(document.getElementById('ciCameraModal'));
+    ciCameraModal.show();
+    
+    const video = document.getElementById('ciCameraVideo');
+    const errorDiv = document.getElementById('ciCameraError');
+    const errorText = document.getElementById('ciCameraErrorText');
+    
+    try {
+        ciCameraStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                facingMode: 'environment',
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            } 
+        });
+        
+        video.srcObject = ciCameraStream;
+        video.style.display = 'block';
+        document.getElementById('ciCameraControls').style.display = 'block';
+        errorDiv.style.display = 'none';
+        
+    } catch (error) {
+        console.error('Camera error:', error);
+        video.style.display = 'none';
+        document.getElementById('ciCameraControls').style.display = 'none';
+        errorDiv.style.display = 'block';
+        
+        if (error.name === 'NotAllowedError') {
+            errorText.textContent = 'Camera access denied. Please allow camera access in your browser settings.';
+        } else if (error.name === 'NotFoundError') {
+            errorText.textContent = 'No camera found on this device.';
+        } else {
+            errorText.textContent = 'Failed to access camera: ' + error.message;
+        }
+    }
+}
+
+// Capture CI photo
+document.getElementById('ciCaptureBtn')?.addEventListener('click', function() {
+    const video = document.getElementById('ciCameraVideo');
+    const canvas = document.getElementById('ciCameraCanvas');
+    const capturedImage = document.getElementById('ciCapturedImage');
+    const capturedPreview = document.getElementById('ciCapturedPreview');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    capturedImage.src = imageDataUrl;
+    
+    video.style.display = 'none';
+    document.getElementById('ciCameraControls').style.display = 'none';
+    capturedPreview.style.display = 'block';
+});
+
+// Retake CI photo
+document.getElementById('ciRetakeBtn')?.addEventListener('click', function() {
+    const video = document.getElementById('ciCameraVideo');
+    const capturedPreview = document.getElementById('ciCapturedPreview');
+    
+    video.style.display = 'block';
+    document.getElementById('ciCameraControls').style.display = 'block';
+    capturedPreview.style.display = 'none';
+});
+
+// Use CI captured photo
+document.getElementById('ciUsePhotoBtn')?.addEventListener('click', function() {
+    const canvas = document.getElementById('ciCameraCanvas');
+    
+    canvas.toBlob(function(blob) {
+        const timestamp = new Date().getTime();
+        const file = new File([blob], `ci_photo_${timestamp}.jpg`, { type: 'image/jpeg' });
+        
+        ciAccumulatedFiles.push(file);
+        updateCIPhotoPreview();
+        updateCIFileInput();
+        
+        closeCICamera();
+        ciCameraModal.hide();
+        
+        showCINotification('success', 'Photo captured successfully!');
+        
+    }, 'image/jpeg', 0.9);
+});
+
+// Close CI camera
+function closeCICamera() {
+    if (ciCameraStream) {
+        ciCameraStream.getTracks().forEach(track => track.stop());
+        ciCameraStream = null;
+    }
+    
+    const video = document.getElementById('ciCameraVideo');
+    const capturedPreview = document.getElementById('ciCapturedPreview');
+    
+    video.srcObject = null;
+    video.style.display = 'block';
+    document.getElementById('ciCameraControls').style.display = 'block';
+    capturedPreview.style.display = 'none';
+}
+
+// Clean up camera when modal is closed
+document.getElementById('ciCameraModal')?.addEventListener('hidden.bs.modal', function() {
+    closeCICamera();
+});
+
+// Show notification
+function showCINotification(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const icon = type === 'success' ? 'check-circle' : 'exclamation-triangle';
+    
+    const notification = document.createElement('div');
+    notification.className = `alert ${alertClass} alert-dismissible fade show`;
+    notification.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="bi bi-${icon}"></i> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
+}
 </script>
+
+<!-- CI Camera Modal -->
+<div class="modal fade" id="ciCameraModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-camera"></i> Capture Photo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center">
+                <div id="ciCameraContainer" style="position: relative; max-width: 100%; margin: 0 auto;">
+                    <video id="ciCameraVideo" autoplay playsinline style="width: 100%; max-width: 640px; border-radius: 8px; background: #000;"></video>
+                    <canvas id="ciCameraCanvas" style="display: none;"></canvas>
+                    
+                    <div id="ciCameraControls" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 10;">
+                        <button type="button" class="btn btn-light btn-lg rounded-circle" id="ciCaptureBtn" style="width: 70px; height: 70px;">
+                            <i class="bi bi-camera-fill" style="font-size: 1.5rem;"></i>
+                        </button>
+                    </div>
+                    
+                    <div id="ciCapturedPreview" style="display: none;">
+                        <img id="ciCapturedImage" src="" style="width: 100%; max-width: 640px; border-radius: 8px;">
+                        <div class="mt-3 d-flex gap-2 justify-content-center">
+                            <button type="button" class="btn btn-success" id="ciUsePhotoBtn">
+                                <i class="bi bi-check-lg"></i> Use This Photo
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="ciRetakeBtn">
+                                <i class="bi bi-arrow-counterclockwise"></i> Retake
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="ciCameraError" class="alert alert-danger mt-3" style="display: none;">
+                    <i class="bi bi-exclamation-triangle"></i> <span id="ciCameraErrorText"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
             <div class="paper-form">

@@ -1350,7 +1350,7 @@ def admin_dashboard():
         return redirect(url_for('index'))
     conn = get_db()
     
-    # Get applications for review (ci_completed, approved, disapproved, or direct submissions)
+    # Get applications for review (ci_completed, approved, disapproved, deferred, or direct submissions)
     applications = conn.execute('''
         SELECT la.*, 
                u1.name as loan_staff_name,
@@ -1358,7 +1358,7 @@ def admin_dashboard():
         FROM loan_applications la
         LEFT JOIN users u1 ON la.submitted_by = u1.id
         LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
-        WHERE la.status IN ('ci_completed', 'approved', 'disapproved')
+        WHERE la.status IN ('ci_completed', 'approved', 'disapproved', 'deferred')
            OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
         ORDER BY la.submitted_at ASC
     ''').fetchall()
