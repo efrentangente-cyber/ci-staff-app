@@ -259,6 +259,163 @@
         </div>
     </div>
 
+    <!-- PAGE 2.5: CASH FLOW STATEMENT (EXCEL SPREADSHEET) -->
+    {% if checklist_data.get('excel_cashflow') %}
+    <div class="card print-page">
+        <div class="card-header bg-info text-white text-center">
+            <h4>CASH FLOW STATEMENT</h4>
+            <small>Excel Spreadsheet Data</small>
+        </div>
+        <div class="card-body">
+            <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
+            <div id="excel-view-container"></div>
+            
+            <script>
+                // Load and display Excel data
+                document.addEventListener('DOMContentLoaded', function() {
+                    const excelData = {{ checklist_data.get('excel_cashflow', '{}')|tojson }};
+                    
+                    if (excelData && excelData.cells) {
+                        displayExcelData(excelData);
+                    }
+                });
+                
+                function displayExcelData(data) {
+                    const container = document.getElementById('excel-view-container');
+                    const rows = data.rows || 30;
+                    const cols = data.cols || 15;
+                    const cells = data.cells || {};
+                    
+                    let html = '<div class="excel-container-view">';
+                    html += '<table class="excel-table-view">';
+                    
+                    // Header row
+                    html += '<thead><tr><th class="excel-corner"></th>';
+                    for (let col = 0; col < cols; col++) {
+                        html += `<th class="excel-col-header">${getColumnName(col)}</th>`;
+                    }
+                    html += '</tr></thead>';
+                    
+                    // Body rows
+                    html += '<tbody>';
+                    for (let row = 0; row < rows; row++) {
+                        // Skip empty rows (rows with no data)
+                        let hasData = false;
+                        for (let col = 0; col < cols; col++) {
+                            const cellRef = getCellReference(row, col);
+                            if (cells[cellRef] && (cells[cellRef].value || cells[cellRef].display)) {
+                                hasData = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!hasData && row > 10) continue; // Skip empty rows after row 10
+                        
+                        html += '<tr>';
+                        html += `<th class="excel-row-header">${row + 1}</th>`;
+                        
+                        for (let col = 0; col < cols; col++) {
+                            const cellRef = getCellReference(row, col);
+                            const cell = cells[cellRef];
+                            let value = '';
+                            let hasFormula = false;
+                            
+                            if (cell) {
+                                value = cell.display || cell.value || '';
+                                hasFormula = !!cell.formula;
+                            }
+                            
+                            const formulaClass = hasFormula ? 'has-formula' : '';
+                            const title = hasFormula ? `Formula: ${cell.formula}` : '';
+                            html += `<td class="excel-cell-view ${formulaClass}" title="${title}">${value}</td>`;
+                        }
+                        html += '</tr>';
+                    }
+                    html += '</tbody></table></div>';
+                    
+                    container.innerHTML = html;
+                }
+                
+                function getColumnName(index) {
+                    let name = '';
+                    while (index >= 0) {
+                        name = String.fromCharCode(65 + (index % 26)) + name;
+                        index = Math.floor(index / 26) - 1;
+                    }
+                    return name;
+                }
+                
+                function getCellReference(row, col) {
+                    return getColumnName(col) + (row + 1);
+                }
+            </script>
+            
+            <style>
+                .excel-container-view {
+                    overflow-x: auto;
+                    border: 1px solid #c0c0c0;
+                    background: #f0f0f0;
+                }
+                
+                .excel-table-view {
+                    border-collapse: collapse;
+                    width: 100%;
+                    background: white;
+                }
+                
+                .excel-table-view th,
+                .excel-table-view td {
+                    border: 1px solid #d0d0d0;
+                    padding: 8px;
+                    font-size: 12px;
+                }
+                
+                .excel-col-header,
+                .excel-row-header {
+                    background: #e0e0e0;
+                    font-weight: 600;
+                    text-align: center;
+                    min-width: 80px;
+                }
+                
+                .excel-corner {
+                    background: #e0e0e0;
+                    width: 40px;
+                }
+                
+                .excel-cell-view {
+                    background: white;
+                    min-width: 80px;
+                }
+                
+                .excel-cell-view.has-formula {
+                    background: #f0f7ff;
+                    font-weight: 500;
+                }
+                
+                @media print {
+                    .excel-container-view {
+                        border: 1px solid #000;
+                    }
+                    
+                    .excel-table-view th,
+                    .excel-table-view td {
+                        border: 1px solid #000;
+                        font-size: 10px;
+                        padding: 4px;
+                    }
+                    
+                    .excel-cell-view.has-formula {
+                        background: #f0f7ff !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                }
+            </style>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- PAGE 3: COMPUTATION (MOST IMPORTANT) -->
     <div class="card print-page">
         <div class="card-header bg-success text-white text-center">

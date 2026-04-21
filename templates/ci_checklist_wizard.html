@@ -114,6 +114,45 @@
     color: white;
     border-color: #198754;
 }
+
+/* Print styles for Excel page */
+@media print {
+    /* Hide navigation and buttons */
+    .progress-nav,
+    .no-print,
+    .btn,
+    .alert {
+        display: none !important;
+    }
+
+    /* Full width for print */
+    .paper-form {
+        max-width: 100%;
+        padding: 20px;
+        box-shadow: none;
+        page-break-inside: avoid;
+    }
+
+    .form-header {
+        page-break-after: avoid;
+    }
+
+    /* Ensure Excel spreadsheet prints properly */
+    .wizard-page[data-page="2.5"] .paper-form {
+        max-width: 100%;
+    }
+
+    /* Page setup */
+    @page {
+        margin: 1cm;
+        size: A4 landscape;
+    }
+
+    body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+}
 </style>
 
 <div class="container-fluid py-3">
@@ -512,12 +551,13 @@
                     <h6><i class="bi bi-info-circle"></i> How to use this Excel spreadsheet:</h6>
                     <ul class="mb-0">
                         <li><strong>Choose template</strong>: Click a template button above to load pre-formatted structure (optional)</li>
+                        <li><strong>Resize columns</strong>: Drag the right edge of any column header to adjust width</li>
                         <li><strong>Everything is editable</strong>: Click ANY cell to change text, numbers, labels, or formulas</li>
                         <li><strong>Add/remove rows</strong>: Use toolbar buttons to expand the spreadsheet</li>
                         <li><strong>Enter values</strong>: Click any cell and type your data</li>
-                        <li><strong>Enter formulas</strong>: Start with = (e.g., =A1+B1, =SUM(A1:A10))</li>
+                        <li><strong>Enter formulas</strong>: Type = in a cell or formula bar (e.g., =A1+B1, =SUM(A1:A10))</li>
+                        <li><strong>Formula display</strong>: Cells show calculated values, formulas appear in the formula bar</li>
                         <li><strong>Navigate</strong>: Use arrow keys, Tab, or Enter to move between cells</li>
-                        <li><strong>Formula bar</strong>: Shows/edits the selected cell's content</li>
                         <li><strong>Auto-save</strong>: Your changes are saved automatically</li>
                     </ul>
                 </div>
@@ -529,10 +569,12 @@
                     <strong><i class="bi bi-lightbulb"></i> Tips:</strong>
                     <ul class="mb-0">
                         <li><strong>Templates are just starting points</strong> - Change any text, add products, modify labels</li>
-                        <li><strong>Formula cells</strong> have light blue background - Double-click to edit the formula</li>
+                        <li><strong>Formula cells</strong> have light blue background - Double-click to edit in formula bar</li>
+                        <li><strong>Cells display values only</strong> - Formulas are shown in the formula bar (fx) at the top</li>
                         <li>Use <code>=SUM(A1:A10)</code> to sum a range</li>
                         <li>Use <code>=A1*B1</code> to multiply cells</li>
                         <li>Use <code>=AVERAGE(A1:A10)</code> for average</li>
+                        <li><strong>Drag column borders</strong> to resize columns like in Excel</li>
                         <li><strong>Customize everything</strong> - Add your own rows, columns, and calculations</li>
                     </ul>
                 </div>

@@ -12,6 +12,11 @@ document.addEventListener('DOMContentLoaded', function() {
     updateProgressBar();
     setupAutoSave();
     setupComputationListeners();
+    
+    // Load Excel data if available
+    setTimeout(() => {
+        loadExcelData();
+    }, 500); // Wait for Excel component to initialize
 });
 
 // Load checkbox data from summary page
@@ -244,6 +249,15 @@ function nextPage() {
 function submitChecklist() {
     saveCurrentPageData();
     
+    // Get Excel spreadsheet data
+    let excelData = null;
+    if (window.excelSheet) {
+        excelData = window.excelSheet.exportData();
+    }
+    
+    // Add Excel data to checklist data
+    checklistData.excel_cashflow = excelData;
+    
     // Check if online
     if (!navigator.onLine) {
         // Save offline
@@ -416,3 +430,31 @@ function removeLoanRow(button) {
     button.closest('.loan-row').remove();
     updateLoanAmortizations();
 }
+
+
+// Load Excel data from saved checklist
+function loadExcelData() {
+    if (!window.excelSheet) {
+        console.log('Excel sheet not initialized yet');
+        return;
+    }
+    
+    // Check if there's saved data in checklistData
+    if (checklistData.excel_cashflow) {
+        try {
+            window.excelSheet.importData(checklistData.excel_cashflow);
+            console.log('Excel data loaded from checklist');
+        } catch (e) {
+            console.error('Error loading Excel data:', e);
+        }
+    }
+}
+
+// Auto-save Excel data periodically
+setInterval(() => {
+    if (window.excelSheet && currentPage === 2.5) {
+        const excelData = window.excelSheet.exportData();
+        checklistData.excel_cashflow = excelData;
+        sessionStorage.setItem('ci_checklist_data', JSON.stringify(checklistData));
+    }
+}, 10000); // Save every 10 seconds when on Excel page

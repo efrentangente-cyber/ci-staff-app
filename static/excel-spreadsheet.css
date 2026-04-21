@@ -145,6 +145,38 @@
     top: 0;
     z-index: 2;
     user-select: none;
+    position: relative;
+}
+
+.excel-col-header .col-name {
+    display: inline-block;
+    pointer-events: none;
+}
+
+/* Column Resize Handle */
+.col-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 10;
+    background: transparent;
+}
+
+.col-resize-handle:hover {
+    background: rgba(30, 58, 95, 0.2);
+    border-right: 2px solid #1e3a5f;
+}
+
+.excel-container.is-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+.excel-container.is-resizing * {
+    cursor: col-resize !important;
 }
 
 /* Row Headers */
@@ -281,7 +313,13 @@
 @media print {
     .excel-toolbar,
     .excel-formula-bar {
-        display: none;
+        display: none !important;
+    }
+
+    .excel-container {
+        border: none;
+        background: white;
+        page-break-inside: avoid;
     }
 
     .excel-grid {
@@ -290,16 +328,68 @@
     }
 
     .excel-table {
+        page-break-inside: auto;
+        border-collapse: collapse;
+        width: 100%;
+    }
+
+    .excel-table tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+
+    .excel-col-header,
+    .excel-row-header {
+        background: #f0f0f0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        border: 1px solid #000 !important;
+        font-size: 10px;
+        padding: 4px;
+    }
+
+    .excel-cell {
+        border: 1px solid #000 !important;
+        background: white !important;
         page-break-inside: avoid;
     }
 
     .cell-input {
-        border: none;
-        background: transparent;
+        border: none !important;
+        background: transparent !important;
+        outline: none !important;
+        font-size: 11px;
+        padding: 4px;
+        color: #000 !important;
     }
 
-    .cell-input:focus {
-        outline: none;
+    .cell-input:focus,
+    .cell-input.selected {
+        outline: none !important;
+        background: transparent !important;
+    }
+
+    /* Formula cells - print with light background */
+    .cell-input[data-has-formula="true"] {
+        background: #f0f7ff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Hide resize handles */
+    .col-resize-handle {
+        display: none !important;
+    }
+
+    /* Ensure proper page margins */
+    @page {
+        margin: 1cm;
+        size: A4 landscape;
+    }
+
+    /* Hide scrollbars */
+    .excel-grid::-webkit-scrollbar {
+        display: none;
     }
 }
 

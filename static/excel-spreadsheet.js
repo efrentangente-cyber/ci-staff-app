@@ -50,6 +50,9 @@ class ExcelSpreadsheet {
             <button class="btn btn-sm btn-success" onclick="excelSheet.saveData()">
                 <i class="bi bi-save"></i> Save
             </button>
+            <button class="btn btn-sm btn-info" onclick="excelSheet.printSpreadsheet()">
+                <i class="bi bi-printer"></i> Print
+            </button>
             <div class="toolbar-info">
                 <span id="cell-info">No cell selected</span>
             </div>
@@ -98,11 +101,18 @@ class ExcelSpreadsheet {
         cornerTh.className = 'excel-corner';
         headerRow.appendChild(cornerTh);
 
-        // Column headers
+        // Column headers with resize handles
         for (let col = 0; col < this.cols; col++) {
             const th = document.createElement('th');
             th.className = 'excel-col-header';
-            th.textContent = this.getColumnName(col);
+            th.dataset.col = col;
+            
+            const colName = this.getColumnName(col);
+            th.innerHTML = `
+                <span class="col-name">${colName}</span>
+                <div class="col-resize-handle" data-col="${col}"></div>
+            `;
+            
             headerRow.appendChild(th);
         }
         thead.appendChild(headerRow);
@@ -123,6 +133,7 @@ class ExcelSpreadsheet {
             for (let col = 0; col < this.cols; col++) {
                 const td = document.createElement('td');
                 td.className = 'excel-cell';
+                td.dataset.col = col;
                 
                 const cellRef = this.getCellReference(row, col);
                 td.dataset.cell = cellRef;
@@ -136,13 +147,15 @@ class ExcelSpreadsheet {
                 input.dataset.cell = cellRef;
                 input.placeholder = ''; // All cells are editable
 
-                // Load saved value
+                // Load saved value - DISPLAY ONLY (not formula)
                 if (this.cells[cellRef]) {
+                    // Always show the display value (calculated result), never the formula
                     input.value = this.cells[cellRef].display || this.cells[cellRef].value || '';
-                    // Mark formula cells visually
+                    
+                    // Mark formula cells visually but don't show formula in cell
                     if (this.cells[cellRef].formula) {
                         input.setAttribute('data-has-formula', 'true');
-                        input.title = 'Double-click to edit formula: ' + this.cells[cellRef].formula;
+                        input.title = 'Formula: ' + this.cells[cellRef].formula + ' (Double-click to edit)';
                     }
                 }
 
@@ -154,6 +167,76 @@ class ExcelSpreadsheet {
         table.appendChild(tbody);
         gridDiv.appendChild(table);
         this.container.appendChild(gridDiv);
+        
+        // Setup column resize functionality
+        this.setupColumnResize();
+    }
+
+    // Setup column resize functionality
+    setupColumnResize() {
+        const resizeHandles = this.container.querySelectorAll('.col-resize-handle');
+        
+        resizeHandles.forEach(handle => {
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+            let col = null;
+            
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                isResizing = true;
+                startX = e.pageX;
+                col = parseInt(handle.dataset.col);
+                
+                // Get current width
+                const th = handle.closest('th');
+                startWidth = th.offsetWidth;
+                
+                // Add resizing class
+                this.container.classList.add('is-resizing');
+                
+                // Mouse move handler
+                const onMouseMove = (e) => {
+                    if (!isResizing) return;
+                    
+                    const diff = e.pageX - startX;
+                    const newWidth = Math.max(50, startWidth + diff); // Min width 50px
+                    
+                    // Apply width to all cells in this column
+                    this.setColumnWidth(col, newWidth);
+                };
+                
+                // Mouse up handler
+                const onMouseUp = () => {
+                    isResizing = false;
+                    this.container.classList.remove('is-resizing');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+                
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        });
+    }
+
+    // Set column width
+    setColumnWidth(col, width) {
+        // Set width for header
+        const header = this.container.querySelector(`th.excel-col-header[data-col="${col}"]`);
+        if (header) {
+            header.style.width = width + 'px';
+            header.style.minWidth = width + 'px';
+        }
+        
+        // Set width for all cells in this column
+        const cells = this.container.querySelectorAll(`td.excel-cell[data-col="${col}"]`);
+        cells.forEach(cell => {
+            cell.style.width = width + 'px';
+            cell.style.minWidth = width + 'px';
+        });
     }
 
     // Setup event listeners
@@ -178,13 +261,18 @@ class ExcelSpreadsheet {
             }
         });
 
-        // Double-click to edit formula
+        // Double-click to edit formula (shows in formula bar, not in cell)
         this.container.addEventListener('dblclick', (e) => {
             if (e.target.classList.contains('cell-input')) {
                 const cellRef = e.target.dataset.cell;
                 if (this.cells[cellRef] && this.cells[cellRef].formula) {
-                    e.target.value = this.cells[cellRef].formula;
-                    e.target.select();
+                    // Show formula in formula bar
+                    this.formulaBar.value = this.cells[cellRef].formula;
+                    this.formulaBar.focus();
+                    this.formulaBar.select();
+                    
+                    // Keep display value in cell (don't change it)
+                    // Cell still shows the calculated result
                 }
             }
         });
@@ -201,9 +289,10 @@ class ExcelSpreadsheet {
         input.classList.add('selected');
         this.selectedCell = input;
 
-        // Update formula bar
+        // Update formula bar - show formula if exists, otherwise show value
         const cellRef = input.dataset.cell;
         if (this.cells[cellRef]) {
+            // Show formula in formula bar (if it has one)
             this.formulaBar.value = this.cells[cellRef].formula || this.cells[cellRef].value || '';
         } else {
             this.formulaBar.value = input.value;
@@ -228,15 +317,22 @@ class ExcelSpreadsheet {
             this.cells[cellRef].formula = value;
             this.cells[cellRef].value = value;
             this.evaluateFormula(cellRef);
+            
+            // Update input to show calculated value (not formula)
+            input.value = this.cells[cellRef].display || '#ERROR!';
+            input.setAttribute('data-has-formula', 'true');
+            input.title = 'Formula: ' + value + ' (Double-click to edit)';
         } else {
             // It's a plain value
             this.cells[cellRef].value = value;
             this.cells[cellRef].formula = null;
             this.cells[cellRef].display = value;
+            input.removeAttribute('data-has-formula');
+            input.title = '';
         }
 
         // Update formula bar
-        this.formulaBar.value = value;
+        this.formulaBar.value = this.cells[cellRef].formula || value;
 
         // Recalculate dependent cells
         this.recalculateAll();
@@ -250,8 +346,37 @@ class ExcelSpreadsheet {
         if (!this.selectedCell) return;
 
         const value = this.formulaBar.value;
-        this.selectedCell.value = value;
-        this.handleCellInput(this.selectedCell);
+        const cellRef = this.selectedCell.dataset.cell;
+        
+        if (!this.cells[cellRef]) {
+            this.cells[cellRef] = {};
+        }
+        
+        if (value.startsWith('=')) {
+            // It's a formula
+            this.cells[cellRef].formula = value;
+            this.cells[cellRef].value = value;
+            this.evaluateFormula(cellRef);
+            
+            // Display calculated value in cell (not formula)
+            this.selectedCell.value = this.cells[cellRef].display || '#ERROR!';
+            this.selectedCell.setAttribute('data-has-formula', 'true');
+            this.selectedCell.title = 'Formula: ' + value + ' (Double-click to edit)';
+        } else {
+            // It's a plain value
+            this.cells[cellRef].value = value;
+            this.cells[cellRef].formula = null;
+            this.cells[cellRef].display = value;
+            this.selectedCell.value = value;
+            this.selectedCell.removeAttribute('data-has-formula');
+            this.selectedCell.title = '';
+        }
+        
+        // Recalculate dependent cells
+        this.recalculateAll();
+        
+        // Auto-save
+        this.saveData();
     }
 
     // Evaluate formula
@@ -698,6 +823,15 @@ class ExcelSpreadsheet {
             this.cells[cellRef].display = value;
             this.cells[cellRef].formula = null;
         }
+    }
+
+    // Print spreadsheet
+    printSpreadsheet() {
+        // Save current state
+        this.saveData();
+        
+        // Trigger browser print dialog
+        window.print();
     }
 }
 
