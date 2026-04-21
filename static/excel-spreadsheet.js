@@ -10,6 +10,8 @@ class ExcelSpreadsheet {
         this.mergedCells = {}; // Store merged cell ranges: { 'A1': { colspan: 2, rowspan: 1 } }
         this.selectedCell = null;
         this.selectedRange = []; // For range selection
+        this.isSelecting = false; // Track if user is dragging to select
+        this.selectionStart = null; // Starting cell for drag selection
         this.formulaBar = null;
         this.init();
     }
@@ -40,25 +42,37 @@ class ExcelSpreadsheet {
         const toolbar = document.createElement('div');
         toolbar.className = 'excel-toolbar';
         toolbar.innerHTML = `
-            <button class="btn btn-sm btn-primary" onclick="excelSheet.addRow()">
+            <button class="btn btn-sm btn-primary" onclick="excelSheet.addRow()" title="Add Row">
                 <i class="bi bi-plus"></i> Add Row
             </button>
-            <button class="btn btn-sm btn-primary" onclick="excelSheet.addColumn()">
+            <button class="btn btn-sm btn-primary" onclick="excelSheet.addColumn()" title="Add Column">
                 <i class="bi bi-plus"></i> Add Column
             </button>
-            <button class="btn btn-sm btn-warning" onclick="excelSheet.mergeCells()">
-                <i class="bi bi-border-outer"></i> Merge Cells
+            <div class="toolbar-divider"></div>
+            <button class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('left')" title="Align Left">
+                <i class="bi bi-text-left"></i>
             </button>
-            <button class="btn btn-sm btn-warning" onclick="excelSheet.unmergeCells()">
+            <button class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('center')" title="Align Center">
+                <i class="bi bi-text-center"></i>
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('right')" title="Align Right">
+                <i class="bi bi-text-right"></i>
+            </button>
+            <div class="toolbar-divider"></div>
+            <button class="btn btn-sm btn-warning" onclick="excelSheet.mergeCells()" title="Merge Cells">
+                <i class="bi bi-border-outer"></i> Merge
+            </button>
+            <button class="btn btn-sm btn-warning" onclick="excelSheet.unmergeCells()" title="Unmerge Cells">
                 <i class="bi bi-border-inner"></i> Unmerge
             </button>
-            <button class="btn btn-sm btn-secondary" onclick="excelSheet.clearAll()">
-                <i class="bi bi-trash"></i> Clear All
+            <div class="toolbar-divider"></div>
+            <button class="btn btn-sm btn-danger" onclick="excelSheet.clearAll()" title="Clear All">
+                <i class="bi bi-trash"></i> Clear
             </button>
-            <button class="btn btn-sm btn-success" onclick="excelSheet.saveData()">
+            <button class="btn btn-sm btn-success" onclick="excelSheet.saveData()" title="Save">
                 <i class="bi bi-save"></i> Save
             </button>
-            <button class="btn btn-sm btn-info" onclick="excelSheet.printSpreadsheet()">
+            <button class="btn btn-sm btn-info" onclick="excelSheet.printSpreadsheet()" title="Print">
                 <i class="bi bi-printer"></i> Print
             </button>
             <div class="toolbar-info">
@@ -134,7 +148,11 @@ class ExcelSpreadsheet {
             // Row header
             const rowTh = document.createElement('th');
             rowTh.className = 'excel-row-header';
-            rowTh.textContent = row + 1;
+            rowTh.dataset.row = row;
+            rowTh.innerHTML = `
+                <span class="row-name">${row + 1}</span>
+                <div class="row-resize-handle" data-row="${row}"></div>
+            `;
             tr.appendChild(rowTh);
 
             // Data cells
@@ -182,6 +200,11 @@ class ExcelSpreadsheet {
                     if (this.cells[cellRef].style) {
                         input.classList.add('cell-style-' + this.cells[cellRef].style);
                     }
+                    
+                    // Apply text alignment
+                    if (this.cells[cellRef].align) {
+                        input.style.textAlign = this.cells[cellRef].align;
+                    }
                 }
 
                 td.appendChild(input);
@@ -195,6 +218,9 @@ class ExcelSpreadsheet {
         
         // Setup column resize functionality
         this.setupColumnResize();
+        
+        // Setup row resize functionality
+        this.setupRowResize();
     }
 
     // Setup column resize functionality
@@ -264,17 +290,107 @@ class ExcelSpreadsheet {
         });
     }
 
+    // Setup row resize functionality
+    setupRowResize() {
+        const resizeHandles = this.container.querySelectorAll('.row-resize-handle');
+        
+        resizeHandles.forEach(handle => {
+            let isResizing = false;
+            let startY = 0;
+            let startHeight = 0;
+            let row = null;
+            
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                isResizing = true;
+                startY = e.pageY;
+                row = parseInt(handle.dataset.row);
+                
+                // Get current height
+                const th = handle.closest('th');
+                const tr = th.closest('tr');
+                startHeight = tr.offsetHeight;
+                
+                // Add resizing classes
+                this.container.classList.add('is-resizing', 'row-resizing');
+                
+                // Mouse move handler
+                const onMouseMove = (e) => {
+                    if (!isResizing) return;
+                    
+                    const diff = e.pageY - startY;
+                    const newHeight = Math.max(25, startHeight + diff); // Min height 25px
+                    
+                    // Apply height to this row
+                    this.setRowHeight(row, newHeight);
+                };
+                
+                // Mouse up handler
+                const onMouseUp = () => {
+                    isResizing = false;
+                    this.container.classList.remove('is-resizing', 'row-resizing');
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+                
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        });
+    }
+
+    // Set row height
+    setRowHeight(row, height) {
+        // Find the row in tbody (skip thead)
+        const tbody = this.container.querySelector('tbody');
+        const tr = tbody.querySelectorAll('tr')[row];
+        
+        if (tr) {
+            tr.style.height = height + 'px';
+            
+            // Set height for all cells in this row
+            const cells = tr.querySelectorAll('td, th');
+            cells.forEach(cell => {
+                cell.style.height = height + 'px';
+            });
+        }
+    }
+
     // Setup event listeners
     setupEventListeners() {
-        // Cell click and input events
-        this.container.addEventListener('click', (e) => {
+        // Mouse down - start selection
+        this.container.addEventListener('mousedown', (e) => {
             if (e.target.classList.contains('cell-input')) {
-                if (e.shiftKey && this.selectedCell) {
-                    // Range selection with Shift
-                    this.selectRange(this.selectedCell, e.target);
-                } else {
-                    this.selectCell(e.target);
-                }
+                this.isSelecting = true;
+                this.selectionStart = e.target;
+                this.selectCell(e.target);
+                this.container.classList.add('is-selecting');
+                e.preventDefault(); // Prevent text selection
+            }
+        });
+
+        // Mouse move - extend selection
+        this.container.addEventListener('mousemove', (e) => {
+            if (this.isSelecting && e.target.classList.contains('cell-input')) {
+                this.selectRange(this.selectionStart, e.target);
+            }
+        });
+
+        // Mouse up - end selection
+        this.container.addEventListener('mouseup', (e) => {
+            if (this.isSelecting) {
+                this.isSelecting = false;
+                this.container.classList.remove('is-selecting');
+            }
+        });
+
+        // Mouse leave - end selection if dragging outside
+        this.container.addEventListener('mouseleave', (e) => {
+            if (this.isSelecting) {
+                this.isSelecting = false;
+                this.container.classList.remove('is-selecting');
             }
         });
 
@@ -616,6 +732,7 @@ class ExcelSpreadsheet {
     addRow() {
         this.rows++;
         this.render();
+        this.recalculateAll();
         this.saveData();
     }
 
@@ -623,6 +740,41 @@ class ExcelSpreadsheet {
     addColumn() {
         this.cols++;
         this.render();
+        this.recalculateAll();
+        this.saveData();
+    }
+
+    // Align text in selected cells
+    alignText(alignment) {
+        if (this.selectedRange.length > 0) {
+            // Align all cells in range
+            this.selectedRange.forEach(cellRef => {
+                const input = document.querySelector(`[data-cell="${cellRef}"]`);
+                if (input) {
+                    input.style.textAlign = alignment;
+                    
+                    // Store alignment in cell data
+                    if (!this.cells[cellRef]) {
+                        this.cells[cellRef] = {};
+                    }
+                    this.cells[cellRef].align = alignment;
+                }
+            });
+        } else if (this.selectedCell) {
+            // Align single selected cell
+            const cellRef = this.selectedCell.dataset.cell;
+            this.selectedCell.style.textAlign = alignment;
+            
+            // Store alignment in cell data
+            if (!this.cells[cellRef]) {
+                this.cells[cellRef] = {};
+            }
+            this.cells[cellRef].align = alignment;
+        } else {
+            alert('Please select a cell or range to align');
+            return;
+        }
+        
         this.saveData();
     }
 
@@ -630,6 +782,7 @@ class ExcelSpreadsheet {
     clearAll() {
         if (confirm('Clear all data? This cannot be undone.')) {
             this.cells = {};
+            this.mergedCells = {};
             this.render();
             this.saveData();
         }

@@ -56,12 +56,19 @@
     border-bottom: 1px solid #dee2e6;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 5px;
     flex-wrap: wrap;
 }
 
 .excel-toolbar .btn {
     font-size: 13px;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: #dee2e6;
+    margin: 0 5px;
 }
 
 .toolbar-info {
@@ -179,6 +186,14 @@
     cursor: col-resize !important;
 }
 
+.excel-container.is-resizing.row-resizing {
+    cursor: row-resize !important;
+}
+
+.excel-container.is-resizing.row-resizing * {
+    cursor: row-resize !important;
+}
+
 /* Row Headers */
 .excel-row-header {
     background: #e0e0e0;
@@ -194,6 +209,29 @@
     left: 0;
     z-index: 1;
     user-select: none;
+    position: relative;
+}
+
+.excel-row-header .row-name {
+    display: inline-block;
+    pointer-events: none;
+}
+
+/* Row Resize Handle */
+.row-resize-handle {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 8px;
+    cursor: row-resize;
+    z-index: 10;
+    background: transparent;
+}
+
+.row-resize-handle:hover {
+    background: rgba(30, 58, 95, 0.2);
+    border-bottom: 2px solid #1e3a5f;
 }
 
 /* Data Cells */
@@ -218,7 +256,8 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: transparent;
     outline: none;
-    cursor: text;
+    cursor: cell;
+    user-select: none; /* Prevent text selection during drag */
 }
 
 .cell-input:hover {
@@ -231,6 +270,7 @@
     z-index: 10;
     position: relative;
     background: white;
+    user-select: text; /* Allow text selection when focused */
 }
 
 .cell-input.selected {
@@ -244,6 +284,17 @@
     background: #e3f2fd !important;
     outline: 1px solid #1e3a5f;
     outline-offset: -1px;
+}
+
+/* Selecting state - change cursor */
+.excel-container.is-selecting {
+    cursor: cell;
+    user-select: none;
+}
+
+.excel-container.is-selecting .cell-input {
+    cursor: cell;
+    pointer-events: all;
 }
 
 /* Merged cells */
