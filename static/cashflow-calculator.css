@@ -1,0 +1,308 @@
+/* Cash Flow Calculator - Excel-like Spreadsheet Styling */
+
+.cashflow-container {
+    background: white;
+    padding: 30px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.cashflow-header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #1e3a5f;
+}
+
+.cashflow-header h4 {
+    color: #1e3a5f;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.cashflow-header small {
+    color: #6c757d;
+}
+
+.template-selector {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+}
+
+.template-selector h5 {
+    color: #1e3a5f;
+    margin-bottom: 15px;
+}
+
+.template-card {
+    background: white;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-align: center;
+}
+
+.template-card:hover {
+    border-color: #1e3a5f;
+    box-shadow: 0 4px 12px rgba(30, 58, 95, 0.15);
+    transform: translateY(-2px);
+}
+
+.template-card.selected {
+    border-color: #1e3a5f;
+    background: #f0f7ff;
+}
+
+.template-card i {
+    font-size: 48px;
+    color: #1e3a5f;
+    margin-bottom: 10px;
+}
+
+.template-card h6 {
+    color: #1e3a5f;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.template-card p {
+    color: #6c757d;
+    font-size: 12px;
+    margin: 0;
+}
+
+.cashflow-section {
+    margin-bottom: 30px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    background: #fafafa;
+}
+
+.cashflow-section .section-title {
+    font-weight: bold;
+    font-size: 14px;
+    color: #1e3a5f;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #1e3a5f;
+}
+
+.cashflow-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.cashflow-table thead {
+    background: #1e3a5f;
+    color: white;
+}
+
+.cashflow-table th {
+    padding: 12px 8px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid #dee2e6;
+}
+
+.cashflow-table td {
+    padding: 4px;
+    border: 1px solid #dee2e6;
+    background: white;
+}
+
+.cashflow-table input {
+    width: 100%;
+    border: none;
+    padding: 8px;
+    font-size: 13px;
+    background: transparent;
+}
+
+.cashflow-table input:focus {
+    outline: 2px solid #1e3a5f;
+    background: #f0f7ff;
+}
+
+.cashflow-table input[readonly] {
+    background: #f0f0f0;
+    font-weight: bold;
+    color: #1e3a5f;
+}
+
+.cashflow-table input[type="number"] {
+    text-align: right;
+}
+
+.cashflow-table input[type="text"] {
+    text-align: left;
+}
+
+.cashflow-table tr:hover {
+    background: #f8f9fa;
+}
+
+.cost-summary {
+    background: white;
+    padding: 15px;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+.cost-summary table {
+    width: 100%;
+    max-width: 500px;
+    margin-left: auto;
+}
+
+.cost-summary td {
+    padding: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.cost-summary input {
+    text-align: right;
+    font-weight: bold;
+}
+
+.cashflow-totals {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    border: 3px solid #1e3a5f;
+    box-shadow: 0 4px 12px rgba(30, 58, 95, 0.15);
+}
+
+.cashflow-totals table {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.cashflow-totals td {
+    padding: 12px;
+    font-size: 14px;
+}
+
+.cashflow-totals input {
+    text-align: right;
+    border: none;
+    background: transparent;
+}
+
+.custom-builder {
+    background: #e7f3ff;
+    padding: 20px;
+    border-radius: 8px;
+    border: 2px dashed #1e3a5f;
+}
+
+.custom-builder h5 {
+    color: #1e3a5f;
+    margin-bottom: 10px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .cashflow-container {
+        padding: 15px;
+    }
+
+    .cashflow-table {
+        font-size: 11px;
+    }
+
+    .cashflow-table th,
+    .cashflow-table td {
+        padding: 4px 2px;
+    }
+
+    .cashflow-table input {
+        padding: 4px;
+        font-size: 11px;
+    }
+
+    .template-card {
+        margin-bottom: 10px;
+    }
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    .cashflow-container {
+        padding: 0;
+    }
+
+    .cashflow-table {
+        page-break-inside: avoid;
+    }
+
+    .cashflow-section {
+        page-break-inside: avoid;
+    }
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.cashflow-section {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Excel-like cell selection */
+.cashflow-table input:focus {
+    outline: 2px solid #1e3a5f;
+    outline-offset: -2px;
+    z-index: 1;
+    position: relative;
+}
+
+/* Calculated field styling */
+.cashflow-table input[readonly] {
+    cursor: not-allowed;
+    user-select: none;
+}
+
+/* Button styling */
+.cashflow-section .btn {
+    margin-top: 10px;
+}
+
+/* Section type indicators */
+.cashflow-section[data-section-type="income"] {
+    border-left: 4px solid #28a745;
+}
+
+.cashflow-section[data-section-type="expense"] {
+    border-left: 4px solid #dc3545;
+}
+
+/* Total row highlighting */
+.cashflow-totals tr {
+    transition: all 0.3s;
+}
+
+.cashflow-totals tr:hover {
+    transform: scale(1.02);
+}

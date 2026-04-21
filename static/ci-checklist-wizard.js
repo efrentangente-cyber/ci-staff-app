@@ -1,7 +1,7 @@
 // CI Checklist Wizard JavaScript
 
 let currentPage = 1;
-const totalPages = 5;
+const totalPages = 6; // Updated to include Cash Flow page (2.5)
 let checklistData = {};
 
 // Initialize wizard
@@ -119,7 +119,8 @@ function showVerificationNotification(data) {
 
 // Navigate to specific page
 function goToPage(pageNumber) {
-    if (pageNumber < 1 || pageNumber > totalPages) return;
+    // Convert to string to handle decimal pages like 2.5
+    const pageStr = String(pageNumber);
     
     // Save current page data
     saveCurrentPageData();
@@ -130,7 +131,7 @@ function goToPage(pageNumber) {
     });
     
     // Show target page
-    const targetPage = document.querySelector(`.wizard-page[data-page="${pageNumber}"]`);
+    const targetPage = document.querySelector(`.wizard-page[data-page="${pageStr}"]`);
     if (targetPage) {
         targetPage.classList.add('active');
         currentPage = pageNumber;
@@ -219,14 +220,22 @@ function setupAutoSave() {
 
 // Previous page
 function previousPage() {
-    if (currentPage > 1) {
+    if (currentPage === 2.5) {
+        goToPage(2);
+    } else if (currentPage === 3) {
+        goToPage(2.5);
+    } else if (currentPage > 1) {
         goToPage(currentPage - 1);
     }
 }
 
 // Next page
 function nextPage() {
-    if (currentPage < totalPages) {
+    if (currentPage === 2) {
+        goToPage(2.5);
+    } else if (currentPage === 2.5) {
+        goToPage(3);
+    } else if (currentPage < 5) {
         goToPage(currentPage + 1);
     }
 }

@@ -1,0 +1,402 @@
+/* Excel-like Spreadsheet Styling */
+
+.excel-container {
+    background: #f0f0f0;
+    border: 1px solid #c0c0c0;
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Toolbar */
+.excel-toolbar {
+    background: #f8f9fa;
+    padding: 10px;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.excel-toolbar .btn {
+    font-size: 13px;
+}
+
+.toolbar-info {
+    margin-left: auto;
+    font-size: 13px;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+/* Formula Bar */
+.excel-formula-bar {
+    background: white;
+    padding: 8px 10px;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.formula-label {
+    font-weight: bold;
+    color: #1e3a5f;
+    font-size: 14px;
+    font-style: italic;
+    margin: 0;
+    padding: 0 10px;
+    border-right: 1px solid #dee2e6;
+}
+
+.formula-input {
+    flex: 1;
+    border: 1px solid #c0c0c0;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+    border-radius: 3px;
+}
+
+.formula-input:focus {
+    outline: 2px solid #1e3a5f;
+    border-color: #1e3a5f;
+}
+
+/* Grid Container */
+.excel-grid {
+    overflow: auto;
+    max-height: 600px;
+    background: white;
+}
+
+/* Excel Table */
+.excel-table {
+    border-collapse: collapse;
+    width: 100%;
+    background: white;
+}
+
+/* Corner Cell */
+.excel-corner {
+    background: #e0e0e0;
+    border: 1px solid #c0c0c0;
+    width: 40px;
+    min-width: 40px;
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 3;
+}
+
+/* Column Headers */
+.excel-col-header {
+    background: #e0e0e0;
+    border: 1px solid #c0c0c0;
+    padding: 6px 8px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 12px;
+    color: #333;
+    min-width: 80px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    user-select: none;
+}
+
+/* Row Headers */
+.excel-row-header {
+    background: #e0e0e0;
+    border: 1px solid #c0c0c0;
+    padding: 6px 8px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 12px;
+    color: #333;
+    width: 40px;
+    min-width: 40px;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    user-select: none;
+}
+
+/* Data Cells */
+.excel-cell {
+    border: 1px solid #d0d0d0;
+    padding: 0;
+    background: white;
+    position: relative;
+}
+
+.excel-cell:hover {
+    background: #f8f9fa;
+}
+
+/* Cell Input */
+.cell-input {
+    width: 100%;
+    height: 100%;
+    border: none;
+    padding: 6px 8px;
+    font-size: 13px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: transparent;
+    outline: none;
+}
+
+.cell-input:focus {
+    outline: 2px solid #1e3a5f;
+    outline-offset: -2px;
+    z-index: 10;
+    position: relative;
+    background: white;
+}
+
+.cell-input.selected {
+    outline: 2px solid #1e3a5f;
+    outline-offset: -2px;
+    background: white;
+}
+
+/* Number cells - right align */
+.cell-input[type="number"],
+.cell-input:not(:placeholder-shown):not([value=""]) {
+    text-align: right;
+}
+
+/* Formula cells - special styling */
+.cell-input[data-formula="true"] {
+    background: #f0f7ff;
+}
+
+/* Error cells */
+.cell-input[value*="#ERROR"] {
+    background: #ffe6e6;
+    color: #d32f2f;
+    font-weight: bold;
+}
+
+/* Scrollbar styling */
+.excel-grid::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.excel-grid::-webkit-scrollbar-track {
+    background: #f0f0f0;
+}
+
+.excel-grid::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    border-radius: 6px;
+}
+
+.excel-grid::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .excel-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .toolbar-info {
+        margin-left: 0;
+        text-align: center;
+    }
+
+    .excel-grid {
+        max-height: 400px;
+    }
+
+    .excel-col-header,
+    .excel-row-header {
+        font-size: 11px;
+        padding: 4px 6px;
+    }
+
+    .cell-input {
+        font-size: 12px;
+        padding: 4px 6px;
+    }
+}
+
+/* Print styles */
+@media print {
+    .excel-toolbar,
+    .excel-formula-bar {
+        display: none;
+    }
+
+    .excel-grid {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .excel-table {
+        page-break-inside: avoid;
+    }
+
+    .cell-input {
+        border: none;
+        background: transparent;
+    }
+
+    .cell-input:focus {
+        outline: none;
+    }
+}
+
+/* Selection highlight */
+.excel-cell.selecting {
+    background: #e3f2fd;
+}
+
+/* Copy/paste indicator */
+.excel-cell.copied {
+    animation: copyFlash 0.5s;
+}
+
+@keyframes copyFlash {
+    0%, 100% { background: white; }
+    50% { background: #c8e6c9; }
+}
+
+/* Loading state */
+.excel-container.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.excel-container.loading::after {
+    content: 'Calculating...';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    z-index: 1000;
+}
+
+/* Cell reference tooltip */
+.cell-input:hover::after {
+    content: attr(data-cell);
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+}
+
+/* Formula autocomplete (future enhancement) */
+.formula-autocomplete {
+    position: absolute;
+    background: white;
+    border: 1px solid #c0c0c0;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+.formula-autocomplete-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.formula-autocomplete-item:hover {
+    background: #e3f2fd;
+}
+
+.formula-autocomplete-item.selected {
+    background: #1e3a5f;
+    color: white;
+}
+
+/* Context menu (future enhancement) */
+.excel-context-menu {
+    position: absolute;
+    background: white;
+    border: 1px solid #c0c0c0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-radius: 4px;
+    padding: 4px 0;
+    z-index: 1000;
+    min-width: 150px;
+}
+
+.excel-context-menu-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.excel-context-menu-item:hover {
+    background: #e3f2fd;
+}
+
+.excel-context-menu-divider {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 4px 0;
+}
+
+/* Freeze panes indicator */
+.excel-table.freeze-rows .excel-row-header,
+.excel-table.freeze-cols .excel-col-header {
+    box-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Cell validation error */
+.cell-input.validation-error {
+    border: 2px solid #d32f2f !important;
+    background: #ffebee;
+}
+
+/* Cell comment indicator */
+.excel-cell.has-comment::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 6px 6px 0;
+    border-color: transparent #d32f2f transparent transparent;
+}
+
+/* Conditional formatting */
+.cell-input.highlight-positive {
+    background: #c8e6c9;
+    color: #2e7d32;
+}
+
+.cell-input.highlight-negative {
+    background: #ffcdd2;
+    color: #c62828;
+}
+
+.cell-input.highlight-warning {
+    background: #fff9c4;
+    color: #f57f17;
+}

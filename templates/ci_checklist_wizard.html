@@ -3,6 +3,7 @@
 
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
 
 <!-- Include Offline Indicator -->
 {% include 'offline_indicator.html' %}
@@ -118,11 +119,12 @@
 <div class="container-fluid py-3">
     <!-- Fixed Progress Navigation -->
     <div class="progress-nav no-print">
-        <button class="page-btn active" onclick="goToPage(1)">1</button>
-        <button class="page-btn" onclick="goToPage(2)">2</button>
-        <button class="page-btn" onclick="goToPage(3)">3</button>
-        <button class="page-btn" onclick="goToPage(4)">4</button>
-        <button class="page-btn" onclick="goToPage(5)">5</button>
+        <button class="page-btn active" onclick="goToPage(1)" title="Personal Data">1</button>
+        <button class="page-btn" onclick="goToPage(2)" title="Credit & Membership">2</button>
+        <button class="page-btn" onclick="goToPage(2.5)" title="Cash Flow"><i class="bi bi-calculator"></i></button>
+        <button class="page-btn" onclick="goToPage(3)" title="Computation">3</button>
+        <button class="page-btn" onclick="goToPage(4)" title="Capacity">4</button>
+        <button class="page-btn" onclick="goToPage(5)" title="Recommendations">5</button>
     </div>
 
     <form id="ciChecklistForm" method="POST" action="{{ url_for('submit_ci_checklist', id=application.id) }}" enctype="multipart/form-data">
@@ -477,6 +479,49 @@
                     </button>
                     <button type="button" class="btn btn-primary" onclick="nextPage()">
                         Next <i class="bi bi-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE 2.5: CASH FLOW STATEMENT (Real Excel-like Spreadsheet) -->
+        <div class="wizard-page" data-page="2.5">
+            <div class="paper-form">
+                <div class="form-header">
+                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <small>CASH FLOW STATEMENT - Excel Spreadsheet</small>
+                </div>
+
+                <div class="alert alert-info no-print">
+                    <h6><i class="bi bi-info-circle"></i> How to use this Excel spreadsheet:</h6>
+                    <ul class="mb-0">
+                        <li><strong>Enter values</strong>: Click any cell and type</li>
+                        <li><strong>Enter formulas</strong>: Start with = (e.g., =A1+B1, =SUM(A1:A10))</li>
+                        <li><strong>Navigate</strong>: Use arrow keys or Tab</li>
+                        <li><strong>Formula bar</strong>: Shows/edits the selected cell's formula</li>
+                        <li><strong>Supported functions</strong>: SUM, AVERAGE, +, -, *, /, ()</li>
+                    </ul>
+                </div>
+
+                <!-- Excel Spreadsheet Container -->
+                <div id="excel-spreadsheet"></div>
+
+                <div class="alert alert-success mt-3 no-print">
+                    <strong><i class="bi bi-lightbulb"></i> Tips:</strong>
+                    <ul class="mb-0">
+                        <li>Use <code>=SUM(A1:A10)</code> to sum a range</li>
+                        <li>Use <code>=A1*B1</code> to multiply cells</li>
+                        <li>Use <code>=AVERAGE(A1:A10)</code> for average</li>
+                        <li>Double-click a cell to edit its formula</li>
+                    </ul>
+                </div>
+
+                <div class="text-center mt-4 no-print">
+                    <button type="button" class="btn btn-secondary" onclick="previousPage()">
+                        <i class="bi bi-arrow-left"></i> Previous
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="nextPage()">
+                        Next to Computation <i class="bi bi-arrow-right"></i>
                     </button>
                 </div>
             </div>
@@ -1106,6 +1151,7 @@
     </form>
 </div>
 
+<script src="{{ url_for('static', filename='excel-spreadsheet.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}"></script>
 <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
