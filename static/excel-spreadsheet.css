@@ -239,14 +239,93 @@
     background: white;
 }
 
+/* Range selection */
+.cell-input.range-selected {
+    background: #e3f2fd !important;
+    outline: 1px solid #1e3a5f;
+    outline-offset: -1px;
+}
+
+/* Merged cells */
+.excel-cell.merged-cell {
+    background: #f8f9fa;
+}
+
+.excel-cell.merged-cell .cell-input {
+    text-align: center;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+/* Style for header cells (first few rows) */
+.excel-table tbody tr:nth-child(1) .cell-input,
+.excel-table tbody tr:nth-child(2) .cell-input,
+.excel-table tbody tr:nth-child(3) .cell-input,
+.excel-table tbody tr:nth-child(4) .cell-input {
+    font-weight: 600;
+    background: #f8f9fa;
+    color: #000;
+}
+
+/* Style for section headers (merged cells with text) */
+.merged-cell .cell-input {
+    background: #f8f9fa !important;
+    color: #000 !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Style for total/summary rows */
+.cell-input[value*="TOTAL"],
+.cell-input[value*="Total"],
+.cell-input[value*="GROSS"],
+.cell-input[value*="NET"] {
+    font-weight: 700;
+    background: #f8f9fa !important;
+    color: #000 !important;
+    border-bottom: 3px double #000;
+}
+
 /* Formula cells - special styling */
 .cell-input[data-has-formula="true"] {
-    background: #f0f7ff;
+    background: #f8f9fa;
     font-weight: 500;
+    color: #000;
 }
 
 .cell-input[data-has-formula="true"]:hover {
-    background: #e3f2fd;
+    background: #e9ecef;
+}
+
+/* Custom cell styles for templates */
+.cell-input.cell-style-header-main {
+    background: #f8f9fa !important;
+    color: #000 !important;
+    font-weight: 700;
+    font-size: 14px;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: 2px solid #000 !important;
+}
+
+.cell-input.cell-style-header-section {
+    background: #f8f9fa !important;
+    color: #000 !important;
+    font-weight: 600;
+    font-size: 13px;
+    text-align: center;
+    text-transform: uppercase;
+    border: 1px solid #000 !important;
+}
+
+.cell-input.cell-style-summary {
+    background: #f8f9fa !important;
+    color: #000 !important;
+    font-weight: 700;
+    font-size: 13px;
+    border-bottom: 3px double #000 !important;
 }
 
 /* Number cells - right align */
@@ -371,7 +450,8 @@
 
     /* Formula cells - print with light background */
     .cell-input[data-has-formula="true"] {
-        background: #f0f7ff !important;
+        background: #f8f9fa !important;
+        color: #000 !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }

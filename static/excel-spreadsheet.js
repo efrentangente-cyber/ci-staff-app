@@ -7,7 +7,9 @@ class ExcelSpreadsheet {
         this.rows = rows;
         this.cols = cols;
         this.cells = {}; // Store cell data: { 'A1': { value: '100', formula: '=B1*2', display: '200' } }
+        this.mergedCells = {}; // Store merged cell ranges: { 'A1': { colspan: 2, rowspan: 1 } }
         this.selectedCell = null;
+        this.selectedRange = []; // For range selection
         this.formulaBar = null;
         this.init();
     }
@@ -43,6 +45,12 @@ class ExcelSpreadsheet {
             </button>
             <button class="btn btn-sm btn-primary" onclick="excelSheet.addColumn()">
                 <i class="bi bi-plus"></i> Add Column
+            </button>
+            <button class="btn btn-sm btn-warning" onclick="excelSheet.mergeCells()">
+                <i class="bi bi-border-outer"></i> Merge Cells
+            </button>
+            <button class="btn btn-sm btn-warning" onclick="excelSheet.unmergeCells()">
+                <i class="bi bi-border-inner"></i> Unmerge
             </button>
             <button class="btn btn-sm btn-secondary" onclick="excelSheet.clearAll()">
                 <i class="bi bi-trash"></i> Clear All
@@ -131,14 +139,26 @@ class ExcelSpreadsheet {
 
             // Data cells
             for (let col = 0; col < this.cols; col++) {
+                const cellRef = this.getCellReference(row, col);
+                
+                // Check if this cell is hidden by a merge
+                if (this.isCellHidden(cellRef)) {
+                    continue;
+                }
+                
                 const td = document.createElement('td');
                 td.className = 'excel-cell';
                 td.dataset.col = col;
-                
-                const cellRef = this.getCellReference(row, col);
                 td.dataset.cell = cellRef;
                 td.dataset.row = row;
                 td.dataset.col = col;
+
+                // Apply merge if exists
+                if (this.mergedCells[cellRef]) {
+                    td.colSpan = this.mergedCells[cellRef].colspan || 1;
+                    td.rowSpan = this.mergedCells[cellRef].rowspan || 1;
+                    td.classList.add('merged-cell');
+                }
 
                 // Create input
                 const input = document.createElement('input');
@@ -156,6 +176,11 @@ class ExcelSpreadsheet {
                     if (this.cells[cellRef].formula) {
                         input.setAttribute('data-has-formula', 'true');
                         input.title = 'Formula: ' + this.cells[cellRef].formula + ' (Double-click to edit)';
+                    }
+                    
+                    // Apply custom styling
+                    if (this.cells[cellRef].style) {
+                        input.classList.add('cell-style-' + this.cells[cellRef].style);
                     }
                 }
 
@@ -244,7 +269,12 @@ class ExcelSpreadsheet {
         // Cell click and input events
         this.container.addEventListener('click', (e) => {
             if (e.target.classList.contains('cell-input')) {
-                this.selectCell(e.target);
+                if (e.shiftKey && this.selectedCell) {
+                    // Range selection with Shift
+                    this.selectRange(this.selectedCell, e.target);
+                } else {
+                    this.selectCell(e.target);
+                }
             }
         });
 
@@ -610,7 +640,8 @@ class ExcelSpreadsheet {
         const data = {
             rows: this.rows,
             cols: this.cols,
-            cells: this.cells
+            cells: this.cells,
+            mergedCells: this.mergedCells
         };
         sessionStorage.setItem('excel_data', JSON.stringify(data));
     }
@@ -624,6 +655,7 @@ class ExcelSpreadsheet {
                 this.rows = data.rows || this.rows;
                 this.cols = data.cols || this.cols;
                 this.cells = data.cells || {};
+                this.mergedCells = data.mergedCells || {};
                 this.recalculateAll();
             } catch (e) {
                 console.error('Error loading saved data:', e);
@@ -636,7 +668,8 @@ class ExcelSpreadsheet {
         return {
             cells: this.cells,
             rows: this.rows,
-            cols: this.cols
+            cols: this.cols,
+            mergedCells: this.mergedCells
         };
     }
 
@@ -645,6 +678,7 @@ class ExcelSpreadsheet {
         this.cells = data.cells || {};
         this.rows = data.rows || this.rows;
         this.cols = data.cols || this.cols;
+        this.mergedCells = data.mergedCells || {};
         this.render();
         this.recalculateAll();
     }
@@ -668,15 +702,22 @@ class ExcelSpreadsheet {
 
     // Sari-Sari Store Template
     loadSariSariTemplate() {
-        // Header
+        // Merge and set header
+        this.mergedCells['A1'] = { colspan: 4, rowspan: 1 };
         this.setCellValue('A1', 'NENE SARI SARI STORE');
+        
+        this.mergedCells['A2'] = { colspan: 4, rowspan: 1 };
         this.setCellValue('A2', 'CASH FLOW STATEMENT');
         
-        // SALES Section Header
+        // SALES Section Header (merged)
+        this.mergedCells['A4'] = { colspan: 4, rowspan: 1 };
         this.setCellValue('A4', 'SALES');
-        this.setCellValue('B4', 'Qty/Month');
-        this.setCellValue('C4', 'Unit Price');
-        this.setCellValue('D4', 'Monthly Sales');
+        
+        // Column headers
+        this.setCellValue('A5', 'PRODUCT');
+        this.setCellValue('B5', 'Qty/Month');
+        this.setCellValue('C5', 'Unit Price');
+        this.setCellValue('D5', 'Monthly Sales');
         
         // Product rows (labels only, values blank)
         const products = [
@@ -685,36 +726,47 @@ class ExcelSpreadsheet {
         ];
         
         products.forEach((product, index) => {
-            const row = 5 + index;
+            const row = 6 + index;
             this.setCellValue(`A${row}`, product);
             // B, C columns left blank for CI to fill
             // D column has formula
             this.setCellValue(`D${row}`, `=B${row}*C${row}`);
         });
         
-        // Total Sales
-        const totalRow = 5 + products.length;
+        // Total Sales (merged label)
+        const totalRow = 6 + products.length;
+        this.mergedCells[`A${totalRow}`] = { colspan: 3, rowspan: 1 };
         this.setCellValue(`A${totalRow}`, 'TOTAL SALES');
-        this.setCellValue(`D${totalRow}`, `=SUM(D5:D${totalRow - 1})`);
+        this.setCellValue(`D${totalRow}`, `=SUM(D6:D${totalRow - 1})`);
         
-        // Cost of Goods Sold (80%)
+        // Cost of Goods Sold (merged label)
         const cogsRow = totalRow + 1;
+        this.mergedCells[`A${cogsRow}`] = { colspan: 3, rowspan: 1 };
         this.setCellValue(`A${cogsRow}`, 'COST OF GOODS SOLD (80%)');
         this.setCellValue(`D${cogsRow}`, `=D${totalRow}*0.8`);
         
-        // Gross Sales
+        // Gross Sales (merged label)
         const grossRow = cogsRow + 1;
+        this.mergedCells[`A${grossRow}`] = { colspan: 3, rowspan: 1 };
         this.setCellValue(`A${grossRow}`, 'GROSS SALES');
         this.setCellValue(`D${grossRow}`, `=D${totalRow}-D${cogsRow}`);
         
-        // OTHER BUSINESS Section
+        // OTHER BUSINESS Section (merged header)
         const otherBusinessRow = grossRow + 2;
+        this.mergedCells[`A${otherBusinessRow}`] = { colspan: 4, rowspan: 1 };
         this.setCellValue(`A${otherBusinessRow}`, 'OTHER BUSINESS');
-        this.setCellValue(`A${otherBusinessRow + 1}`, 'Business Name:');
-        this.setCellValue(`A${otherBusinessRow + 2}`, 'Monthly Income:');
         
-        // OPERATING EXPENSES Section
+        this.mergedCells[`A${otherBusinessRow + 1}`] = { colspan: 2, rowspan: 1 };
+        this.setCellValue(`A${otherBusinessRow + 1}`, 'Business Name:');
+        this.mergedCells[`C${otherBusinessRow + 1}`] = { colspan: 2, rowspan: 1 };
+        
+        this.mergedCells[`A${otherBusinessRow + 2}`] = { colspan: 2, rowspan: 1 };
+        this.setCellValue(`A${otherBusinessRow + 2}`, 'Monthly Income:');
+        this.mergedCells[`C${otherBusinessRow + 2}`] = { colspan: 2, rowspan: 1 };
+        
+        // OPERATING EXPENSES Section (merged header)
         const expensesStartRow = otherBusinessRow + 4;
+        this.mergedCells[`A${expensesStartRow}`] = { colspan: 4, rowspan: 1 };
         this.setCellValue(`A${expensesStartRow}`, 'OPERATING EXPENSES');
         
         const expenses = [
@@ -724,56 +776,83 @@ class ExcelSpreadsheet {
         
         expenses.forEach((expense, index) => {
             const row = expensesStartRow + 1 + index;
+            this.mergedCells[`A${row}`] = { colspan: 3, rowspan: 1 };
             this.setCellValue(`A${row}`, expense);
-            // Amount column left blank
+            // D column left blank for amount
         });
         
-        // Total Operating Expenses
+        // Total Operating Expenses (merged label)
         const totalExpRow = expensesStartRow + 1 + expenses.length;
+        this.mergedCells[`A${totalExpRow}`] = { colspan: 3, rowspan: 1 };
         this.setCellValue(`A${totalExpRow}`, 'TOTAL OPERATING EXPENSES');
         this.setCellValue(`D${totalExpRow}`, `=SUM(D${expensesStartRow + 1}:D${totalExpRow - 1})`);
         
-        // Gross Profit
+        // Gross Profit (merged label)
         const profitRow = totalExpRow + 1;
+        this.mergedCells[`A${profitRow}`] = { colspan: 3, rowspan: 1 };
         this.setCellValue(`A${profitRow}`, 'GROSS PROFIT');
-        this.setCellValue(`D${profitRow}`, `=D${grossRow}+D${otherBusinessRow + 2}-D${totalExpRow}`);
+        this.setCellValue(`D${profitRow}`, `=D${grossRow}+C${otherBusinessRow + 2}-D${totalExpRow}`);
+        
+        // Set column widths
+        setTimeout(() => {
+            this.setColumnWidth(0, 200); // Column A - wider for labels
+            this.setColumnWidth(1, 100); // Column B
+            this.setColumnWidth(2, 100); // Column C
+            this.setColumnWidth(3, 120); // Column D
+        }, 100);
     }
 
     // Hollow Blocks / Sand & Gravel Template
     loadHollowBlocksTemplate() {
-        // Header
+        // Header (merged)
+        this.mergedCells['A1'] = { colspan: 3, rowspan: 1 };
         this.setCellValue('A1', 'SOURCES OF INCOME');
-        this.setCellValue('B1', 'Weekly');
-        this.setCellValue('C1', 'Monthly');
         
-        // Income sources
-        this.setCellValue('A3', 'Hollow Blocks Production');
+        // Column headers
+        this.setCellValue('A2', 'Description');
+        this.setCellValue('B2', 'Weekly');
+        this.setCellValue('C2', 'Monthly');
+        
+        // Hollow Blocks Section Header (merged)
+        this.mergedCells['A3'] = { colspan: 3, rowspan: 1 };
+        this.setCellValue('A3', 'HOLLOW BLOCKS PRODUCTION');
+        
         this.setCellValue('A4', 'Units Produced/Week:');
         this.setCellValue('A5', 'Price per Unit:');
         this.setCellValue('A6', 'Weekly Income:');
         this.setCellValue('B6', '=B4*B5');
         this.setCellValue('C6', '=B6*4');
         
-        this.setCellValue('A8', 'Sand & Gravel Sales');
+        // Sand & Gravel Section Header (merged)
+        this.mergedCells['A8'] = { colspan: 3, rowspan: 1 };
+        this.setCellValue('A8', 'SAND & GRAVEL SALES');
+        
         this.setCellValue('A9', 'Trips/Week:');
         this.setCellValue('A10', 'Price per Trip:');
         this.setCellValue('A11', 'Weekly Income:');
         this.setCellValue('B11', '=B9*B10');
         this.setCellValue('C11', '=B11*4');
         
-        this.setCellValue('A13', 'Other Income');
+        // Other Income Section Header (merged)
+        this.mergedCells['A13'] = { colspan: 3, rowspan: 1 };
+        this.setCellValue('A13', 'OTHER INCOME');
+        
         this.setCellValue('A14', 'Source:');
         this.setCellValue('A15', 'Weekly Amount:');
         this.setCellValue('C15', '=B15*4');
         
-        // Total Income
+        // Total Income (merged label)
+        this.mergedCells['A17'] = { colspan: 2, rowspan: 1 };
         this.setCellValue('A17', 'TOTAL MONTHLY INCOME');
         this.setCellValue('C17', '=C6+C11+C15');
         
-        // OPERATING EXPENSES Section
+        // OPERATING EXPENSES Header (merged)
+        this.mergedCells['A19'] = { colspan: 3, rowspan: 1 };
         this.setCellValue('A19', 'OPERATING EXPENSES');
-        this.setCellValue('B19', 'Weekly');
-        this.setCellValue('C19', 'Monthly');
+        
+        this.setCellValue('A20', 'Description');
+        this.setCellValue('B20', 'Weekly');
+        this.setCellValue('C20', 'Monthly');
         
         const expenses = [
             'Raw Materials (Cement, Sand)',
@@ -788,25 +867,35 @@ class ExcelSpreadsheet {
         ];
         
         expenses.forEach((expense, index) => {
-            const row = 20 + index;
+            const row = 21 + index;
             this.setCellValue(`A${row}`, expense);
             this.setCellValue(`C${row}`, `=B${row}*4`);
         });
         
-        // Total Operating Expenses
-        const totalExpRow = 20 + expenses.length;
+        // Total Operating Expenses (merged label)
+        const totalExpRow = 21 + expenses.length;
+        this.mergedCells[`A${totalExpRow}`] = { colspan: 2, rowspan: 1 };
         this.setCellValue(`A${totalExpRow}`, 'TOTAL OPERATING EXPENSES');
-        this.setCellValue(`C${totalExpRow}`, `=SUM(C20:C${totalExpRow - 1})`);
+        this.setCellValue(`C${totalExpRow}`, `=SUM(C21:C${totalExpRow - 1})`);
         
-        // Net Income
+        // Net Income (merged label)
         const netRow = totalExpRow + 1;
+        this.mergedCells[`A${netRow}`] = { colspan: 2, rowspan: 1 };
         this.setCellValue(`A${netRow}`, 'NET MONTHLY INCOME');
         this.setCellValue(`C${netRow}`, `=C17-C${totalExpRow}`);
         
-        // Debt Service Capacity
+        // Debt Service Capacity (merged label)
         const debtRow = netRow + 2;
+        this.mergedCells[`A${debtRow}`] = { colspan: 2, rowspan: 1 };
         this.setCellValue(`A${debtRow}`, 'DEBT SERVICE CAPACITY (70%)');
         this.setCellValue(`C${debtRow}`, `=C${netRow}*0.7`);
+        
+        // Set column widths
+        setTimeout(() => {
+            this.setColumnWidth(0, 250); // Column A - wider for descriptions
+            this.setColumnWidth(1, 100); // Column B
+            this.setColumnWidth(2, 120); // Column C
+        }, 100);
     }
 
     // Helper method to set cell value
@@ -823,6 +912,38 @@ class ExcelSpreadsheet {
             this.cells[cellRef].display = value;
             this.cells[cellRef].formula = null;
         }
+        
+        // Apply styling based on content
+        this.applyCellStyling(cellRef, value);
+    }
+
+    // Apply styling to cells based on content
+    applyCellStyling(cellRef, value) {
+        if (!this.cells[cellRef]) return;
+        
+        const upperValue = value.toString().toUpperCase();
+        
+        // Header styling
+        if (upperValue.includes('CASH FLOW') || 
+            upperValue.includes('SOURCES OF INCOME') ||
+            upperValue.includes('STATEMENT')) {
+            this.cells[cellRef].style = 'header-main';
+        }
+        // Section header styling
+        else if (upperValue.includes('SALES') || 
+                 upperValue.includes('OPERATING EXPENSES') ||
+                 upperValue.includes('OTHER BUSINESS') ||
+                 upperValue.includes('PRODUCTION') ||
+                 upperValue.includes('OTHER INCOME')) {
+            this.cells[cellRef].style = 'header-section';
+        }
+        // Total/Summary styling
+        else if (upperValue.includes('TOTAL') || 
+                 upperValue.includes('GROSS') ||
+                 upperValue.includes('NET') ||
+                 upperValue.includes('CAPACITY')) {
+            this.cells[cellRef].style = 'summary';
+        }
     }
 
     // Print spreadsheet
@@ -832,6 +953,134 @@ class ExcelSpreadsheet {
         
         // Trigger browser print dialog
         window.print();
+    }
+
+    // Select range of cells
+    selectRange(startInput, endInput) {
+        const startRow = parseInt(startInput.dataset.row);
+        const startCol = parseInt(startInput.dataset.col);
+        const endRow = parseInt(endInput.dataset.row);
+        const endCol = parseInt(endInput.dataset.col);
+
+        const minRow = Math.min(startRow, endRow);
+        const maxRow = Math.max(startRow, endRow);
+        const minCol = Math.min(startCol, endCol);
+        const maxCol = Math.max(startCol, endCol);
+
+        // Clear previous selection
+        document.querySelectorAll('.cell-input').forEach(cell => {
+            cell.classList.remove('selected', 'range-selected');
+        });
+
+        // Select range
+        this.selectedRange = [];
+        for (let row = minRow; row <= maxRow; row++) {
+            for (let col = minCol; col <= maxCol; col++) {
+                const cellRef = this.getCellReference(row, col);
+                const input = document.querySelector(`[data-cell="${cellRef}"]`);
+                if (input) {
+                    input.classList.add('range-selected');
+                    this.selectedRange.push(cellRef);
+                }
+            }
+        }
+
+        // Update cell info
+        const startRef = this.getCellReference(minRow, minCol);
+        const endRef = this.getCellReference(maxRow, maxCol);
+        document.getElementById('cell-info').textContent = `Range: ${startRef}:${endRef}`;
+    }
+
+    // Merge selected cells
+    mergeCells() {
+        if (this.selectedRange.length < 2) {
+            alert('Please select multiple cells to merge (hold Shift and click)');
+            return;
+        }
+
+        // Get range bounds
+        const rows = this.selectedRange.map(ref => {
+            const match = ref.match(/[A-Z]+(\d+)/);
+            return parseInt(match[1]) - 1;
+        });
+        const cols = this.selectedRange.map(ref => {
+            const match = ref.match(/([A-Z]+)\d+/);
+            return this.getColumnIndex(match[1]);
+        });
+
+        const minRow = Math.min(...rows);
+        const maxRow = Math.max(...rows);
+        const minCol = Math.min(...cols);
+        const maxCol = Math.max(...cols);
+
+        const topLeftRef = this.getCellReference(minRow, minCol);
+        const rowspan = maxRow - minRow + 1;
+        const colspan = maxCol - minCol + 1;
+
+        // Store merge info
+        this.mergedCells[topLeftRef] = { rowspan, colspan };
+
+        // Combine values from all cells
+        let combinedValue = '';
+        this.selectedRange.forEach(ref => {
+            if (this.cells[ref] && this.cells[ref].value) {
+                combinedValue += (combinedValue ? ' ' : '') + this.cells[ref].value;
+            }
+        });
+
+        // Set combined value to top-left cell
+        if (combinedValue) {
+            this.setCellValue(topLeftRef, combinedValue);
+        }
+
+        // Re-render
+        this.render();
+        this.saveData();
+
+        alert(`Merged ${this.selectedRange.length} cells`);
+    }
+
+    // Unmerge selected cell
+    unmergeCells() {
+        if (!this.selectedCell) {
+            alert('Please select a merged cell to unmerge');
+            return;
+        }
+
+        const cellRef = this.selectedCell.dataset.cell;
+        
+        if (this.mergedCells[cellRef]) {
+            delete this.mergedCells[cellRef];
+            this.render();
+            this.saveData();
+            alert('Cells unmerged');
+        } else {
+            alert('Selected cell is not merged');
+        }
+    }
+
+    // Check if cell is hidden by a merge
+    isCellHidden(cellRef) {
+        const row = parseInt(cellRef.match(/\d+/)[0]) - 1;
+        const col = this.getColumnIndex(cellRef.match(/[A-Z]+/)[0]);
+
+        // Check all merged cells to see if this cell is within their range
+        for (const [mergedRef, merge] of Object.entries(this.mergedCells)) {
+            const mergedRow = parseInt(mergedRef.match(/\d+/)[0]) - 1;
+            const mergedCol = this.getColumnIndex(mergedRef.match(/[A-Z]+/)[0]);
+
+            const rowspan = merge.rowspan || 1;
+            const colspan = merge.colspan || 1;
+
+            // Check if current cell is within merged range (but not the top-left cell)
+            if (row >= mergedRow && row < mergedRow + rowspan &&
+                col >= mergedCol && col < mergedCol + colspan &&
+                cellRef !== mergedRef) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 

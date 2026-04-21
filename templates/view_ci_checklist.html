@@ -285,6 +285,7 @@
                     const rows = data.rows || 30;
                     const cols = data.cols || 15;
                     const cells = data.cells || {};
+                    const mergedCells = data.mergedCells || {};
                     
                     let html = '<div class="excel-container-view">';
                     html += '<table class="excel-table-view">';
@@ -316,6 +317,12 @@
                         
                         for (let col = 0; col < cols; col++) {
                             const cellRef = getCellReference(row, col);
+                            
+                            // Check if cell is hidden by merge
+                            if (isCellHidden(cellRef, mergedCells)) {
+                                continue;
+                            }
+                            
                             const cell = cells[cellRef];
                             let value = '';
                             let hasFormula = false;
@@ -327,13 +334,44 @@
                             
                             const formulaClass = hasFormula ? 'has-formula' : '';
                             const title = hasFormula ? `Formula: ${cell.formula}` : '';
-                            html += `<td class="excel-cell-view ${formulaClass}" title="${title}">${value}</td>`;
+                            
+                            // Check for merge
+                            let colspan = 1;
+                            let rowspan = 1;
+                            let mergedClass = '';
+                            if (mergedCells[cellRef]) {
+                                colspan = mergedCells[cellRef].colspan || 1;
+                                rowspan = mergedCells[cellRef].rowspan || 1;
+                                mergedClass = 'merged-cell-view';
+                            }
+                            
+                            html += `<td class="excel-cell-view ${formulaClass} ${mergedClass}" colspan="${colspan}" rowspan="${rowspan}" title="${title}">${value}</td>`;
                         }
                         html += '</tr>';
                     }
                     html += '</tbody></table></div>';
                     
                     container.innerHTML = html;
+                }
+                
+                function isCellHidden(cellRef, mergedCells) {
+                    const row = parseInt(cellRef.match(/\d+/)[0]) - 1;
+                    const col = getColumnIndex(cellRef.match(/[A-Z]+/)[0]);
+
+                    for (const [mergedRef, merge] of Object.entries(mergedCells)) {
+                        const mergedRow = parseInt(mergedRef.match(/\d+/)[0]) - 1;
+                        const mergedCol = getColumnIndex(mergedRef.match(/[A-Z]+/)[0]);
+
+                        const rowspan = merge.rowspan || 1;
+                        const colspan = merge.colspan || 1;
+
+                        if (row >= mergedRow && row < mergedRow + rowspan &&
+                            col >= mergedCol && col < mergedCol + colspan &&
+                            cellRef !== mergedRef) {
+                            return true;
+                        }
+                    }
+                    return false;
                 }
                 
                 function getColumnName(index) {
@@ -343,6 +381,14 @@
                         index = Math.floor(index / 26) - 1;
                     }
                     return name;
+                }
+                
+                function getColumnIndex(name) {
+                    let index = 0;
+                    for (let i = 0; i < name.length; i++) {
+                        index = index * 26 + (name.charCodeAt(i) - 64);
+                    }
+                    return index - 1;
                 }
                 
                 function getCellReference(row, col) {
@@ -389,8 +435,16 @@
                 }
                 
                 .excel-cell-view.has-formula {
-                    background: #f0f7ff;
+                    background: #f8f9fa;
                     font-weight: 500;
+                    color: #000;
+                }
+                
+                .excel-cell-view.merged-cell-view {
+                    background: #f8f9fa;
+                    text-align: center;
+                    font-weight: 600;
+                    color: #000;
                 }
                 
                 @media print {
@@ -406,7 +460,8 @@
                     }
                     
                     .excel-cell-view.has-formula {
-                        background: #f0f7ff !important;
+                        background: #f8f9fa !important;
+                        color: #000 !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
