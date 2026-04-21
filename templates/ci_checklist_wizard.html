@@ -4,6 +4,9 @@
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
 
+<!-- Include Offline Indicator -->
+{% include 'offline_indicator.html' %}
+
 <style>
 /* Make it look EXACTLY like paper forms */
 .paper-form {

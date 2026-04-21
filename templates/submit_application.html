@@ -179,8 +179,18 @@ document.addEventListener('DOMContentLoaded', function() {
         
         item.addEventListener('click', function(e) {
             e.preventDefault();
-            document.getElementById('member_address').value = fullAddress;
+            e.stopPropagation();
+            const addressInput = document.getElementById('member_address');
+            addressInput.value = fullAddress;
+            addressInput.focus();
             suggestionsDiv.style.display = 'none';
+        });
+        
+        // Also handle mousedown as backup
+        item.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            const addressInput = document.getElementById('member_address');
+            addressInput.value = fullAddress;
         });
         
         suggestionsDiv.appendChild(item);
@@ -194,7 +204,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const addressInput = document.getElementById('member_address');
         const suggestionsDiv = document.getElementById('address_suggestions');
         if (e.target !== addressInput && !suggestionsDiv.contains(e.target)) {
-            suggestionsDiv.style.display = 'none';
+            setTimeout(() => {
+                suggestionsDiv.style.display = 'none';
+            }, 150);
         }
     });
 });

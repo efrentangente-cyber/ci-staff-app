@@ -2491,6 +2491,108 @@ def ci_application_api(id):
         'documents': [dict(doc) for doc in documents]
     })
 
+# OFFLINE PWA API ENDPOINTS
+@app.route('/api/ci/download_applications', methods=['GET'])
+@login_required
+def api_download_applications():
+    """Get all applications assigned to current CI staff for offline download"""
+    if current_user.role != 'ci_staff':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    conn = get_db()
+    apps = conn.execute('''
+        SELECT * FROM loan_applications 
+        WHERE assigned_ci_staff = ? AND status = 'assigned_to_ci'
+        ORDER BY submitted_at DESC
+    ''', (current_user.id,)).fetchall()
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'applications': [dict(app) for app in apps],
+        'count': len(apps)
+    })
+
+@app.route('/api/ci/upload_checklist', methods=['POST'])
+@login_required
+def api_upload_checklist():
+    """Upload completed checklist from offline storage"""
+    if current_user.role != 'ci_staff':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        data = request.get_json()
+        application_id = data.get('application_id')
+        checklist_data = data.get('checklist_data')
+        signature = data.get('signature')
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        
+        if not all([application_id, checklist_data, signature]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        conn = get_db()
+        
+        # Update application
+        conn.execute('''
+            UPDATE loan_applications 
+            SET status = 'ci_completed',
+                ci_checklist_data = ?,
+                ci_signature = ?,
+                ci_completed_at = ?,
+                ci_notes = 'Submitted offline'
+            WHERE id = ? AND assigned_ci_staff = ?
+        ''', (checklist_data, signature, now_ph().strftime('%Y-%m-%d %H:%M:%S'), 
+              application_id, current_user.id))
+        
+        # Track location if provided
+        if latitude and longitude:
+            conn.execute('''
+                INSERT INTO location_tracking (user_id, latitude, longitude, activity, tracked_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (current_user.id, latitude, longitude, 'CI Checklist Submitted', 
+                  now_ph().strftime('%Y-%m-%d %H:%M:%S')))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Checklist uploaded successfully'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ci/sync_status', methods=['GET'])
+@login_required
+def api_sync_status():
+    """Get sync status for offline PWA"""
+    if current_user.role != 'ci_staff':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    conn = get_db()
+    
+    # Count pending applications
+    pending = conn.execute('''
+        SELECT COUNT(*) as count FROM loan_applications 
+        WHERE assigned_ci_staff = ? AND status = 'assigned_to_ci'
+    ''', (current_user.id,)).fetchone()
+    
+    # Count completed applications
+    completed = conn.execute('''
+        SELECT COUNT(*) as count FROM loan_applications 
+        WHERE assigned_ci_staff = ? AND status = 'ci_completed'
+    ''', (current_user.id,)).fetchone()
+    
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'pending_count': pending['count'] if pending else 0,
+        'completed_count': completed['count'] if completed else 0,
+        'is_online': True
+    })
+
 # USER REGISTRATION & APPROVAL ROUTES
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():

@@ -1,5 +1,5 @@
-// DCCCO CI Staff App - Service Worker v5
-const CACHE_NAME = 'dccco-staff-v5';
+// DCCCO CI Staff App - Service Worker v6 - Offline PWA with Auto-sync
+const CACHE_NAME = 'dccco-staff-v6';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install
@@ -30,12 +30,17 @@ const CACHE_PAGES = [
   '/manage_users',
 ];
 
-// ── Install: pre-cache static assets ───────────────────────────────────────
+// ── Install: pre-cache static assets + request persistent storage ──────────
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(STATIC_ASSETS).catch(() => {}))
-      .then(() => self.skipWaiting())
+    Promise.all([
+      caches.open(CACHE_NAME)
+        .then(cache => cache.addAll(STATIC_ASSETS).catch(() => {})),
+      // Request persistent storage
+      navigator.storage && navigator.storage.persist 
+        ? navigator.storage.persist() 
+        : Promise.resolve(false)
+    ]).then(() => self.skipWaiting())
   );
 });
 
@@ -121,9 +126,16 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// ── Background Sync ──────────────────────────────────────────────────────────
+// ── Background Sync - Auto-upload when connection returns ───────────────────
 self.addEventListener('sync', event => {
-  if (event.tag === 'sync-pending') {
+  if (event.tag === 'sync-pending' || event.tag === 'upload-checklists') {
+    event.waitUntil(syncPendingRequests());
+  }
+});
+
+// Register periodic background sync (if supported)
+self.addEventListener('periodicsync', event => {
+  if (event.tag === 'auto-sync') {
     event.waitUntil(syncPendingRequests());
   }
 });

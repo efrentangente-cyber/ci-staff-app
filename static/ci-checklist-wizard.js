@@ -234,6 +234,32 @@ function nextPage() {
 // Submit form
 function submitChecklist() {
     saveCurrentPageData();
+    
+    // Check if online
+    if (!navigator.onLine) {
+        // Save offline
+        const signature = document.getElementById('ci_signature').value;
+        const latitude = document.getElementById('ci_latitude').value;
+        const longitude = document.getElementById('ci_longitude').value;
+        const applicationId = parseInt(window.location.pathname.split('/').pop());
+        
+        syncManager.saveChecklistOffline(
+            applicationId,
+            checklistData,
+            signature,
+            latitude,
+            longitude
+        ).then(() => {
+            alert('Checklist saved offline. Will upload when connection is available.');
+            window.location.href = '/ci/dashboard';
+        }).catch(err => {
+            alert('Failed to save offline: ' + err.message);
+        });
+        
+        return false;
+    }
+    
+    // Online - submit normally
     document.getElementById('checklist_data').value = JSON.stringify(checklistData);
     document.getElementById('ciChecklistForm').submit();
 }
