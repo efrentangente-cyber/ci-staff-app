@@ -134,10 +134,16 @@ class ExcelSpreadsheet {
                 input.type = 'text';
                 input.className = 'cell-input';
                 input.dataset.cell = cellRef;
+                input.placeholder = ''; // All cells are editable
 
                 // Load saved value
                 if (this.cells[cellRef]) {
                     input.value = this.cells[cellRef].display || this.cells[cellRef].value || '';
+                    // Mark formula cells visually
+                    if (this.cells[cellRef].formula) {
+                        input.setAttribute('data-has-formula', 'true');
+                        input.title = 'Double-click to edit formula: ' + this.cells[cellRef].formula;
+                    }
                 }
 
                 td.appendChild(input);
@@ -516,6 +522,182 @@ class ExcelSpreadsheet {
         this.cols = data.cols || this.cols;
         this.render();
         this.recalculateAll();
+    }
+
+    // Load pre-defined templates
+    loadTemplate(templateName) {
+        if (confirm('Load template? This will clear current data.')) {
+            this.cells = {};
+            
+            if (templateName === 'sari_sari') {
+                this.loadSariSariTemplate();
+            } else if (templateName === 'hollow_blocks') {
+                this.loadHollowBlocksTemplate();
+            }
+            
+            this.render();
+            this.recalculateAll();
+            this.saveData();
+        }
+    }
+
+    // Sari-Sari Store Template
+    loadSariSariTemplate() {
+        // Header
+        this.setCellValue('A1', 'NENE SARI SARI STORE');
+        this.setCellValue('A2', 'CASH FLOW STATEMENT');
+        
+        // SALES Section Header
+        this.setCellValue('A4', 'SALES');
+        this.setCellValue('B4', 'Qty/Month');
+        this.setCellValue('C4', 'Unit Price');
+        this.setCellValue('D4', 'Monthly Sales');
+        
+        // Product rows (labels only, values blank)
+        const products = [
+            'Softdrinks', 'Cigarettes', 'Candies', 'Biscuits', 'Noodles',
+            'Coffee', 'Sugar', 'Rice', 'Cooking Oil', 'Soap'
+        ];
+        
+        products.forEach((product, index) => {
+            const row = 5 + index;
+            this.setCellValue(`A${row}`, product);
+            // B, C columns left blank for CI to fill
+            // D column has formula
+            this.setCellValue(`D${row}`, `=B${row}*C${row}`);
+        });
+        
+        // Total Sales
+        const totalRow = 5 + products.length;
+        this.setCellValue(`A${totalRow}`, 'TOTAL SALES');
+        this.setCellValue(`D${totalRow}`, `=SUM(D5:D${totalRow - 1})`);
+        
+        // Cost of Goods Sold (80%)
+        const cogsRow = totalRow + 1;
+        this.setCellValue(`A${cogsRow}`, 'COST OF GOODS SOLD (80%)');
+        this.setCellValue(`D${cogsRow}`, `=D${totalRow}*0.8`);
+        
+        // Gross Sales
+        const grossRow = cogsRow + 1;
+        this.setCellValue(`A${grossRow}`, 'GROSS SALES');
+        this.setCellValue(`D${grossRow}`, `=D${totalRow}-D${cogsRow}`);
+        
+        // OTHER BUSINESS Section
+        const otherBusinessRow = grossRow + 2;
+        this.setCellValue(`A${otherBusinessRow}`, 'OTHER BUSINESS');
+        this.setCellValue(`A${otherBusinessRow + 1}`, 'Business Name:');
+        this.setCellValue(`A${otherBusinessRow + 2}`, 'Monthly Income:');
+        
+        // OPERATING EXPENSES Section
+        const expensesStartRow = otherBusinessRow + 4;
+        this.setCellValue(`A${expensesStartRow}`, 'OPERATING EXPENSES');
+        
+        const expenses = [
+            'Electric Bill', 'Water Bill', 'Fuel/Transportation',
+            'House Rental', 'Food', 'Education', 'Miscellaneous'
+        ];
+        
+        expenses.forEach((expense, index) => {
+            const row = expensesStartRow + 1 + index;
+            this.setCellValue(`A${row}`, expense);
+            // Amount column left blank
+        });
+        
+        // Total Operating Expenses
+        const totalExpRow = expensesStartRow + 1 + expenses.length;
+        this.setCellValue(`A${totalExpRow}`, 'TOTAL OPERATING EXPENSES');
+        this.setCellValue(`D${totalExpRow}`, `=SUM(D${expensesStartRow + 1}:D${totalExpRow - 1})`);
+        
+        // Gross Profit
+        const profitRow = totalExpRow + 1;
+        this.setCellValue(`A${profitRow}`, 'GROSS PROFIT');
+        this.setCellValue(`D${profitRow}`, `=D${grossRow}+D${otherBusinessRow + 2}-D${totalExpRow}`);
+    }
+
+    // Hollow Blocks / Sand & Gravel Template
+    loadHollowBlocksTemplate() {
+        // Header
+        this.setCellValue('A1', 'SOURCES OF INCOME');
+        this.setCellValue('B1', 'Weekly');
+        this.setCellValue('C1', 'Monthly');
+        
+        // Income sources
+        this.setCellValue('A3', 'Hollow Blocks Production');
+        this.setCellValue('A4', 'Units Produced/Week:');
+        this.setCellValue('A5', 'Price per Unit:');
+        this.setCellValue('A6', 'Weekly Income:');
+        this.setCellValue('B6', '=B4*B5');
+        this.setCellValue('C6', '=B6*4');
+        
+        this.setCellValue('A8', 'Sand & Gravel Sales');
+        this.setCellValue('A9', 'Trips/Week:');
+        this.setCellValue('A10', 'Price per Trip:');
+        this.setCellValue('A11', 'Weekly Income:');
+        this.setCellValue('B11', '=B9*B10');
+        this.setCellValue('C11', '=B11*4');
+        
+        this.setCellValue('A13', 'Other Income');
+        this.setCellValue('A14', 'Source:');
+        this.setCellValue('A15', 'Weekly Amount:');
+        this.setCellValue('C15', '=B15*4');
+        
+        // Total Income
+        this.setCellValue('A17', 'TOTAL MONTHLY INCOME');
+        this.setCellValue('C17', '=C6+C11+C15');
+        
+        // OPERATING EXPENSES Section
+        this.setCellValue('A19', 'OPERATING EXPENSES');
+        this.setCellValue('B19', 'Weekly');
+        this.setCellValue('C19', 'Monthly');
+        
+        const expenses = [
+            'Raw Materials (Cement, Sand)',
+            'Labor/Wages',
+            'Fuel/Transportation',
+            'Equipment Maintenance',
+            'Electric Bill',
+            'Water Bill',
+            'Food/Household',
+            'Education',
+            'Miscellaneous'
+        ];
+        
+        expenses.forEach((expense, index) => {
+            const row = 20 + index;
+            this.setCellValue(`A${row}`, expense);
+            this.setCellValue(`C${row}`, `=B${row}*4`);
+        });
+        
+        // Total Operating Expenses
+        const totalExpRow = 20 + expenses.length;
+        this.setCellValue(`A${totalExpRow}`, 'TOTAL OPERATING EXPENSES');
+        this.setCellValue(`C${totalExpRow}`, `=SUM(C20:C${totalExpRow - 1})`);
+        
+        // Net Income
+        const netRow = totalExpRow + 1;
+        this.setCellValue(`A${netRow}`, 'NET MONTHLY INCOME');
+        this.setCellValue(`C${netRow}`, `=C17-C${totalExpRow}`);
+        
+        // Debt Service Capacity
+        const debtRow = netRow + 2;
+        this.setCellValue(`A${debtRow}`, 'DEBT SERVICE CAPACITY (70%)');
+        this.setCellValue(`C${debtRow}`, `=C${netRow}*0.7`);
+    }
+
+    // Helper method to set cell value
+    setCellValue(cellRef, value) {
+        if (!this.cells[cellRef]) {
+            this.cells[cellRef] = {};
+        }
+        
+        if (value.startsWith('=')) {
+            this.cells[cellRef].formula = value;
+            this.cells[cellRef].value = value;
+        } else {
+            this.cells[cellRef].value = value;
+            this.cells[cellRef].display = value;
+            this.cells[cellRef].formula = null;
+        }
     }
 }
 

@@ -492,14 +492,33 @@
                     <small>CASH FLOW STATEMENT - Excel Spreadsheet</small>
                 </div>
 
+                <!-- Template Selector -->
+                <div class="template-selector-excel no-print mb-3">
+                    <h6><i class="bi bi-file-earmark-spreadsheet"></i> Choose Template (Optional)</h6>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-primary" onclick="excelSheet.loadTemplate('sari_sari')">
+                            <i class="bi bi-shop"></i> Sari-Sari Store
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="excelSheet.loadTemplate('hollow_blocks')">
+                            <i class="bi bi-bricks"></i> Hollow Blocks / Sand & Gravel
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="excelSheet.clearAll()">
+                            <i class="bi bi-file-earmark"></i> Blank Spreadsheet
+                        </button>
+                    </div>
+                </div>
+
                 <div class="alert alert-info no-print">
                     <h6><i class="bi bi-info-circle"></i> How to use this Excel spreadsheet:</h6>
                     <ul class="mb-0">
-                        <li><strong>Enter values</strong>: Click any cell and type</li>
+                        <li><strong>Choose template</strong>: Click a template button above to load pre-formatted structure (optional)</li>
+                        <li><strong>Everything is editable</strong>: Click ANY cell to change text, numbers, labels, or formulas</li>
+                        <li><strong>Add/remove rows</strong>: Use toolbar buttons to expand the spreadsheet</li>
+                        <li><strong>Enter values</strong>: Click any cell and type your data</li>
                         <li><strong>Enter formulas</strong>: Start with = (e.g., =A1+B1, =SUM(A1:A10))</li>
-                        <li><strong>Navigate</strong>: Use arrow keys or Tab</li>
-                        <li><strong>Formula bar</strong>: Shows/edits the selected cell's formula</li>
-                        <li><strong>Supported functions</strong>: SUM, AVERAGE, +, -, *, /, ()</li>
+                        <li><strong>Navigate</strong>: Use arrow keys, Tab, or Enter to move between cells</li>
+                        <li><strong>Formula bar</strong>: Shows/edits the selected cell's content</li>
+                        <li><strong>Auto-save</strong>: Your changes are saved automatically</li>
                     </ul>
                 </div>
 
@@ -509,10 +528,12 @@
                 <div class="alert alert-success mt-3 no-print">
                     <strong><i class="bi bi-lightbulb"></i> Tips:</strong>
                     <ul class="mb-0">
+                        <li><strong>Templates are just starting points</strong> - Change any text, add products, modify labels</li>
+                        <li><strong>Formula cells</strong> have light blue background - Double-click to edit the formula</li>
                         <li>Use <code>=SUM(A1:A10)</code> to sum a range</li>
                         <li>Use <code>=A1*B1</code> to multiply cells</li>
                         <li>Use <code>=AVERAGE(A1:A10)</code> for average</li>
-                        <li>Double-click a cell to edit its formula</li>
+                        <li><strong>Customize everything</strong> - Add your own rows, columns, and calculations</li>
                     </ul>
                 </div>
 
