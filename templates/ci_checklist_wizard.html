@@ -5,6 +5,9 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
 
+<!-- Include Offline Indicator -->
+{% include 'offline_indicator.html' %}
+
 <style>
 /* Hide bottom navigation bar on CI checklist page */
 .navbar-fixed-bottom,
@@ -496,7 +499,7 @@ nav[style*="position: fixed"][style*="bottom"],
                 <!-- Template Selector -->
                 <div class="template-selector-excel no-print mb-3">
                     <h6><i class="bi bi-file-earmark-spreadsheet"></i> Choose Template (Optional)</h6>
-                    <div class="btn-group mb-2" role="group">
+                    <div class="btn-group" role="group">
                         <button type="button" class="btn btn-outline-primary" onclick="excelSheet.loadTemplate('sari_sari')">
                             <i class="bi bi-shop"></i> Sari-Sari Store
                         </button>
@@ -507,14 +510,12 @@ nav[style*="position: fixed"][style*="bottom"],
                             <i class="bi bi-file-earmark"></i> Blank Spreadsheet
                         </button>
                     </div>
-                    <div id="custom-templates-container"></div>
                 </div>
 
                 <div class="alert alert-info no-print">
                     <h6><i class="bi bi-info-circle"></i> How to use this Excel spreadsheet:</h6>
                     <ul class="mb-0">
                         <li><strong>Choose template</strong>: Click a template button above to load pre-formatted structure (optional)</li>
-                        <li><strong>Save as template</strong>: After creating your custom spreadsheet, click "Save as Template" to save it for future use</li>
                         <li><strong>Resize columns</strong>: Drag the right edge of any column header to adjust width</li>
                         <li><strong>Resize rows</strong>: Drag the bottom edge of any row number to adjust height</li>
                         <li><strong>Select cells</strong>: Click and drag across cells to highlight a range</li>
@@ -1117,7 +1118,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     </ul>
                 </div>
 
-                <div class="section-title">CI/BI SIGNATURE (Auto-Applied)</div>
+                <div class="section-title">CI STAFF SIGNATURE (Auto-Applied)</div>
                 <div style="border: 2px solid #10b981; padding: 20px; margin: 20px 0; background: #f0fdf4; border-radius: 8px;">
                     <div id="signaturePreview" style="text-align: center; min-height: 100px;">
                         {% if current_user.signature_path %}
@@ -1129,7 +1130,7 @@ nav[style*="position: fixed"][style*="bottom"],
                                 <!-- Printed name line below signature -->
                                 <div style="border-top: 2px solid #000; margin-top: 5px; padding-top: 5px; text-align: center;">
                                     <strong style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">{{ current_user.name }}</strong>
-                                    <div style="font-size: 12px; color: #666; margin-top: 2px;">CI/BI</div>
+                                    <div style="font-size: 12px; color: #666; margin-top: 2px;">CI Staff</div>
                                 </div>
                             </div>
                             <p class="text-muted" style="font-size: 0.9rem; margin-top: 15px;">

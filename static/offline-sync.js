@@ -255,22 +255,9 @@ class OfflineSyncManager {
     }
   }
 
-  // Update storage info display
+  // Update storage info display - REMOVED
   async updateStorageInfo() {
-    const estimate = await dbManager.getStorageEstimate();
-    const count = await dbManager.countApplications();
-    const pending = await dbManager.getPendingChecklists();
-
-    const infoElement = document.getElementById('storage-info');
-    if (infoElement && estimate) {
-      infoElement.innerHTML = `
-        <div class="storage-stats">
-          <div><i class="bi bi-database"></i> ${count} applications</div>
-          <div><i class="bi bi-cloud-upload"></i> ${pending.length} pending</div>
-          <div><i class="bi bi-hdd"></i> ${estimate.usageInMB} MB / ${estimate.quotaInMB} MB</div>
-        </div>
-      `;
-    }
+    // Storage info display has been removed from UI
   }
 
   // Refresh dashboard with offline data

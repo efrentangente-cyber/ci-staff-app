@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{% if current_user.role == 'loan_officer' %}Credit Officer Dashboard{% else %}Admin Dashboard{% endif %}{% endblock %}
+{% block title %}Admin Dashboard{% endblock %}
 {% block content %}
 <div class="top-bar">
-    <h2>{% if current_user.role == 'loan_officer' %}Credit Officer Dashboard{% else %}Admin Dashboard{% endif %}</h2>
+    <h2>Admin Dashboard</h2>
     <div class="top-bar-actions">
         <button class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode">
             <i class="bi bi-moon-fill" id="darkModeIcon"></i>

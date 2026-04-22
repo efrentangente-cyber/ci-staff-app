@@ -274,47 +274,22 @@
 }
 
 .cell-input.selected {
-    outline: 3px solid #0d6efd;
-    outline-offset: -3px;
-    background: #e7f3ff;
-    z-index: 10;
-    position: relative;
+    outline: 2px solid #1e3a5f;
+    outline-offset: -2px;
+    background: white;
 }
 
 /* Range selection */
 .cell-input.range-selected {
-    background: #cfe2ff !important;
-    outline: 2px solid #0d6efd;
-    outline-offset: -2px;
-    z-index: 5;
-    position: relative;
+    background: #e3f2fd !important;
+    outline: 1px solid #1e3a5f;
+    outline-offset: -1px;
 }
 
 /* Selecting state - change cursor */
 .excel-container.is-selecting {
     cursor: cell;
     user-select: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-}
-
-.excel-container.is-selecting .cell-input {
-    cursor: cell;
-    pointer-events: auto;
-}
-
-/* Touch-friendly selection */
-@media (hover: none) and (pointer: coarse) {
-    .cell-input.selected {
-        outline: 4px solid #0d6efd;
-        outline-offset: -4px;
-    }
-    
-    .cell-input.range-selected {
-        outline: 3px solid #0d6efd;
-        outline-offset: -3px;
-    }
 }
 
 .excel-container.is-selecting .cell-input {
@@ -493,32 +468,28 @@
         page-break-after: auto;
     }
 
-    /* Hide column headers (A, B, C...) */
     .excel-col-header,
-    .excel-corner {
-        display: none !important;
-    }
-
-    /* Hide row headers (1, 2, 3...) */
     .excel-row-header {
-        display: none !important;
+        background: #f0f0f0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        border: 1px solid #000 !important;
+        font-size: 10px;
+        padding: 4px;
     }
 
-    /* Remove all borders from cells */
     .excel-cell {
-        border: none !important;
+        border: 1px solid #000 !important;
         background: white !important;
         page-break-inside: avoid;
-        padding: 0 !important;
     }
 
-    /* Plain text styling for cell content */
     .cell-input {
         border: none !important;
         background: transparent !important;
         outline: none !important;
         font-size: 11px;
-        padding: 2px 4px;
+        padding: 4px;
         color: #000 !important;
     }
 
@@ -528,9 +499,9 @@
         background: transparent !important;
     }
 
-    /* Formula cells - print as plain text */
+    /* Formula cells - print with light background */
     .cell-input[data-has-formula="true"] {
-        background: transparent !important;
+        background: #f8f9fa !important;
         color: #000 !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
