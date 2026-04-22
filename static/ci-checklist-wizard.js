@@ -130,6 +130,11 @@ function goToPage(pageNumber) {
     // Save current page data
     saveCurrentPageData();
     
+    // If moving from page 2.5 (Excel) to page 3 (Computation), sync the data
+    if (currentPage === 2.5 && pageNumber === 3) {
+        syncExcelToComputation();
+    }
+    
     // Hide all pages
     document.querySelectorAll('.wizard-page').forEach(page => {
         page.classList.remove('active');
@@ -366,6 +371,7 @@ function updateTotalBeforeNew() {
     const dcccoLoans = updateDCCCOLoans();
     const total = otherLoans + dcccoLoans;
     setComputedValue('total_before_new', total);
+    updateOtherObligations(); // Trigger update of total expenses
 }
 
 function updateNewLoan() {
@@ -373,6 +379,7 @@ function updateNewLoan() {
     const deductible = getNumericValue('loan_deductible');
     const newLoan = applied - deductible;
     setComputedValue('new_loan_final', newLoan);
+    updateOtherObligations(); // Trigger update of total expenses
 }
 
 function updateOtherObligations() {
@@ -382,17 +389,25 @@ function updateOtherObligations() {
     const water = getNumericValue('water_fuel');
     const internet = getNumericValue('internet');
     
-    const total = household + tuition + medical + water + internet;
-    setComputedValue('total_other_obligations', total);
+    // Sum only the other obligations (not including loans)
+    const otherObligationsOnly = household + tuition + medical + water + internet;
+    
+    // Get total loans (before new + new loan)
+    const totalBeforeNew = getNumericValue('total_before_new');
+    const newLoan = getNumericValue('new_loan_final');
+    
+    // TOTAL LOAN AMORTIZATIONS & OTHER OBLIGATIONS/EXPENSES = all loans + other obligations
+    const totalWithLoans = totalBeforeNew + newLoan + otherObligationsOnly;
+    setComputedValue('total_other_obligations', totalWithLoans);
+    
+    // Update final calculations after this
+    updateFinalCalculations();
 }
 
 function updateFinalCalculations() {
     const totalIncome = getNumericValue('total_gross_income');
-    const totalBeforeNew = getNumericValue('total_before_new');
-    const newLoan = getNumericValue('new_loan_final');
-    const totalObligations = getNumericValue('total_other_obligations');
+    const totalExpenses = getNumericValue('total_other_obligations'); // This now includes everything
     
-    const totalExpenses = totalBeforeNew + newLoan + totalObligations;
     const netDisposable = totalIncome - totalExpenses;
     setComputedValue('net_disposable_income', netDisposable);
     
@@ -450,11 +465,108 @@ function loadExcelData() {
     }
 }
 
-// Auto-save Excel data periodically
+// Sync Excel Cash Flow data to Computation page (Page 2.5 -> Page 3)
+function syncExcelToComputation() {
+    if (!window.excelSheet) {
+        console.log('Excel sheet not available for sync');
+        return;
+    }
+    
+    try {
+        const cells = window.excelSheet.cells;
+        
+        // Extract key financial data from Excel spreadsheet
+        // Look for common patterns in the templates
+        
+        // Try to find Total/Gross Sales or Total Income
+        let totalIncome = 0;
+        let netIncome = 0;
+        
+        // Search for cells containing income-related values
+        Object.keys(cells).forEach(cellRef => {
+            const cell = cells[cellRef];
+            if (!cell) return;
+            
+            const value = cell.value ? cell.value.toString().toUpperCase() : '';
+            const displayValue = parseFloat(cell.display) || 0;
+            
+            // Look for "GROSS PROFIT", "NET INCOME", "GROSS SALES"
+            if (value.includes('GROSS PROFIT') || value.includes('NET MONTHLY INCOME') || value.includes('GROSS SALES')) {
+                // Get the value from the next column (usually D column)
+                const match = cellRef.match(/([A-Z]+)(\d+)/);
+                if (match) {
+                    const row = match[2];
+                    const nextCol = 'D'; // Most templates use column D for amounts
+                    const valueCell = cells[nextCol + row];
+                    if (valueCell && valueCell.display) {
+                        netIncome = Math.max(netIncome, parseFloat(valueCell.display) || 0);
+                    }
+                }
+            }
+            
+            // Look for "TOTAL SALES" or "TOTAL MONTHLY INCOME"
+            if (value.includes('TOTAL SALES') || value.includes('TOTAL MONTHLY INCOME')) {
+                const match = cellRef.match(/([A-Z]+)(\d+)/);
+                if (match) {
+                    const row = match[2];
+                    const nextCol = 'D';
+                    const valueCell = cells[nextCol + row] || cells['C' + row];
+                    if (valueCell && valueCell.display) {
+                        totalIncome = Math.max(totalIncome, parseFloat(valueCell.display) || 0);
+                    }
+                }
+            }
+        });
+        
+        // Populate the computation page with extracted data
+        if (netIncome > 0) {
+            // Set as business income (from Cash Flow Statement)
+            const businessIncomeInput = document.querySelector('[name="income_business"]');
+            if (businessIncomeInput && !businessIncomeInput.value) {
+                businessIncomeInput.value = netIncome.toFixed(2);
+                
+                // Show notification
+                showSyncNotification(netIncome);
+            }
+        }
+        
+        // Trigger all computations
+        updateAllComputations();
+        
+    } catch (e) {
+        console.error('Error syncing Excel to Computation:', e);
+    }
+}
+
+// Show sync notification
+function showSyncNotification(amount) {
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-success alert-dismissible fade show';
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.maxWidth = '400px';
+    notification.innerHTML = `
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <h6><i class="bi bi-check-circle"></i> Cash Flow Data Synced!</h6>
+        <p class="mb-0 small">Business income of ₱${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} has been automatically filled from your Cash Flow Statement.</p>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        notification.remove();
+    }, 5000);
+}
+
+// Auto-save Excel data periodically (silently in background)
 setInterval(() => {
     if (window.excelSheet && currentPage === 2.5) {
         const excelData = window.excelSheet.exportData();
         checklistData.excel_cashflow = excelData;
         sessionStorage.setItem('ci_checklist_data', JSON.stringify(checklistData));
+        // Silent save - no notification or submission
     }
 }, 10000); // Save every 10 seconds when on Excel page

@@ -483,7 +483,7 @@ class ExcelSpreadsheet {
         // Recalculate dependent cells
         this.recalculateAll();
 
-        // Auto-save
+        // Silent auto-save (no notifications)
         this.saveData();
     }
 
@@ -788,7 +788,7 @@ class ExcelSpreadsheet {
         }
     }
 
-    // Save data
+    // Save data (silent background save)
     saveData() {
         const data = {
             rows: this.rows,
@@ -796,6 +796,7 @@ class ExcelSpreadsheet {
             cells: this.cells,
             mergedCells: this.mergedCells
         };
+        // Silent save to sessionStorage - no notifications or submissions
         sessionStorage.setItem('excel_data', JSON.stringify(data));
     }
 
@@ -1190,7 +1191,8 @@ class ExcelSpreadsheet {
         this.render();
         this.saveData();
 
-        alert(`Merged ${this.selectedRange.length} cells`);
+        // Silent merge - no alert notification
+        console.log(`Merged ${this.selectedRange.length} cells`);
     }
 
     // Unmerge selected cell
@@ -1206,7 +1208,8 @@ class ExcelSpreadsheet {
             delete this.mergedCells[cellRef];
             this.render();
             this.saveData();
-            alert('Cells unmerged');
+            // Silent unmerge - no alert notification
+            console.log('Cells unmerged');
         } else {
             alert('Selected cell is not merged');
         }

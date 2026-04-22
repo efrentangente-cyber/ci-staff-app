@@ -4389,6 +4389,39 @@ def send_sms_and_update_status(app_id):
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/send_bulk_sms', methods=['POST'])
+@login_required
+def send_bulk_sms_route():
+    """Send SMS to multiple phone numbers at once"""
+    if current_user.role not in ['admin', 'loan_officer']:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        data = request.get_json()
+        phone_numbers = data.get('phone_numbers', '')  # Comma-separated or list
+        message = data.get('message', '').strip()
+        
+        if not phone_numbers:
+            return jsonify({'success': False, 'error': 'Phone numbers are required'}), 400
+        
+        if not message:
+            return jsonify({'success': False, 'error': 'Message is required'}), 400
+        
+        # Send bulk SMS
+        results = send_bulk_sms(phone_numbers, message)
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'message': f'Sent to {results["success"]} of {results["total"]} numbers'
+        })
+        
+    except Exception as e:
+        print(f"Error in send_bulk_sms_route: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/add_sms_template', methods=['POST'])
 @login_required
 def add_sms_template():

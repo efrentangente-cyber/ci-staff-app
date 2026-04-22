@@ -9,6 +9,14 @@
 {% include 'offline_indicator.html' %}
 
 <style>
+/* Hide bottom navigation bar on CI checklist page */
+.navbar-fixed-bottom,
+.fixed-bottom,
+nav[style*="position: fixed"][style*="bottom"],
+.bottom-nav {
+    display: none !important;
+}
+
 /* Make it look EXACTLY like paper forms */
 .paper-form {
     background: white;
@@ -340,9 +348,10 @@
                     </tr>
                 </table>
 
-                <div class="text-center mt-4 no-print">
-                    <button type="button" class="btn btn-lg btn-primary" onclick="nextPage()">
-                        Next Page <i class="bi bi-arrow-right"></i>
+                <div class="d-flex justify-content-between mt-4 no-print">
+                    <div></div>
+                    <button type="button" class="btn btn-primary" onclick="nextPage()">
+                        Next <i class="bi bi-arrow-right"></i>
                     </button>
                 </div>
             </div>
@@ -512,9 +521,9 @@
                     </tr>
                 </table>
 
-                <div class="text-center mt-4 no-print">
+                <div class="d-flex justify-content-between mt-4 no-print">
                     <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                        <i class="bi bi-arrow-left"></i> Previous
+                        <i class="bi bi-arrow-left"></i> Back
                     </button>
                     <button type="button" class="btn btn-primary" onclick="nextPage()">
                         Next <i class="bi bi-arrow-right"></i>
@@ -588,9 +597,9 @@
                     </ul>
                 </div>
 
-                <div class="text-center mt-4 no-print">
+                <div class="d-flex justify-content-between mt-4 no-print">
                     <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                        <i class="bi bi-arrow-left"></i> Previous
+                        <i class="bi bi-arrow-left"></i> Back
                     </button>
                     <button type="button" class="btn btn-primary" onclick="nextPage()">
                         Next to Computation <i class="bi bi-arrow-right"></i>
@@ -785,9 +794,9 @@
                     </tr>
                 </table>
 
-                <div class="text-center mt-4 no-print">
+                <div class="d-flex justify-content-between mt-4 no-print">
                     <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                        <i class="bi bi-arrow-left"></i> Previous
+                        <i class="bi bi-arrow-left"></i> Back
                     </button>
                     <button type="button" class="btn btn-primary" onclick="nextPage()">
                         Next <i class="bi bi-arrow-right"></i>
@@ -1032,9 +1041,9 @@
                     </tr>
                 </table>
 
-                <div class="text-center mt-4 no-print">
+                <div class="d-flex justify-content-between mt-4 no-print">
                     <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                        <i class="bi bi-arrow-left"></i> Previous
+                        <i class="bi bi-arrow-left"></i> Back
                     </button>
                     <button type="button" class="btn btn-primary" onclick="nextPage()">
                         Next <i class="bi bi-arrow-right"></i>
@@ -1209,12 +1218,12 @@
                     <p class="mb-0"><small>Longitude: <span id="display_longitude">Not captured yet</span></small></p>
                 </div>
 
-                <div class="text-center mt-4 no-print">
+                <div class="d-flex justify-content-between mt-4 no-print">
                     <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                        <i class="bi bi-arrow-left"></i> Previous
+                        <i class="bi bi-arrow-left"></i> Back
                     </button>
-                    <button type="button" class="btn btn-success btn-lg" onclick="submitChecklist()">
-                        <i class="bi bi-check-circle"></i> Submit Complete Checklist
+                    <button type="button" class="btn btn-success" onclick="submitChecklist()">
+                        <i class="bi bi-check-circle"></i> Submit
                     </button>
                 </div>
             </div>
@@ -1606,9 +1615,9 @@ function showCINotification(type, message) {
                     </tr>
                 </table>
 
-                <div class="text-center mt-4 no-print">
+                <div class="d-flex justify-content-between mt-4 no-print">
                     <button type="button" class="btn btn-secondary" onclick="previousPage()">
-                        <i class="bi bi-arrow-left"></i> Previous
+                        <i class="bi bi-arrow-left"></i> Back
                     </button>
                     <button type="button" class="btn btn-primary" onclick="nextPage()">
                         Next <i class="bi bi-arrow-right"></i>
