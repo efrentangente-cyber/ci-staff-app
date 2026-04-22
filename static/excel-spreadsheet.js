@@ -535,21 +535,39 @@ class ExcelSpreadsheet {
 
             // Replace cell references with values
             formula = this.replaceCellReferences(formula);
+            
+            // Check if formula contains only zeros or empty values
+            // If so, leave cell empty instead of showing 0
+            if (formula.match(/^0[\s\*\+\-\/]*0*$/)) {
+                cell.display = '';
+                const input = document.querySelector(`[data-cell="${cellRef}"]`);
+                if (input) {
+                    input.value = '';
+                }
+                return;
+            }
 
             // Evaluate formula
             const result = this.evaluateExpression(formula);
-            cell.display = result;
+            
+            // Only show result if it's not 0 from empty cells
+            if (result === 0 || result === '0') {
+                cell.display = '';
+            } else {
+                cell.display = result;
+            }
 
             // Update display
             const input = document.querySelector(`[data-cell="${cellRef}"]`);
             if (input) {
-                input.value = result;
+                input.value = cell.display;
             }
         } catch (error) {
-            cell.display = '#ERROR!';
+            console.error('Formula error in', cellRef, ':', error);
+            cell.display = '';
             const input = document.querySelector(`[data-cell="${cellRef}"]`);
             if (input) {
-                input.value = '#ERROR!';
+                input.value = '';
             }
         }
     }
@@ -563,9 +581,9 @@ class ExcelSpreadsheet {
             const cellRef = col + row;
             const cell = this.cells[cellRef];
             
-            if (cell) {
+            if (cell && (cell.display || cell.value)) {
                 // Use display value if available, otherwise value
-                const value = cell.display || cell.value || '0';
+                const value = cell.display || cell.value;
                 // Remove any non-numeric characters except decimal point and minus
                 const numericValue = value.toString().replace(/[^\d.-]/g, '');
                 return numericValue || '0';
@@ -742,7 +760,7 @@ class ExcelSpreadsheet {
         // If a cell is selected, insert row below it
         if (this.selectedCell) {
             const selectedRow = parseInt(this.selectedCell.dataset.row);
-            const insertAfterRow = selectedRow;
+            const insertAfterRow = selectedRow + 1; // Insert after this row (1-indexed)
             
             // Shift all cells below the selected row down by 1
             const newCells = {};
@@ -794,8 +812,7 @@ class ExcelSpreadsheet {
     addColumn() {
         // If a cell is selected, insert column to the right of it
         if (this.selectedCell) {
-            const selectedCol = this.selectedCell.dataset.col;
-            const selectedColIndex = this.columnToIndex(selectedCol);
+            const selectedColIndex = parseInt(this.selectedCell.dataset.col);
             
             // Shift all cells to the right of the selected column
             const newCells = {};
@@ -1173,8 +1190,8 @@ class ExcelSpreadsheet {
         if (value.startsWith('=')) {
             this.cells[cellRef].formula = value;
             this.cells[cellRef].value = value;
-            // Evaluate formula immediately
-            this.evaluateFormula(cellRef);
+            this.cells[cellRef].display = ''; // Leave empty until evaluated
+            // Don't evaluate immediately - will be done by recalculateAll()
         } else {
             this.cells[cellRef].value = value;
             this.cells[cellRef].display = value;

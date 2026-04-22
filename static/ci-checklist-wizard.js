@@ -17,6 +17,13 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         loadExcelData();
     }, 500); // Wait for Excel component to initialize
+    
+    // Trigger initial computation when navigating to Page 3
+    setTimeout(() => {
+        if (currentPage === 3) {
+            updateAllComputations();
+        }
+    }, 1000);
 });
 
 // Load checkbox data from summary page
@@ -147,6 +154,13 @@ function goToPage(pageNumber) {
         currentPage = pageNumber;
         updateProgressBar();
         window.scrollTo(0, 0);
+        
+        // Trigger computations when navigating to Page 3
+        if (pageNumber === 3) {
+            setTimeout(() => {
+                updateAllComputations();
+            }, 100);
+        }
     }
 }
 
@@ -292,12 +306,30 @@ function submitChecklist() {
     document.getElementById('ciChecklistForm').submit();
 }
 
-// Computation functions for Page 6
+// Computation functions for Page 3
 function setupComputationListeners() {
     // Income section
     const incomeFields = ['gross_pay', 'allowances', 'pera_aca', 'long_pay', 'statutory_deductions',
                          'income_business', 'remittance', 'allotment', 'other_income'];
     incomeFields.forEach(field => {
+        const input = document.querySelector(`[name="${field}"]`);
+        if (input) {
+            input.addEventListener('input', updateAllComputations);
+        }
+    });
+    
+    // Loan fields
+    const loanFields = ['dccco_loan_1', 'dccco_loan_2', 'new_loan_amount', 'loan_deductible'];
+    loanFields.forEach(field => {
+        const input = document.querySelector(`[name="${field}"]`);
+        if (input) {
+            input.addEventListener('input', updateAllComputations);
+        }
+    });
+    
+    // Other obligations fields
+    const obligationFields = ['household_expenses', 'tuition', 'medical', 'water_fuel', 'internet'];
+    obligationFields.forEach(field => {
         const input = document.querySelector(`[name="${field}"]`);
         if (input) {
             input.addEventListener('input', updateAllComputations);
@@ -408,13 +440,16 @@ function updateFinalCalculations() {
     const totalIncome = getNumericValue('total_gross_income');
     const totalExpenses = getNumericValue('total_other_obligations'); // This now includes everything
     
+    // Net Disposable Income = Total Gross Income - Total Expenses
     const netDisposable = totalIncome - totalExpenses;
     setComputedValue('net_disposable_income', netDisposable);
     
     if (totalIncome > 0) {
+        // Debt & Expense Ratio = (Total Expenses / Total Gross Income) × 100
         const ratio = (totalExpenses / totalIncome) * 100;
         setComputedValue('debt_expense_ratio', ratio);
         
+        // Loan Amortization Limit = Total Gross Income × 0.80
         const loanLimit = totalIncome * 0.80;
         setComputedValue('loan_amortization_limit', loanLimit);
     } else {
