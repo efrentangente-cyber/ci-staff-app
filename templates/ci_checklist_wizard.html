@@ -654,9 +654,9 @@ nav[style*="position: fixed"][style*="bottom"],
                     <tbody id="loan_rows_container">
                         <tr class="loan-row">
                             <td><input type="text" name="loan_1_institution"></td>
-                            <td><input type="number" name="loan_1_principal" step="0.01" value="0"></td>
-                            <td><input type="number" name="loan_1_balance" step="0.01" value="0"></td>
-                            <td><input type="number" name="loan_1_monthly" step="0.01" value="0" oninput="updateLoanAmortizations()"></td>
+                            <td><input type="number" name="loan_1_principal" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                            <td><input type="number" name="loan_1_balance" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                            <td><input type="number" name="loan_1_monthly" step="0.01" value="0" oninput="updateAllComputations()"></td>
                         </tr>
                     </tbody>
                     <tr>

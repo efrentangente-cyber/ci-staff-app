@@ -389,6 +389,7 @@ function updateLoanAmortizations() {
         total += monthly;
     });
     setComputedValue('total_loan_amortizations', total);
+    // Trigger the cascade of updates
     updateTotalBeforeNew();
 }
 
@@ -467,9 +468,9 @@ function addLoanRow() {
     row.className = 'loan-row';
     row.innerHTML = `
         <td><input type="text" name="loan_${rowCount}_institution" class="form-control form-control-sm"></td>
-        <td><input type="number" name="loan_${rowCount}_principal" class="form-control form-control-sm" step="0.01"></td>
-        <td><input type="number" name="loan_${rowCount}_balance" class="form-control form-control-sm" step="0.01"></td>
-        <td><input type="number" name="loan_${rowCount}_monthly" class="form-control form-control-sm" step="0.01" oninput="updateLoanAmortizations()"></td>
+        <td><input type="number" name="loan_${rowCount}_principal" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
+        <td><input type="number" name="loan_${rowCount}_balance" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
+        <td><input type="number" name="loan_${rowCount}_monthly" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
         <td><button type="button" class="btn btn-sm btn-danger" onclick="removeLoanRow(this)"><i class="bi bi-trash"></i></button></td>
     `;
     container.appendChild(row);
@@ -478,7 +479,7 @@ function addLoanRow() {
 // Remove loan row
 function removeLoanRow(button) {
     button.closest('.loan-row').remove();
-    updateLoanAmortizations();
+    updateAllComputations();
 }
 
 

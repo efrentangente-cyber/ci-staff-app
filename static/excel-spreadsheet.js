@@ -550,8 +550,11 @@ class ExcelSpreadsheet {
             // Evaluate formula
             const result = this.evaluateExpression(formula);
             
-            // Only show result if it's not 0 from empty cells
-            if (result === 0 || result === '0') {
+            // Check if result is an error
+            if (result === '#ERROR!' || result === 'NaN' || result === 'Infinity' || result === '-Infinity') {
+                cell.display = '';
+            } else if (result === 0 || result === '0') {
+                // Only show result if it's not 0 from empty cells
                 cell.display = '';
             } else {
                 cell.display = result;
@@ -581,11 +584,17 @@ class ExcelSpreadsheet {
             const cellRef = col + row;
             const cell = this.cells[cellRef];
             
-            if (cell && (cell.display || cell.value)) {
-                // Use display value if available, otherwise value
-                const value = cell.display || cell.value;
+            if (cell && (cell.display !== undefined && cell.display !== null && cell.display !== '')) {
+                // Use display value if available
+                const value = cell.display.toString();
                 // Remove any non-numeric characters except decimal point and minus
-                const numericValue = value.toString().replace(/[^\d.-]/g, '');
+                const numericValue = value.replace(/[^\d.-]/g, '');
+                return numericValue || '0';
+            } else if (cell && (cell.value !== undefined && cell.value !== null && cell.value !== '')) {
+                // Use value if display is not available
+                const value = cell.value.toString();
+                // Remove any non-numeric characters except decimal point and minus
+                const numericValue = value.replace(/[^\d.-]/g, '');
                 return numericValue || '0';
             }
             return '0';
@@ -605,9 +614,16 @@ class ExcelSpreadsheet {
         try {
             // Use Function constructor for safe evaluation
             const result = new Function('return ' + expression)();
+            
+            // Check for invalid results
+            if (result === null || result === undefined || isNaN(result) || !isFinite(result)) {
+                return '';
+            }
+            
             return this.formatNumber(result);
         } catch (error) {
-            return '#ERROR!';
+            console.error('Expression evaluation error:', expression, error);
+            return '';
         }
     }
 
@@ -750,9 +766,12 @@ class ExcelSpreadsheet {
 
     // Format number
     formatNumber(num) {
-        if (isNaN(num)) return num;
-        // Format with 2 decimal places if needed
-        return Number(num).toFixed(2).replace(/\.?0+$/, '');
+        if (num === null || num === undefined || num === '' || isNaN(num) || !isFinite(num)) {
+            return '';
+        }
+        // Format with 2 decimal places if needed, remove trailing zeros
+        const formatted = Number(num).toFixed(2).replace(/\.?0+$/, '');
+        return formatted;
     }
 
     // Add row

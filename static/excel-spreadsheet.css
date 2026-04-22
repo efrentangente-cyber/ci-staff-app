@@ -442,25 +442,30 @@
 /* Print styles */
 @media print {
     .excel-toolbar,
-    .excel-formula-bar {
+    .excel-formula-bar,
+    .template-selector-excel,
+    .alert,
+    .btn,
+    .no-print {
         display: none !important;
     }
 
     .excel-container {
-        border: none;
-        background: white;
+        border: none !important;
+        background: white !important;
         page-break-inside: avoid;
     }
 
     .excel-grid {
-        max-height: none;
-        overflow: visible;
+        max-height: none !important;
+        overflow: visible !important;
     }
 
     .excel-table {
         page-break-inside: auto;
         border-collapse: collapse;
         width: 100%;
+        border: none !important;
     }
 
     .excel-table tr {
@@ -468,18 +473,17 @@
         page-break-after: auto;
     }
 
+    /* HIDE all column and row headers */
     .excel-col-header,
-    .excel-row-header {
-        background: #f0f0f0 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-        border: 1px solid #000 !important;
-        font-size: 10px;
-        padding: 4px;
+    .excel-row-header,
+    .excel-corner,
+    thead {
+        display: none !important;
     }
 
+    /* Remove ALL borders from cells */
     .excel-cell {
-        border: 1px solid #000 !important;
+        border: none !important;
         background: white !important;
         page-break-inside: avoid;
     }
@@ -494,21 +498,35 @@
     }
 
     .cell-input:focus,
-    .cell-input.selected {
+    .cell-input.selected,
+    .cell-input.range-selected {
         outline: none !important;
         background: transparent !important;
+        border: none !important;
     }
 
-    /* Formula cells - print with light background */
+    /* Formula cells - print normally without background */
     .cell-input[data-has-formula="true"] {
-        background: #f8f9fa !important;
+        background: transparent !important;
         color: #000 !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
 
+    /* Merged cells - no special styling */
+    .excel-cell.merged-cell {
+        background: transparent !important;
+        border: none !important;
+    }
+
+    .merged-cell .cell-input {
+        background: transparent !important;
+        color: #000 !important;
+    }
+
     /* Hide resize handles */
-    .col-resize-handle {
+    .col-resize-handle,
+    .row-resize-handle {
         display: none !important;
     }
 
@@ -520,7 +538,19 @@
 
     /* Hide scrollbars */
     .excel-grid::-webkit-scrollbar {
-        display: none;
+        display: none !important;
+    }
+
+    /* Remove all hover effects */
+    .excel-cell:hover,
+    .cell-input:hover {
+        background: transparent !important;
+    }
+
+    /* Clean print - no borders, no backgrounds, just content */
+    body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
     }
 }
 
