@@ -46,6 +46,7 @@ CREATE TABLE loan_applications (
     ci_checklist_data TEXT,
     ci_signature TEXT,
     admin_notes TEXT,
+    lps_remarks TEXT,
     FOREIGN KEY (submitted_by) REFERENCES users(id),
     FOREIGN KEY (assigned_ci_staff) REFERENCES users(id)
 );

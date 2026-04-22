@@ -63,6 +63,14 @@
                             <label class="text-muted small">Submitted Date</label>
                             <h6>{{ application.submitted_at[:16] }}</h6>
                         </div>
+                        {% if application.lps_remarks %}
+                        <div class="col-md-12 mb-3">
+                            <label class="text-muted small"><i class="bi bi-chat-left-text"></i> LPS Remarks / Notes</label>
+                            <div class="alert alert-info mb-0">
+                                {{ application.lps_remarks }}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>

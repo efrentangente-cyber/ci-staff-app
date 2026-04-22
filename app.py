@@ -858,6 +858,7 @@ def submit_application():
             member_address = request.form.get('member_address')
             loan_amount = request.form.get('loan_amount')
             loan_type = request.form.get('loan_type')
+            lps_remarks = request.form.get('lps_remarks', '').strip()
             needs_ci_value = request.form.get('needs_ci', '1')
             
             print(f"DEBUG: Submitting application - Name: {member_name}, Amount: {loan_amount}")
@@ -893,9 +894,9 @@ def submit_application():
             print(f"DEBUG: Inserting application into database")
             cursor = conn.execute('''
                 INSERT INTO loan_applications 
-                (member_name, member_contact, member_address, loan_amount, loan_type, needs_ci_interview, submitted_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (member_name, member_contact, member_address, loan_amount, loan_type, needs_ci, current_user.id))
+                (member_name, member_contact, member_address, loan_amount, loan_type, lps_remarks, needs_ci_interview, submitted_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (member_name, member_contact, member_address, loan_amount, loan_type, lps_remarks, needs_ci, current_user.id))
             app_id = cursor.lastrowid
             print(f"DEBUG: Application created with ID: {app_id}")
             
@@ -2181,7 +2182,26 @@ def serve_signature(filename):
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
     """Serve uploaded files"""
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    try:
+        upload_folder = app.config['UPLOAD_FOLDER']
+        file_path = os.path.join(upload_folder, filename)
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            print(f"ERROR: File not found: {file_path}")
+            return "File not found", 404
+        
+        # Security check - ensure file is within upload folder
+        if not os.path.abspath(file_path).startswith(os.path.abspath(upload_folder)):
+            print(f"ERROR: Security violation - path traversal attempt: {filename}")
+            return "Access denied", 403
+        
+        return send_from_directory(upload_folder, filename)
+    except Exception as e:
+        print(f"ERROR serving upload {filename}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return f"Error loading file: {str(e)}", 500
 
 @app.route('/serve_message_file/<path:filename>')
 @login_required
@@ -4545,6 +4565,20 @@ def toggle_sms_template(template_id):
 
 if __name__ == '__main__':
     import os
+    
+    # Create required folders if they don't exist
+    folders = [
+        app.config['UPLOAD_FOLDER'],
+        app.config['SIGNATURE_FOLDER'],
+        'message_attachments',
+        'voice_messages'
+    ]
+    
+    for folder in folders:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+            print(f"Created folder: {folder}")
+    
     port = int(os.environ.get('PORT', 5000))
     # Bind to 0.0.0.0 to accept connections from all interfaces
     socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)

@@ -20,6 +20,16 @@
                     <tr><th>Loan Amount:</th><td>₱{{ application.loan_amount }}</td></tr>
                     <tr><th>Status:</th><td><span class="badge bg-warning">{{ application.status.replace('_', ' ').title() }}</span></td></tr>
                     <tr><th>Submitted By:</th><td>{{ application.loan_staff_name }}</td></tr>
+                    {% if application.lps_remarks %}
+                    <tr>
+                        <th><i class="bi bi-chat-left-text"></i> LPS Remarks:</th>
+                        <td>
+                            <div class="alert alert-info mb-0">
+                                <small>{{ application.lps_remarks }}</small>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
                     <tr>
                         <th>CI/BI:</th>
                         <td>
@@ -52,6 +62,57 @@
             </div>
         </div>
         {% endif %}
+        
+        <!-- Documents Section -->
+        <div class="card mb-3">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-file-earmark-image"></i> Uploaded Documents ({{ documents|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if documents %}
+                <div class="row g-3">
+                    {% for doc in documents %}
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            {% if doc.file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+                            <!-- Image Preview -->
+                            <img src="{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}" 
+                                 class="card-img-top" 
+                                 style="height: 200px; object-fit: cover; cursor: pointer;"
+                                 onclick="openLightbox('{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}', '{{ doc.file_name }}')"
+                                 alt="{{ doc.file_name }}"
+                                 onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/file-icon.png') }}'; this.style.objectFit='contain'; this.style.padding='20px';">
+                            {% else %}
+                            <!-- File Icon for non-images -->
+                            <div class="card-img-top d-flex align-items-center justify-content-center bg-light" style="height: 200px;">
+                                <i class="bi bi-file-earmark-pdf" style="font-size: 4rem; color: #dc3545;"></i>
+                            </div>
+                            {% endif %}
+                            <div class="card-body">
+                                <h6 class="card-title text-truncate" title="{{ doc.file_name }}">{{ doc.file_name }}</h6>
+                                <p class="card-text small text-muted">
+                                    <i class="bi bi-calendar"></i> {{ doc.uploaded_at }}<br>
+                                    <i class="bi bi-person"></i> Uploaded by LPS
+                                </p>
+                                <a href="{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}" 
+                                   class="btn btn-sm btn-primary w-100" 
+                                   download="{{ doc.file_name }}"
+                                   target="_blank">
+                                    <i class="bi bi-download"></i> Download
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                    <p class="mt-2">No documents uploaded yet</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
         
         {% if application.status not in ['approved', 'disapproved', 'deferred'] %}
         <div class="card mb-3">

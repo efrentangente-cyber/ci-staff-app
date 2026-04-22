@@ -115,6 +115,29 @@
                 </select>
                 <small class="text-muted">All applications must go through CI interview process</small>
             </div>
+            
+            <!-- Remarks Field with Voice-to-Text -->
+            <div class="mb-3">
+                <label class="form-label">
+                    <i class="bi bi-chat-left-text"></i> Remarks / Notes (Optional)
+                </label>
+                <div class="input-group">
+                    <textarea name="lps_remarks" id="lps_remarks" class="form-control" rows="3" placeholder="Type your remarks here or use voice input..."></textarea>
+                    <button type="button" class="btn btn-outline-primary" id="voiceInputBtn" title="Voice Input">
+                        <i class="bi bi-mic-fill" id="micIcon"></i>
+                    </button>
+                </div>
+                <small class="text-muted">
+                    <i class="bi bi-info-circle"></i> Click the microphone button to speak your remarks, or type them manually
+                </small>
+                <div id="voiceStatus" class="mt-2" style="display: none;">
+                    <span class="badge bg-danger">
+                        <span class="spinner-grow spinner-grow-sm me-1"></span>
+                        Listening...
+                    </span>
+                </div>
+            </div>
+            
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-success">Submit Application</button>
                 <a href="{{ url_for('loan_dashboard') }}" class="btn btn-secondary">Cancel</a>
@@ -725,6 +748,106 @@ function showNotification(type, message) {
     setTimeout(() => {
         notification.remove();
     }, 3000);
+}
+
+// Voice-to-Text Functionality
+let recognition = null;
+let isListening = false;
+
+// Check if browser supports speech recognition
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    
+    recognition.continuous = false; // Stop after one phrase
+    recognition.interimResults = false; // Only final results
+    recognition.lang = 'en-US'; // English language
+    recognition.maxAlternatives = 1;
+    
+    const voiceInputBtn = document.getElementById('voiceInputBtn');
+    const remarksTextarea = document.getElementById('lps_remarks');
+    const voiceStatus = document.getElementById('voiceStatus');
+    const micIcon = document.getElementById('micIcon');
+    
+    // Start/stop voice recognition
+    voiceInputBtn?.addEventListener('click', function() {
+        if (isListening) {
+            stopListening();
+        } else {
+            startListening();
+        }
+    });
+    
+    function startListening() {
+        try {
+            recognition.start();
+            isListening = true;
+            voiceStatus.style.display = 'block';
+            voiceInputBtn.classList.remove('btn-outline-primary');
+            voiceInputBtn.classList.add('btn-danger');
+            micIcon.classList.remove('bi-mic-fill');
+            micIcon.classList.add('bi-mic-mute-fill');
+            voiceInputBtn.title = 'Stop Listening';
+        } catch (error) {
+            console.error('Speech recognition error:', error);
+            showNotification('danger', 'Failed to start voice input');
+        }
+    }
+    
+    function stopListening() {
+        recognition.stop();
+        isListening = false;
+        voiceStatus.style.display = 'none';
+        voiceInputBtn.classList.remove('btn-danger');
+        voiceInputBtn.classList.add('btn-outline-primary');
+        micIcon.classList.remove('bi-mic-mute-fill');
+        micIcon.classList.add('bi-mic-fill');
+        voiceInputBtn.title = 'Voice Input';
+    }
+    
+    // Handle speech recognition results
+    recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        
+        // Append to existing text (add space if there's already text)
+        const currentText = remarksTextarea.value.trim();
+        remarksTextarea.value = currentText ? currentText + ' ' + transcript : transcript;
+        
+        showNotification('success', 'Voice input added!');
+        stopListening();
+    };
+    
+    // Handle errors
+    recognition.onerror = function(event) {
+        console.error('Speech recognition error:', event.error);
+        
+        let errorMessage = 'Voice input failed';
+        if (event.error === 'no-speech') {
+            errorMessage = 'No speech detected. Please try again.';
+        } else if (event.error === 'audio-capture') {
+            errorMessage = 'Microphone not found or not accessible';
+        } else if (event.error === 'not-allowed') {
+            errorMessage = 'Microphone access denied. Please allow microphone access.';
+        }
+        
+        showNotification('danger', errorMessage);
+        stopListening();
+    };
+    
+    // Handle end of recognition
+    recognition.onend = function() {
+        stopListening();
+    };
+    
+} else {
+    // Browser doesn't support speech recognition
+    const voiceInputBtn = document.getElementById('voiceInputBtn');
+    if (voiceInputBtn) {
+        voiceInputBtn.disabled = true;
+        voiceInputBtn.title = 'Voice input not supported in this browser';
+        voiceInputBtn.innerHTML = '<i class="bi bi-mic-mute"></i>';
+    }
+    console.warn('Speech recognition not supported in this browser');
 }
 </script>
 {% endblock %}
