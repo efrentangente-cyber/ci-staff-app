@@ -384,9 +384,8 @@ def create_notification(user_id, message, link=None):
 
 def send_sms(phone_number, message):
     """
-    Send SMS using multiple providers with fallback
+    Send SMS using TextBelt (FREE - works immediately, no registration needed)
     Supports INTERNATIONAL phone numbers
-    Priority: Semaphore (paid) -> TextBelt (free 1/day) -> Console log
     """
     try:
         # Clean phone number (remove spaces, dashes, etc.)
@@ -406,92 +405,44 @@ def send_sms(phone_number, message):
         print(f"\n[SMS] Attempting to send to {phone}")
         print(f"[SMS] Message: {message[:50]}...")
         
-        # Try Semaphore first (if API key is configured)
-        semaphore_key = os.getenv('SEMAPHORE_API_KEY', '')
-        if semaphore_key:
-            try:
-                url = 'https://api.semaphore.co/api/v4/messages'
-                payload = {
-                    'apikey': semaphore_key,
-                    'number': phone,
-                    'message': message,
-                    'sendername': 'DCCCO'
-                }
-                
-                print(f"[SMS] Sending via Semaphore API...")
-                response = requests.post(url, data=payload, timeout=10)
-                
-                print(f"[SMS] Semaphore Response Status: {response.status_code}")
-                print(f"[SMS] Semaphore Response: {response.text}")
-                
-                # Check response
-                if response.status_code == 200:
-                    try:
-                        result = response.json()
-                        # Semaphore returns array of message objects
-                        if isinstance(result, list) and len(result) > 0:
-                            msg_data = result[0]
-                            if msg_data.get('message_id'):
-                                print(f"✓ SMS sent via Semaphore to {phone}")
-                                print(f"  Message ID: {msg_data.get('message_id')}")
-                                print(f"  Status: {msg_data.get('status', 'sent')}")
-                                return True
-                        # Sometimes Semaphore returns single object
-                        elif isinstance(result, dict) and result.get('message_id'):
-                            print(f"✓ SMS sent via Semaphore to {phone}")
-                            print(f"  Message ID: {result.get('message_id')}")
-                            return True
-                        else:
-                            print(f"✗ Semaphore unexpected response format: {result}")
-                    except ValueError:
-                        # Response is not JSON, check if it's a success message
-                        if 'success' in response.text.lower() or 'sent' in response.text.lower():
-                            print(f"✓ SMS sent via Semaphore to {phone}")
-                            return True
-                        else:
-                            print(f"✗ Semaphore non-JSON response: {response.text}")
-                else:
-                    print(f"✗ Semaphore HTTP error: {response.status_code}")
-                    print(f"  Response: {response.text}")
-                    
-            except Exception as e:
-                print(f"✗ Semaphore exception: {str(e)}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"[SMS] No Semaphore API key configured")
-        
-        # Fallback to TextBelt (FREE - 1 SMS per day per number, INTERNATIONAL)
+        # Use TextBelt (FREE - 1 SMS per day per number, works internationally)
+        # No registration needed, works immediately!
         try:
-            print(f"[SMS] Trying TextBelt fallback...")
+            print(f"[SMS] Using TextBelt (FREE, no registration needed)...")
             url = 'https://textbelt.com/text'
             payload = {
                 'phone': phone,
-                'message': message,
-                'key': 'textbelt'  # Free tier key (1 SMS/day per number, works internationally)
+                'message': f"DCCCO: {message}",  # Add DCCCO prefix
+                'key': 'textbelt'  # Free tier key
             }
+            
             response = requests.post(url, data=payload, timeout=10)
             result = response.json()
             
             print(f"[SMS] TextBelt Response: {result}")
             
             if result.get('success'):
-                print(f"✓ SMS sent via TextBelt (FREE, INTERNATIONAL) to {phone}")
-                print(f"  Quota remaining: {result.get('quotaRemaining', 'N/A')}")
+                print(f"✓ SMS sent via TextBelt to {phone}")
+                print(f"  Text ID: {result.get('textId', 'N/A')}")
+                print(f"  Quota remaining today: {result.get('quotaRemaining', 'N/A')}")
                 return True
             else:
-                print(f"✗ TextBelt failed: {result.get('error', 'Unknown error')}")
+                error_msg = result.get('error', 'Unknown error')
+                print(f"✗ TextBelt failed: {error_msg}")
+                
+                # If quota exceeded, show helpful message
+                if 'quota' in error_msg.lower():
+                    print(f"  Note: TextBelt free tier allows 1 SMS per day per number")
+                    print(f"  You can get more at https://textbelt.com")
+                
+                return False
+                
         except Exception as e:
             print(f"✗ TextBelt exception: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
         
-        # If all fail, log to console
-        print(f"\n{'='*60}")
-        print(f"SMS NOTIFICATION (Not sent - all providers failed)")
-        print(f"To: {phone}")
-        print(f"Message: {message}")
-        print(f"{'='*60}\n")
-        return False
-            
     except Exception as e:
         print(f"✗ SMS error: {str(e)}")
         import traceback

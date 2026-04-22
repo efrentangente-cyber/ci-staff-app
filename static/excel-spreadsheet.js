@@ -42,37 +42,37 @@ class ExcelSpreadsheet {
         const toolbar = document.createElement('div');
         toolbar.className = 'excel-toolbar';
         toolbar.innerHTML = `
-            <button class="btn btn-sm btn-primary" onclick="excelSheet.addRow()" title="Add Row">
+            <button type="button" class="btn btn-sm btn-primary" onclick="excelSheet.addRow()" title="Add Row">
                 <i class="bi bi-plus"></i> Add Row
             </button>
-            <button class="btn btn-sm btn-primary" onclick="excelSheet.addColumn()" title="Add Column">
+            <button type="button" class="btn btn-sm btn-primary" onclick="excelSheet.addColumn()" title="Add Column">
                 <i class="bi bi-plus"></i> Add Column
             </button>
             <div class="toolbar-divider"></div>
-            <button class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('left')" title="Align Left">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('left')" title="Align Left">
                 <i class="bi bi-text-left"></i>
             </button>
-            <button class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('center')" title="Align Center">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('center')" title="Align Center">
                 <i class="bi bi-text-center"></i>
             </button>
-            <button class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('right')" title="Align Right">
+            <button type="button" class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('right')" title="Align Right">
                 <i class="bi bi-text-right"></i>
             </button>
             <div class="toolbar-divider"></div>
-            <button class="btn btn-sm btn-warning" onclick="excelSheet.mergeCells()" title="Merge Cells">
+            <button type="button" class="btn btn-sm btn-warning" onclick="excelSheet.mergeCells()" title="Merge Cells">
                 <i class="bi bi-border-outer"></i> Merge
             </button>
-            <button class="btn btn-sm btn-warning" onclick="excelSheet.unmergeCells()" title="Unmerge Cells">
+            <button type="button" class="btn btn-sm btn-warning" onclick="excelSheet.unmergeCells()" title="Unmerge Cells">
                 <i class="bi bi-border-inner"></i> Unmerge
             </button>
             <div class="toolbar-divider"></div>
-            <button class="btn btn-sm btn-danger" onclick="excelSheet.clearAll()" title="Clear All">
+            <button type="button" class="btn btn-sm btn-danger" onclick="excelSheet.clearAll()" title="Clear All">
                 <i class="bi bi-trash"></i> Clear
             </button>
-            <button class="btn btn-sm btn-success" onclick="excelSheet.saveData()" title="Save">
+            <button type="button" class="btn btn-sm btn-success" onclick="excelSheet.saveData()" title="Save">
                 <i class="bi bi-save"></i> Save
             </button>
-            <button class="btn btn-sm btn-info" onclick="excelSheet.printSpreadsheet()" title="Print">
+            <button type="button" class="btn btn-sm btn-info" onclick="excelSheet.printSpreadsheet()" title="Print">
                 <i class="bi bi-printer"></i> Print
             </button>
             <div class="toolbar-info">
@@ -771,11 +771,20 @@ class ExcelSpreadsheet {
             }
             this.cells[cellRef].align = alignment;
         } else {
-            alert('Please select a cell or range to align');
+            console.log('Please select a cell or range to align');
+            // Show a subtle visual feedback instead of alert
+            const notification = document.createElement('div');
+            notification.className = 'excel-notification';
+            notification.textContent = 'Select a cell to align text';
+            notification.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #17a2b8; color: #fff; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);';
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 2000);
             return;
         }
         
+        // Silent save - no notifications
         this.saveData();
+        console.log(`Text aligned: ${alignment}`);
     }
 
     // Clear all
@@ -1148,7 +1157,14 @@ class ExcelSpreadsheet {
     // Merge selected cells
     mergeCells() {
         if (this.selectedRange.length < 2) {
-            alert('Please select multiple cells to merge (hold Shift and click)');
+            console.log('Please select multiple cells to merge (hold Shift and click)');
+            // Show a subtle visual feedback instead of alert
+            const notification = document.createElement('div');
+            notification.className = 'excel-notification';
+            notification.textContent = 'Select multiple cells to merge (click and drag)';
+            notification.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #ffc107; color: #000; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);';
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 2000);
             return;
         }
 
@@ -1198,7 +1214,14 @@ class ExcelSpreadsheet {
     // Unmerge selected cell
     unmergeCells() {
         if (!this.selectedCell) {
-            alert('Please select a merged cell to unmerge');
+            console.log('Please select a merged cell to unmerge');
+            // Show a subtle visual feedback instead of alert
+            const notification = document.createElement('div');
+            notification.className = 'excel-notification';
+            notification.textContent = 'Select a merged cell to unmerge';
+            notification.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #ffc107; color: #000; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);';
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 2000);
             return;
         }
 
@@ -1211,7 +1234,14 @@ class ExcelSpreadsheet {
             // Silent unmerge - no alert notification
             console.log('Cells unmerged');
         } else {
-            alert('Selected cell is not merged');
+            console.log('Selected cell is not merged');
+            // Show a subtle visual feedback instead of alert
+            const notification = document.createElement('div');
+            notification.className = 'excel-notification';
+            notification.textContent = 'Selected cell is not merged';
+            notification.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #17a2b8; color: #fff; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);';
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 2000);
         }
     }
 

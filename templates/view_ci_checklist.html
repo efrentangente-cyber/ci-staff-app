@@ -63,15 +63,20 @@
         <h2><i class="bi bi-clipboard-check"></i> CI Assessment Checklist - {{ application.member_name }}</h2>
         <div class="d-flex gap-2">
             <button onclick="window.print()" class="btn btn-primary btn-lg">
-                <i class="bi bi-printer"></i> Print All Pages
+                <i class="bi bi-printer"></i> Print All 6 Pages
             </button>
-            <a href="{{ url_for('loan_dashboard') }}" class="btn btn-secondary">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
                 <i class="bi bi-arrow-left"></i> Back to Dashboard
             </a>
         </div>
     </div>
 
-    {% if checklist_data %}
+    {% if not checklist_data %}
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i> <strong>No CI Checklist Data Available</strong>
+        <p class="mb-0">The CI staff has not yet completed the checklist for this application.</p>
+    </div>
+    {% else %}
     
     <!-- PAGE 1: PERSONAL DATA -->
     <div class="card print-page">
