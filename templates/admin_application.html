@@ -21,7 +21,7 @@
                     <tr><th>Status:</th><td><span class="badge bg-warning">{{ application.status.replace('_', ' ').title() }}</span></td></tr>
                     <tr><th>Submitted By:</th><td>{{ application.loan_staff_name }}</td></tr>
                     <tr>
-                        <th>CI Staff:</th>
+                        <th>CI/BI:</th>
                         <td>
                             {{ application.ci_staff_name or 'N/A' }}
                             {% if application.status in ['assigned_to_ci', 'ci_completed'] %}
@@ -48,13 +48,7 @@
                     <a href="{{ url_for('view_ci_checklist', id=application.id) }}" class="btn btn-success btn-lg">
                         <i class="bi bi-eye"></i> View Full Checklist (6 Pages)
                     </a>
-                    <a href="{{ url_for('view_ci_checklist', id=application.id) }}" target="_blank" class="btn btn-primary btn-lg">
-                        <i class="bi bi-printer"></i> Open in New Tab & Print
-                    </a>
                 </div>
-                <p class="text-muted mt-3 mb-0">
-                    <small><i class="bi bi-info-circle"></i> Click "Open in New Tab & Print" to open the checklist in a new window, then use Ctrl+P or Cmd+P to print all pages.</small>
-                </p>
             </div>
         </div>
         {% endif %}
@@ -114,21 +108,21 @@
     </div>
 </div>
 
-<!-- Reassign CI Staff Modal -->
+<!-- Reassign CI/BI Modal -->
 <div class="modal fade" id="reassignModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-warning">
-                <h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> Reassign CI Staff</h5>
+                <h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> Reassign CI/BI</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST" action="{{ url_for('reassign_ci_staff', app_id=application.id) }}">
                 <div class="modal-body">
                     <p class="text-muted">Select a new CI staff member to assign this application to:</p>
                     <div class="mb-3">
-                        <label class="form-label">CI Staff *</label>
+                        <label class="form-label">CI/BI *</label>
                         <select name="new_ci_staff_id" class="form-select" required>
-                            <option value="">-- Select CI Staff --</option>
+                            <option value="">-- Select CI/BI --</option>
                             {% if ci_staff_list %}
                                 {% for ci in ci_staff_list %}
                                 <option value="{{ ci.id }}" {% if ci.id == application.assigned_ci_staff %}selected{% endif %}>

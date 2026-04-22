@@ -101,10 +101,10 @@
                 <div id="document_preview" class="mt-3 row g-2"></div>
             </div>
             <div class="mb-3">
-                <label class="form-label">Assign to CI Staff *</label>
+                <label class="form-label">Assign to CI/BI *</label>
                 <select name="needs_ci" class="form-select" required>
-                    <option value="1" selected>Auto-assign to available CI Staff</option>
-                    <optgroup label="Or assign to specific CI Staff:">
+                    <option value="1" selected>Auto-assign to available CI/BI</option>
+                    <optgroup label="Or assign to specific CI/BI:">
                         {% for ci in ci_staff_list %}
                         <option value="ci_{{ ci.id }}">
                             {{ ci.name }} ({{ ci.email }})

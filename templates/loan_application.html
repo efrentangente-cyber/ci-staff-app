@@ -119,10 +119,10 @@
                     {% endif %}
                     
                     <div class="mb-3">
-                        <label class="form-label">Assign to CI Staff *</label>
+                        <label class="form-label">Assign to CI/BI *</label>
                         <select name="needs_ci" class="form-select" required {% if not can_edit %}disabled{% endif %}>
-                            <option value="1" {% if application.assigned_ci_staff is none %}selected{% endif %}>Auto-assign to available CI Staff</option>
-                            <optgroup label="Or assign to specific CI Staff:">
+                            <option value="1" {% if application.assigned_ci_staff is none %}selected{% endif %}>Auto-assign to available CI/BI</option>
+                            <optgroup label="Or assign to specific CI/BI:">
                                 {% for ci in ci_staff_list %}
                                 <option value="ci_{{ ci.id }}" {% if application.assigned_ci_staff == ci.id %}selected{% endif %}>
                                     {{ ci.name }} ({{ ci.email }})

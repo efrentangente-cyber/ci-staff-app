@@ -60,9 +60,9 @@
                             <input type="date" name="to_date" class="form-control" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">CI Staff Filter</label>
+                            <label class="form-label">CI/BI Filter</label>
                             <select name="ci_staff_filter" class="form-select">
-                                <option value="all">All CI Staff</option>
+                                <option value="all">All CI/BI</option>
                                 {% for staff in ci_staff %}
                                 <option value="{{ staff.id }}">{{ staff.name }}</option>
                                 {% endfor %}
@@ -98,9 +98,9 @@
                             <select name="role_filter" class="form-select">
                                 <option value="all">All Roles</option>
                                 <option value="admin">Admin</option>
-                                <option value="loan_officer">Loan Officer</option>
+                                <option value="loan_officer">Credit Officer</option>
                                 <option value="loan_staff">LPS</option>
-                                <option value="ci_staff">CI Staff</option>
+                                <option value="ci_staff">CI/BI</option>
                             </select>
                         </div>
                         <button type="submit" class="btn btn-info w-100">

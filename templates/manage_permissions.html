@@ -4,7 +4,7 @@
 
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="bi bi-shield-lock"></i> Manage Loan Officer Permissions</h2>
+        <h2><i class="bi bi-shield-lock"></i> Manage Credit Officer Permissions</h2>
         <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
             <i class="bi bi-arrow-left"></i> Back to Dashboard
         </a>
@@ -12,14 +12,14 @@
 
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> 
-        <strong>Super Admin Control:</strong> Grant or revoke full access permissions for loan officers to manage users and system settings.
+        <strong>Super Admin Control:</strong> Grant or revoke full access permissions for credit officers to manage users and system settings.
     </div>
 
     <div class="row">
         <div class="col-md-8 mx-auto">
             <div class="card shadow-sm">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-people"></i> Loan Officers</h5>
+                    <h5 class="mb-0"><i class="bi bi-people"></i> Credit Officers</h5>
                 </div>
                 <div class="card-body">
                     {% if loan_officers %}
@@ -107,7 +107,7 @@
                                                 <div class="modal-body">
                                                     <p class="text-muted mb-3">
                                                         <i class="bi bi-info-circle"></i> 
-                                                        Select which features this loan officer can access:
+                                                        Select which features this credit officer can access:
                                                     </p>
                                                     
                                                     <div class="form-check mb-3">
@@ -163,7 +163,7 @@
                     </div>
                     {% else %}
                     <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> No loan officers found in the system.
+                        <i class="bi bi-info-circle"></i> No credit officers found in the system.
                     </div>
                     {% endif %}
                 </div>
@@ -197,7 +197,7 @@
                     </div>
                     <div class="alert alert-success mt-3 mb-0">
                         <i class="bi bi-shield-check"></i> 
-                        <strong>Default Access:</strong> All loan officers can review applications, view CI checklists, and make approval/rejection decisions regardless of these permissions.
+                        <strong>Default Access:</strong> All credit officers can review applications, view CI checklists, and make approval/rejection decisions regardless of these permissions.
                     </div>
                 </div>
             </div>

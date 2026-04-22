@@ -5,9 +5,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
 
-<!-- Include Offline Indicator -->
-{% include 'offline_indicator.html' %}
-
 <style>
 /* Hide bottom navigation bar on CI checklist page */
 .navbar-fixed-bottom,
@@ -88,45 +85,9 @@ nav[style*="position: fixed"][style*="bottom"],
     margin-right: 5px;
 }
 
-.progress-nav {
-    position: fixed;
-    top: 60px;
-    right: 20px;
-    background: white;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    z-index: 1000;
-}
-
-.progress-nav .page-btn {
-    display: block;
-    width: 40px;
-    height: 40px;
-    margin: 5px 0;
-    border-radius: 50%;
-    border: 2px solid #ddd;
-    background: white;
-    cursor: pointer;
-    font-weight: bold;
-}
-
-.progress-nav .page-btn.active {
-    background: #0d6efd;
-    color: white;
-    border-color: #0d6efd;
-}
-
-.progress-nav .page-btn.completed {
-    background: #198754;
-    color: white;
-    border-color: #198754;
-}
-
 /* Print styles for Excel page */
 @media print {
     /* Hide navigation and buttons */
-    .progress-nav,
     .no-print,
     .btn,
     .alert {
@@ -164,16 +125,6 @@ nav[style*="position: fixed"][style*="bottom"],
 </style>
 
 <div class="container-fluid py-3">
-    <!-- Fixed Progress Navigation -->
-    <div class="progress-nav no-print">
-        <button class="page-btn active" onclick="goToPage(1)" title="Personal Data">1</button>
-        <button class="page-btn" onclick="goToPage(2)" title="Credit & Membership">2</button>
-        <button class="page-btn" onclick="goToPage(2.5)" title="Cash Flow"><i class="bi bi-calculator"></i></button>
-        <button class="page-btn" onclick="goToPage(3)" title="Computation">3</button>
-        <button class="page-btn" onclick="goToPage(4)" title="Capacity">4</button>
-        <button class="page-btn" onclick="goToPage(5)" title="Recommendations">5</button>
-    </div>
-
     <form id="ciChecklistForm" method="POST" action="{{ url_for('submit_ci_checklist', id=application.id) }}" enctype="multipart/form-data">
         <input type="hidden" name="checklist_data" id="checklist_data">
         <input type="hidden" name="ci_signature" id="ci_signature" required>
@@ -349,7 +300,9 @@ nav[style*="position: fixed"][style*="bottom"],
                 </table>
 
                 <div class="d-flex justify-content-between mt-4 no-print">
-                    <div></div>
+                    <button type="button" class="btn btn-secondary" onclick="previousPage()">
+                        <i class="bi bi-arrow-left"></i> Back
+                    </button>
                     <button type="button" class="btn btn-primary" onclick="nextPage()">
                         Next <i class="bi bi-arrow-right"></i>
                     </button>
@@ -543,7 +496,7 @@ nav[style*="position: fixed"][style*="bottom"],
                 <!-- Template Selector -->
                 <div class="template-selector-excel no-print mb-3">
                     <h6><i class="bi bi-file-earmark-spreadsheet"></i> Choose Template (Optional)</h6>
-                    <div class="btn-group" role="group">
+                    <div class="btn-group mb-2" role="group">
                         <button type="button" class="btn btn-outline-primary" onclick="excelSheet.loadTemplate('sari_sari')">
                             <i class="bi bi-shop"></i> Sari-Sari Store
                         </button>
@@ -554,12 +507,14 @@ nav[style*="position: fixed"][style*="bottom"],
                             <i class="bi bi-file-earmark"></i> Blank Spreadsheet
                         </button>
                     </div>
+                    <div id="custom-templates-container"></div>
                 </div>
 
                 <div class="alert alert-info no-print">
                     <h6><i class="bi bi-info-circle"></i> How to use this Excel spreadsheet:</h6>
                     <ul class="mb-0">
                         <li><strong>Choose template</strong>: Click a template button above to load pre-formatted structure (optional)</li>
+                        <li><strong>Save as template</strong>: After creating your custom spreadsheet, click "Save as Template" to save it for future use</li>
                         <li><strong>Resize columns</strong>: Drag the right edge of any column header to adjust width</li>
                         <li><strong>Resize rows</strong>: Drag the bottom edge of any row number to adjust height</li>
                         <li><strong>Select cells</strong>: Click and drag across cells to highlight a range</li>
@@ -1162,7 +1117,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     </ul>
                 </div>
 
-                <div class="section-title">CI STAFF SIGNATURE (Auto-Applied)</div>
+                <div class="section-title">CI/BI SIGNATURE (Auto-Applied)</div>
                 <div style="border: 2px solid #10b981; padding: 20px; margin: 20px 0; background: #f0fdf4; border-radius: 8px;">
                     <div id="signaturePreview" style="text-align: center; min-height: 100px;">
                         {% if current_user.signature_path %}
@@ -1174,7 +1129,7 @@ nav[style*="position: fixed"][style*="bottom"],
                                 <!-- Printed name line below signature -->
                                 <div style="border-top: 2px solid #000; margin-top: 5px; padding-top: 5px; text-align: center;">
                                     <strong style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">{{ current_user.name }}</strong>
-                                    <div style="font-size: 12px; color: #666; margin-top: 2px;">CI Staff</div>
+                                    <div style="font-size: 12px; color: #666; margin-top: 2px;">CI/BI</div>
                                 </div>
                             </div>
                             <p class="text-muted" style="font-size: 0.9rem; margin-top: 15px;">

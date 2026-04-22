@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Admin Dashboard{% endblock %}
+{% block title %}{% if current_user.role == 'loan_officer' %}Credit Officer Dashboard{% else %}Admin Dashboard{% endif %}{% endblock %}
 {% block content %}
 <div class="top-bar">
-    <h2>Admin Dashboard</h2>
+    <h2>{% if current_user.role == 'loan_officer' %}Credit Officer Dashboard{% else %}Admin Dashboard{% endif %}</h2>
     <div class="top-bar-actions">
         <button class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode">
             <i class="bi bi-moon-fill" id="darkModeIcon"></i>
@@ -66,7 +66,7 @@
     <div class="col-12 mb-3">
         <div class="content-card">
             <div class="content-card-header">
-                <h5><i class="bi bi-people-fill"></i> CI Staff Status</h5>
+                <h5><i class="bi bi-people-fill"></i> CI/BI Status</h5>
                 <span class="badge bg-success" id="onlineCount">{{ ci_staff|selectattr('is_online', 'equalto', 1)|list|length }} Online</span>
             </div>
             <div class="content-card-body">
@@ -129,7 +129,7 @@
                                 <th>Loan Amount</th>
                                 <th>Status</th>
                                 <th>LPS</th>
-                                <th>CI Staff</th>
+                                <th>CI/BI</th>
                                 <th>Submitted</th>
                                 <th>Actions</th>
                             </tr>
@@ -198,7 +198,7 @@
                                 <th>Loan Amount</th>
                                 <th>Status</th>
                                 <th>LPS</th>
-                                <th>CI Staff</th>
+                                <th>CI/BI</th>
                                 <th>Submitted</th>
                                 <th>Actions</th>
                             </tr>
@@ -264,7 +264,7 @@
                                 <th>Loan Amount</th>
                                 <th>Status</th>
                                 <th>LPS</th>
-                                <th>CI Staff</th>
+                                <th>CI/BI</th>
                                 <th>Submitted</th>
                                 <th>Actions</th>
                             </tr>
@@ -298,22 +298,22 @@
     </div>
 </div>
 
-<!-- Reassign CI Staff Modal -->
+<!-- Reassign CI/BI Modal -->
 <div class="modal fade" id="reassignModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Reassign CI Staff</h5>
+                <h5 class="modal-title">Reassign CI/BI</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Reassigning CI Staff for: <strong id="reassignMemberName"></strong></p>
+                <p>Reassigning CI/BI for: <strong id="reassignMemberName"></strong></p>
                 <form id="reassignForm" method="POST">
                     <input type="hidden" id="reassignAppId" name="app_id">
                     <div class="mb-3">
-                        <label class="form-label">Select New CI Staff *</label>
+                        <label class="form-label">Select New CI/BI *</label>
                         <select name="new_ci_staff" id="newCiStaffSelect" class="form-select" required>
-                            <option value="">-- Select CI Staff --</option>
+                            <option value="">-- Select CI/BI --</option>
                             {% for staff in ci_staff %}
                             <option value="{{ staff.id }}">
                                 {{ staff.name }} ({{ staff.email }})
@@ -647,7 +647,7 @@ function filterProcessed() {
     document.getElementById('processedCount').textContent = `${visibleCount} ${filterValue === 'all' ? 'Processed' : 'Filtered'}`;
 }
 
-// Reassign CI Staff Modal Functions
+// Reassign CI/BI Modal Functions
 function openReassignModal(appId, memberName, currentCiStaffId) {
     document.getElementById('reassignAppId').value = appId;
     document.getElementById('reassignMemberName').textContent = memberName;
@@ -673,7 +673,7 @@ document.getElementById('reassignForm')?.addEventListener('submit', function(e) 
     const newCiStaffId = document.getElementById('newCiStaffSelect').value;
     
     if (!newCiStaffId) {
-        alert('Please select a CI Staff');
+        alert('Please select a CI/BI');
         return;
     }
     

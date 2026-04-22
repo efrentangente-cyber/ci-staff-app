@@ -20,6 +20,11 @@ class ExcelSpreadsheet {
         this.render();
         this.setupEventListeners();
         this.loadSavedData();
+        
+        // Load custom templates after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            this.updateTemplateSelector();
+        }, 100);
     }
 
     // Render the spreadsheet
@@ -64,6 +69,10 @@ class ExcelSpreadsheet {
             </button>
             <button type="button" class="btn btn-sm btn-warning" onclick="excelSheet.unmergeCells()" title="Unmerge Cells">
                 <i class="bi bi-border-inner"></i> Unmerge
+            </button>
+            <div class="toolbar-divider"></div>
+            <button type="button" class="btn btn-sm btn-success" onclick="excelSheet.promptSaveAsTemplate()" title="Save as Template">
+                <i class="bi bi-bookmark-star"></i> Save as Template
             </button>
             <div class="toolbar-divider"></div>
             <button type="button" class="btn btn-sm btn-danger" onclick="excelSheet.clearAll()" title="Clear All">
@@ -367,9 +376,22 @@ class ExcelSpreadsheet {
                 this.selectionStart = e.target;
                 this.selectCell(e.target);
                 this.container.classList.add('is-selecting');
-                e.preventDefault(); // Prevent text selection
+                // Don't prevent default - allow text editing
             }
         });
+
+        // Touch start - start selection (for mobile)
+        this.container.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            
+            if (target && target.classList.contains('cell-input')) {
+                this.isSelecting = true;
+                this.selectionStart = target;
+                this.selectCell(target);
+                this.container.classList.add('is-selecting');
+            }
+        }, { passive: true });
 
         // Mouse move - extend selection
         this.container.addEventListener('mousemove', (e) => {
@@ -378,6 +400,18 @@ class ExcelSpreadsheet {
             }
         });
 
+        // Touch move - extend selection (for mobile)
+        this.container.addEventListener('touchmove', (e) => {
+            if (this.isSelecting) {
+                const touch = e.touches[0];
+                const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                
+                if (target && target.classList.contains('cell-input')) {
+                    this.selectRange(this.selectionStart, target);
+                }
+            }
+        }, { passive: true });
+
         // Mouse up - end selection
         this.container.addEventListener('mouseup', (e) => {
             if (this.isSelecting) {
@@ -385,6 +419,14 @@ class ExcelSpreadsheet {
                 this.container.classList.remove('is-selecting');
             }
         });
+
+        // Touch end - end selection (for mobile)
+        this.container.addEventListener('touchend', (e) => {
+            if (this.isSelecting) {
+                this.isSelecting = false;
+                this.container.classList.remove('is-selecting');
+            }
+        }, { passive: true });
 
         // Mouse leave - end selection if dragging outside
         this.container.addEventListener('mouseleave', (e) => {
@@ -715,6 +757,15 @@ class ExcelSpreadsheet {
         }
         return index - 1;
     }
+    
+    // Helper aliases for consistency
+    columnToIndex(name) {
+        return this.getColumnIndex(name);
+    }
+    
+    indexToColumn(index) {
+        return this.getColumnName(index);
+    }
 
     // Get cell reference (e.g., A1, B2)
     getCellReference(row, col) {
@@ -730,6 +781,51 @@ class ExcelSpreadsheet {
 
     // Add row
     addRow() {
+        // If a cell is selected, insert row below it
+        if (this.selectedCell) {
+            const selectedRow = parseInt(this.selectedCell.dataset.row);
+            const insertAfterRow = selectedRow;
+            
+            // Shift all cells below the selected row down by 1
+            const newCells = {};
+            Object.keys(this.cells).forEach(cellRef => {
+                const match = cellRef.match(/([A-Z]+)(\d+)/);
+                if (match) {
+                    const col = match[1];
+                    const row = parseInt(match[2]);
+                    
+                    if (row > insertAfterRow) {
+                        // Move this cell down by 1 row
+                        const newRef = col + (row + 1);
+                        newCells[newRef] = this.cells[cellRef];
+                    } else {
+                        // Keep this cell as is
+                        newCells[cellRef] = this.cells[cellRef];
+                    }
+                }
+            });
+            
+            // Shift merged cells
+            const newMergedCells = {};
+            Object.keys(this.mergedCells).forEach(cellRef => {
+                const match = cellRef.match(/([A-Z]+)(\d+)/);
+                if (match) {
+                    const col = match[1];
+                    const row = parseInt(match[2]);
+                    
+                    if (row > insertAfterRow) {
+                        const newRef = col + (row + 1);
+                        newMergedCells[newRef] = this.mergedCells[cellRef];
+                    } else {
+                        newMergedCells[cellRef] = this.mergedCells[cellRef];
+                    }
+                }
+            });
+            
+            this.cells = newCells;
+            this.mergedCells = newMergedCells;
+        }
+        
         this.rows++;
         this.render();
         this.recalculateAll();
@@ -738,6 +834,55 @@ class ExcelSpreadsheet {
 
     // Add column
     addColumn() {
+        // If a cell is selected, insert column to the right of it
+        if (this.selectedCell) {
+            const selectedCol = this.selectedCell.dataset.col;
+            const selectedColIndex = this.columnToIndex(selectedCol);
+            
+            // Shift all cells to the right of the selected column
+            const newCells = {};
+            Object.keys(this.cells).forEach(cellRef => {
+                const match = cellRef.match(/([A-Z]+)(\d+)/);
+                if (match) {
+                    const col = match[1];
+                    const row = match[2];
+                    const colIndex = this.columnToIndex(col);
+                    
+                    if (colIndex > selectedColIndex) {
+                        // Move this cell right by 1 column
+                        const newCol = this.indexToColumn(colIndex + 1);
+                        const newRef = newCol + row;
+                        newCells[newRef] = this.cells[cellRef];
+                    } else {
+                        // Keep this cell as is
+                        newCells[cellRef] = this.cells[cellRef];
+                    }
+                }
+            });
+            
+            // Shift merged cells
+            const newMergedCells = {};
+            Object.keys(this.mergedCells).forEach(cellRef => {
+                const match = cellRef.match(/([A-Z]+)(\d+)/);
+                if (match) {
+                    const col = match[1];
+                    const row = match[2];
+                    const colIndex = this.columnToIndex(col);
+                    
+                    if (colIndex > selectedColIndex) {
+                        const newCol = this.indexToColumn(colIndex + 1);
+                        const newRef = newCol + row;
+                        newMergedCells[newRef] = this.mergedCells[cellRef];
+                    } else {
+                        newMergedCells[cellRef] = this.mergedCells[cellRef];
+                    }
+                }
+            });
+            
+            this.cells = newCells;
+            this.mergedCells = newMergedCells;
+        }
+        
         this.cols++;
         this.render();
         this.recalculateAll();
@@ -785,6 +930,148 @@ class ExcelSpreadsheet {
         // Silent save - no notifications
         this.saveData();
         console.log(`Text aligned: ${alignment}`);
+    }
+
+    // Prompt to save as template
+    promptSaveAsTemplate() {
+        // Check if there's any data in the spreadsheet
+        const hasData = Object.keys(this.cells).length > 0;
+        
+        if (!hasData) {
+            alert('Please add some data to the spreadsheet before saving as a template.');
+            return;
+        }
+        
+        // Prompt for template name
+        const templateName = prompt('Enter a name for this template:');
+        
+        if (!templateName || templateName.trim() === '') {
+            return; // User cancelled or entered empty name
+        }
+        
+        this.saveAsTemplate(templateName.trim());
+    }
+    
+    // Save current spreadsheet as a template
+    saveAsTemplate(templateName) {
+        const templateData = {
+            name: templateName,
+            rows: this.rows,
+            cols: this.cols,
+            cells: this.cells,
+            mergedCells: this.mergedCells,
+            createdAt: new Date().toISOString()
+        };
+        
+        // Get existing templates from localStorage
+        let templates = {};
+        try {
+            const saved = localStorage.getItem('excel_templates');
+            if (saved) {
+                templates = JSON.parse(saved);
+            }
+        } catch (e) {
+            console.error('Error loading templates:', e);
+        }
+        
+        // Save new template
+        templates[templateName] = templateData;
+        localStorage.setItem('excel_templates', JSON.stringify(templates));
+        
+        // Show success message
+        this.showNotification('success', `Template "${templateName}" saved successfully!`);
+        
+        // Update template selector if it exists
+        this.updateTemplateSelector();
+    }
+    
+    // Load a saved template
+    loadSavedTemplate(templateName) {
+        try {
+            const saved = localStorage.getItem('excel_templates');
+            if (!saved) return;
+            
+            const templates = JSON.parse(saved);
+            const template = templates[templateName];
+            
+            if (!template) {
+                alert('Template not found.');
+                return;
+            }
+            
+            // Load template data
+            this.rows = template.rows || this.rows;
+            this.cols = template.cols || this.cols;
+            this.cells = template.cells || {};
+            this.mergedCells = template.mergedCells || {};
+            
+            this.render();
+            this.recalculateAll();
+            
+            this.showNotification('success', `Template "${templateName}" loaded!`);
+        } catch (e) {
+            console.error('Error loading template:', e);
+            alert('Failed to load template.');
+        }
+    }
+    
+    // Update template selector to show saved templates
+    updateTemplateSelector() {
+        const container = document.getElementById('custom-templates-container');
+        if (!container) return;
+        
+        try {
+            const saved = localStorage.getItem('excel_templates');
+            if (!saved) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            const templates = JSON.parse(saved);
+            const templateNames = Object.keys(templates);
+            
+            if (templateNames.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            // Create custom templates section
+            let html = '<div class="mt-2"><small class="text-muted"><i class="bi bi-bookmark-star"></i> Your Saved Templates:</small><br>';
+            html += '<div class="btn-group mt-1" role="group">';
+            
+            templateNames.forEach(name => {
+                html += `
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="excelSheet.loadSavedTemplate('${name}')" title="Load ${name}">
+                        <i class="bi bi-file-earmark-check"></i> ${name}
+                    </button>
+                `;
+            });
+            
+            html += '</div></div>';
+            container.innerHTML = html;
+        } catch (e) {
+            console.error('Error updating template selector:', e);
+        }
+    }
+    
+    // Show notification
+    showNotification(type, message) {
+        const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+        const icon = type === 'success' ? 'check-circle' : 'exclamation-triangle';
+        
+        const notification = document.createElement('div');
+        notification.className = `alert ${alertClass} alert-dismissible fade show`;
+        notification.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.innerHTML = `
+            <i class="bi bi-${icon}"></i> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
     }
 
     // Clear all
