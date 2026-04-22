@@ -403,6 +403,9 @@ def send_sms(phone_number, message):
             else:
                 phone = '+' + phone
         
+        print(f"\n[SMS] Attempting to send to {phone}")
+        print(f"[SMS] Message: {message[:50]}...")
+        
         # Try Semaphore first (if API key is configured)
         semaphore_key = os.getenv('SEMAPHORE_API_KEY', '')
         if semaphore_key:
@@ -414,15 +417,53 @@ def send_sms(phone_number, message):
                     'message': message,
                     'sendername': 'DCCCO'
                 }
+                
+                print(f"[SMS] Sending via Semaphore API...")
                 response = requests.post(url, data=payload, timeout=10)
+                
+                print(f"[SMS] Semaphore Response Status: {response.status_code}")
+                print(f"[SMS] Semaphore Response: {response.text}")
+                
+                # Check response
                 if response.status_code == 200:
-                    print(f"✓ SMS sent via Semaphore to {phone}")
-                    return True
+                    try:
+                        result = response.json()
+                        # Semaphore returns array of message objects
+                        if isinstance(result, list) and len(result) > 0:
+                            msg_data = result[0]
+                            if msg_data.get('message_id'):
+                                print(f"✓ SMS sent via Semaphore to {phone}")
+                                print(f"  Message ID: {msg_data.get('message_id')}")
+                                print(f"  Status: {msg_data.get('status', 'sent')}")
+                                return True
+                        # Sometimes Semaphore returns single object
+                        elif isinstance(result, dict) and result.get('message_id'):
+                            print(f"✓ SMS sent via Semaphore to {phone}")
+                            print(f"  Message ID: {result.get('message_id')}")
+                            return True
+                        else:
+                            print(f"✗ Semaphore unexpected response format: {result}")
+                    except ValueError:
+                        # Response is not JSON, check if it's a success message
+                        if 'success' in response.text.lower() or 'sent' in response.text.lower():
+                            print(f"✓ SMS sent via Semaphore to {phone}")
+                            return True
+                        else:
+                            print(f"✗ Semaphore non-JSON response: {response.text}")
+                else:
+                    print(f"✗ Semaphore HTTP error: {response.status_code}")
+                    print(f"  Response: {response.text}")
+                    
             except Exception as e:
-                print(f"Semaphore failed: {str(e)}, trying fallback...")
+                print(f"✗ Semaphore exception: {str(e)}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"[SMS] No Semaphore API key configured")
         
         # Fallback to TextBelt (FREE - 1 SMS per day per number, INTERNATIONAL)
         try:
+            print(f"[SMS] Trying TextBelt fallback...")
             url = 'https://textbelt.com/text'
             payload = {
                 'phone': phone,
@@ -432,6 +473,8 @@ def send_sms(phone_number, message):
             response = requests.post(url, data=payload, timeout=10)
             result = response.json()
             
+            print(f"[SMS] TextBelt Response: {result}")
+            
             if result.get('success'):
                 print(f"✓ SMS sent via TextBelt (FREE, INTERNATIONAL) to {phone}")
                 print(f"  Quota remaining: {result.get('quotaRemaining', 'N/A')}")
@@ -439,18 +482,20 @@ def send_sms(phone_number, message):
             else:
                 print(f"✗ TextBelt failed: {result.get('error', 'Unknown error')}")
         except Exception as e:
-            print(f"TextBelt failed: {str(e)}")
+            print(f"✗ TextBelt exception: {str(e)}")
         
         # If all fail, log to console
         print(f"\n{'='*60}")
-        print(f"SMS NOTIFICATION (Not sent - no API configured)")
+        print(f"SMS NOTIFICATION (Not sent - all providers failed)")
         print(f"To: {phone}")
         print(f"Message: {message}")
         print(f"{'='*60}\n")
         return False
             
     except Exception as e:
-        print(f"SMS error: {str(e)}")
+        print(f"✗ SMS error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def build_system_context():
@@ -4430,24 +4475,40 @@ def add_sms_template():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
-    name = request.form.get('name', '').strip()
-    category = request.form.get('category', '').strip()
-    message = request.form.get('message', '').strip()
-    
-    if not name or not category or not message:
-        flash('All fields are required', 'danger')
+    try:
+        name = request.form.get('name', '').strip()
+        category = request.form.get('category', '').strip()
+        message = request.form.get('message', '').strip()
+        
+        if not name or not category or not message:
+            flash('All fields are required', 'danger')
+            return redirect(url_for('manage_sms_templates'))
+        
+        conn = get_db()
+        
+        # Check if template with same name already exists
+        existing = conn.execute('SELECT id FROM sms_templates WHERE name = ? AND category = ?', (name, category)).fetchone()
+        if existing:
+            conn.close()
+            flash(f'Template "{name}" already exists in {category} category', 'warning')
+            return redirect(url_for('manage_sms_templates'))
+        
+        conn.execute('''
+            INSERT INTO sms_templates (name, category, message, is_active)
+            VALUES (?, ?, ?, 1)
+        ''', (name, category, message))
+        conn.commit()
+        conn.close()
+        
+        flash('SMS template added successfully', 'success')
         return redirect(url_for('manage_sms_templates'))
-    
-    conn = get_db()
-    conn.execute('''
-        INSERT INTO sms_templates (name, category, message, is_active)
-        VALUES (?, ?, ?, 1)
-    ''', (name, category, message))
-    conn.commit()
-    conn.close()
-    
-    flash('SMS template added successfully', 'success')
-    return redirect(url_for('manage_sms_templates'))
+        
+    except Exception as e:
+        print(f"Error adding SMS template: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Error adding template: {str(e)}', 'danger')
+        return redirect(url_for('manage_sms_templates'))
 
 @app.route('/update_sms_template', methods=['POST'])
 @login_required
@@ -4457,26 +4518,42 @@ def update_sms_template():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
-    template_id = request.form.get('template_id')
-    name = request.form.get('name', '').strip()
-    category = request.form.get('category', '').strip()
-    message = request.form.get('message', '').strip()
-    
-    if not template_id or not name or not category or not message:
-        flash('All fields are required', 'danger')
+    try:
+        template_id = request.form.get('template_id')
+        name = request.form.get('name', '').strip()
+        category = request.form.get('category', '').strip()
+        message = request.form.get('message', '').strip()
+        
+        if not template_id or not name or not category or not message:
+            flash('All fields are required', 'danger')
+            return redirect(url_for('manage_sms_templates'))
+        
+        conn = get_db()
+        
+        # Check if template exists
+        existing = conn.execute('SELECT id FROM sms_templates WHERE id = ?', (template_id,)).fetchone()
+        if not existing:
+            conn.close()
+            flash('Template not found', 'danger')
+            return redirect(url_for('manage_sms_templates'))
+        
+        conn.execute('''
+            UPDATE sms_templates 
+            SET name = ?, category = ?, message = ?
+            WHERE id = ?
+        ''', (name, category, message, template_id))
+        conn.commit()
+        conn.close()
+        
+        flash('SMS template updated successfully', 'success')
         return redirect(url_for('manage_sms_templates'))
-    
-    conn = get_db()
-    conn.execute('''
-        UPDATE sms_templates 
-        SET name = ?, category = ?, message = ?
-        WHERE id = ?
-    ''', (name, category, message, template_id))
-    conn.commit()
-    conn.close()
-    
-    flash('SMS template updated successfully', 'success')
-    return redirect(url_for('manage_sms_templates'))
+        
+    except Exception as e:
+        print(f"Error updating SMS template: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Error updating template: {str(e)}', 'danger')
+        return redirect(url_for('manage_sms_templates'))
 
 @app.route('/delete_sms_template/<int:template_id>', methods=['POST'])
 @login_required
