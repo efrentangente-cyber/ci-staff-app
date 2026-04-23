@@ -450,6 +450,18 @@ def create_notification(user_id, message, link=None):
     except Exception as e:
         pass
 
+
+def run_background_task(func, *args, **kwargs):
+    """Run non-critical work in background so UI responses are immediate."""
+    def _runner():
+        try:
+            func(*args, **kwargs)
+        except Exception as task_error:
+            print(f"⚠️  Background task failed: {task_error}")
+
+    socketio.start_background_task(_runner)
+
+
 def send_sms(phone_number, message):
     """
     Send SMS using TextBelt (FREE - works immediately, no registration needed)
@@ -484,7 +496,8 @@ def send_sms(phone_number, message):
                 'key': 'textbelt'  # Free tier key
             }
             
-            response = requests.post(url, data=payload, timeout=10)
+            # Keep a short timeout so API failures don't block request flow.
+            response = requests.post(url, data=payload, timeout=4)
             result = response.json()
             
             print(f"[SMS] TextBelt Response: {result}")
@@ -1342,6 +1355,18 @@ def submit_ci_checklist(id):
         ci_signature = request.form.get('ci_signature')
         ci_latitude = request.form.get('ci_latitude')
         ci_longitude = request.form.get('ci_longitude')
+
+        # Build a complete checklist payload so DB always stores all form fields.
+        try:
+            parsed_checklist = json.loads(checklist_data) if checklist_data else {}
+        except Exception:
+            parsed_checklist = {}
+
+        for key in request.form.keys():
+            if key in ('checklist_data', 'ci_signature', 'ci_latitude', 'ci_longitude'):
+                continue
+            parsed_checklist[key] = request.form.get(key, '')
+        checklist_data = json.dumps(parsed_checklist)
         
         # Use registered signature if not provided
         if not ci_signature:
@@ -1362,17 +1387,23 @@ def submit_ci_checklist(id):
             WHERE id=?
         ''', ('ci_completed', checklist_data, ci_signature, now_ph().isoformat(), ci_latitude, ci_longitude, id))
         
-        # Handle interview photo uploads
+        # Handle CI photo uploads (supports both old/new input names).
+        uploaded_files = []
         if 'interview_photos' in request.files:
-            files = request.files.getlist('interview_photos')
-            for file in files:
-                if file and file.filename:
-                    filename = secure_filename(file.filename)
-                    unique_filename = f"{id}_interview_{uuid.uuid4().hex[:8]}_{filename}"
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-                    file.save(filepath)
-                    conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
-                               (id, filename, filepath, current_user.id))
+            uploaded_files.extend(request.files.getlist('interview_photos'))
+        if 'ci_photos' in request.files:
+            uploaded_files.extend(request.files.getlist('ci_photos'))
+
+        for file in uploaded_files:
+            if file and file.filename and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                unique_filename = f"{id}_ci_{uuid.uuid4().hex[:8]}_{filename}"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+                file.save(filepath)
+                conn.execute(
+                    'INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
+                    (id, filename, filepath, current_user.id)
+                )
         
         # Update workload
         conn.execute('UPDATE users SET current_workload = current_workload - 1 WHERE id=?', (current_user.id,))
@@ -1526,6 +1557,7 @@ def admin_application(id):
             })
             
             # Send SMS notification to applicant
+            sms_message = None
             if app_data['member_contact']:
                 if decision == 'approved':
                     sms_message = f"Good news! Your loan application for {app_data['member_name']} has been APPROVED. Amount: ₱{app_data['loan_amount']:,.2f}. Please visit DCCCO office for processing. - DCCCO Coop"
@@ -1533,18 +1565,28 @@ def admin_application(id):
                     sms_message = f"We regret to inform you that your loan application for {app_data['member_name']} has been DISAPPROVED. Reason: {admin_notes[:100] if admin_notes else 'See office for details'}. - DCCCO Coop"
                 else:
                     sms_message = None
-                
+
                 if sms_message:
-                    send_sms(app_data['member_contact'], sms_message)
+                    run_background_task(
+                        send_sms,
+                        app_data['member_contact'],
+                        sms_message
+                    )
             
             conn.close()
             
-            # Notify loan staff
-            create_notification(app_data['submitted_by'],
-                              f'Application {decision}: {app_data["member_name"]}',
-                              f'/loan/application/{id}')
+            # Notify loan staff in background to keep response fast.
+            run_background_task(
+                create_notification,
+                app_data['submitted_by'],
+                f'Application {decision}: {app_data["member_name"]}',
+                f'/loan/application/{id}'
+            )
             
-            flash(f'Application {decision}! SMS notification sent to applicant.', 'success')
+            flash(
+                f'Application {decision}! Notifications are being sent in background.',
+                'success'
+            )
             return redirect(url_for('admin_dashboard'))
         except Exception as e:
             conn.close()
@@ -1588,9 +1630,16 @@ def reassign_ci_staff(app_id):
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
-    new_ci_staff_id = request.form.get('new_ci_staff_id')
+    payload = request.get_json(silent=True) or {}
+    new_ci_staff_id = (
+        request.form.get('new_ci_staff_id')
+        or request.form.get('new_ci_staff')
+        or payload.get('new_ci_staff_id')
+    )
     
     if not new_ci_staff_id:
+        if request.is_json:
+            return jsonify({'success': False, 'message': 'Please select a CI staff member'}), 400
         flash('Please select a CI staff member', 'warning')
         return redirect(url_for('admin_application', id=app_id))
     
@@ -1617,23 +1666,33 @@ def reassign_ci_staff(app_id):
         conn.commit()
         conn.close()
         
-        # Notify new CI staff
-        create_notification(int(new_ci_staff_id),
-                          f'Application reassigned to you: {app["member_name"]}',
-                          f'/ci/application/{app_id}')
+        # Notify new CI staff in background to keep the action snappy.
+        run_background_task(
+            create_notification,
+            int(new_ci_staff_id),
+            f'Application reassigned to you: {app["member_name"]}',
+            f'/ci/application/{app_id}'
+        )
         
         # Notify old CI staff if exists
         if old_ci_staff_id:
-            create_notification(old_ci_staff_id,
-                              f'Application {app["member_name"]} has been reassigned',
-                              f'/ci/dashboard')
+            run_background_task(
+                create_notification,
+                old_ci_staff_id,
+                f'Application {app["member_name"]} has been reassigned',
+                f'/ci/dashboard'
+            )
         
+        if request.is_json:
+            return jsonify({'success': True, 'message': 'CI staff reassigned successfully'})
         flash('CI staff reassigned successfully!', 'success')
         return redirect(url_for('admin_application', id=app_id))
         
     except Exception as e:
         conn.rollback()
         conn.close()
+        if request.is_json:
+            return jsonify({'success': False, 'message': f'Error reassigning CI staff: {str(e)}'}), 500
         flash(f'Error reassigning CI staff: {str(e)}', 'danger')
         return redirect(url_for('admin_application', id=app_id))
 
@@ -4496,11 +4555,9 @@ def send_sms_and_update_status(app_id):
         conn.commit()
         conn.close()
         
-        # Send SMS notification
+        # Send SMS notification in background for faster response.
         if app_data['member_contact']:
-            sms_sent = send_sms(app_data['member_contact'], message)
-            if not sms_sent:
-                print(f"Warning: SMS failed to send to {app_data['member_contact']}")
+            run_background_task(send_sms, app_data['member_contact'], message)
         
         # Emit real-time update
         socketio.emit('application_updated', {
@@ -4513,7 +4570,7 @@ def send_sms_and_update_status(app_id):
         
         return jsonify({
             'success': True,
-            'message': f'Application {action} and SMS sent successfully'
+            'message': f'Application {action} updated. SMS sending in background.'
         })
         
     except Exception as e:

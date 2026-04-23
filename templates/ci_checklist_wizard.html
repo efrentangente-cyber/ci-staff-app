@@ -1214,12 +1214,24 @@ function submitChecklist() {
             
             // Save all data and submit
             saveCurrentPageData();
+            if (typeof buildChecklistPayloadFromForm === 'function') {
+                checklistData = buildChecklistPayloadFromForm();
+            }
+            if (window.excelSheet) {
+                checklistData.excel_cashflow = window.excelSheet.exportData();
+            }
             document.getElementById('checklist_data').value = JSON.stringify(checklistData);
             document.getElementById('ciChecklistForm').submit();
         }, function(error) {
             // If GPS fails, ask user if they want to continue
             if (confirm('Could not get GPS location. Do you want to submit without location data?')) {
                 saveCurrentPageData();
+                if (typeof buildChecklistPayloadFromForm === 'function') {
+                    checklistData = buildChecklistPayloadFromForm();
+                }
+                if (window.excelSheet) {
+                    checklistData.excel_cashflow = window.excelSheet.exportData();
+                }
                 document.getElementById('checklist_data').value = JSON.stringify(checklistData);
                 document.getElementById('ciChecklistForm').submit();
             }
@@ -1228,6 +1240,12 @@ function submitChecklist() {
         // No geolocation support, ask user if they want to continue
         if (confirm('Geolocation is not supported by your browser. Do you want to submit without location data?')) {
             saveCurrentPageData();
+            if (typeof buildChecklistPayloadFromForm === 'function') {
+                checklistData = buildChecklistPayloadFromForm();
+            }
+            if (window.excelSheet) {
+                checklistData.excel_cashflow = window.excelSheet.exportData();
+            }
             document.getElementById('checklist_data').value = JSON.stringify(checklistData);
             document.getElementById('ciChecklistForm').submit();
         }

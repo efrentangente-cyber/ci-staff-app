@@ -4,6 +4,27 @@ let currentPage = 1;
 const totalPages = 6; // Updated to include Cash Flow page (2.5)
 let checklistData = {};
 
+function buildChecklistPayloadFromForm() {
+    const form = document.getElementById('ciChecklistForm');
+    if (!form) return {};
+
+    const payload = {};
+    const fields = form.querySelectorAll('input[name], select[name], textarea[name]');
+    fields.forEach((field) => {
+        if (!field.name || field.type === 'file') return;
+        if (field.type === 'checkbox') {
+            payload[field.name] = field.checked;
+        } else if (field.type === 'radio') {
+            if (field.checked) payload[field.name] = field.value;
+            else if (!(field.name in payload)) payload[field.name] = '';
+        } else {
+            payload[field.name] = field.value;
+        }
+    });
+
+    return payload;
+}
+
 // Initialize wizard
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedData();
@@ -180,24 +201,8 @@ function updateProgressBar() {
 
 // Save current page data
 function saveCurrentPageData() {
-    const currentPageElement = document.querySelector(`.wizard-page[data-page="${currentPage}"]`);
-    if (!currentPageElement) return;
-    
-    // Get all form inputs in current page
-    const inputs = currentPageElement.querySelectorAll('input, select, textarea');
-    inputs.forEach(input => {
-        if (input.type === 'checkbox') {
-            checklistData[input.name] = input.checked;
-        } else if (input.type === 'radio') {
-            if (input.checked) {
-                checklistData[input.name] = input.value;
-            }
-        } else {
-            checklistData[input.name] = input.value;
-        }
-    });
-    
-    // Save to localStorage
+    // Save full form state so DB gets complete payload (checkboxes optional).
+    checklistData = buildChecklistPayloadFromForm();
     localStorage.setItem('ci_checklist_draft', JSON.stringify(checklistData));
 }
 
@@ -276,6 +281,9 @@ function submitChecklist() {
     
     // Add Excel data to checklist data
     checklistData.excel_cashflow = excelData;
+
+    // Ensure hidden payload has full form state before submit.
+    document.getElementById('checklist_data').value = JSON.stringify(checklistData);
     
     // Check if online
     if (!navigator.onLine) {
@@ -302,7 +310,6 @@ function submitChecklist() {
     }
     
     // Online - submit normally
-    document.getElementById('checklist_data').value = JSON.stringify(checklistData);
     document.getElementById('ciChecklistForm').submit();
 }
 

@@ -35,7 +35,7 @@
                 <div class="message-sender">{{ msg.sender_name }}</div>
                 {% endif %}
                 <div class="message-text">{{ msg.message }}</div>
-                <div class="message-time" data-time="{{ msg.sent_at }}">{{ msg.sent_at[11:16] }}</div>
+                <div class="message-time" data-time="{{ msg.sent_at }}">{{ msg.sent_at|fmt_datetime('%H:%M') }}</div>
             </div>
         </div>
         {% endfor %}
@@ -79,6 +79,7 @@ function toggleVoiceRecording() {
         startVoiceRecording();
     }
 }
+</script>
 
 <style>
 .chat-container {

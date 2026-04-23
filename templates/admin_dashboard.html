@@ -121,7 +121,7 @@
                     </div>
             </div>
             <div class="content-card-body">
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-5">
                     <table class="table table-hover" id="pendingTable">
                         <thead>
                             <tr>
@@ -190,7 +190,7 @@
                 </div>
             </div>
             <div class="content-card-body">
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-5">
                     <table class="table table-hover" id="processedTable">
                         <thead>
                             <tr>
@@ -256,7 +256,7 @@
                 <div class="alert alert-info mb-3">
                     <i class="bi bi-info-circle"></i> These applications are between LPS and CI. You can reassign CI staff if needed (e.g., when CI is on leave).
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-5">
                     <table class="table table-hover" id="inProcessTable">
                         <thead>
                             <tr>
@@ -283,7 +283,7 @@
                                 <td>{{ app.ci_staff_name or 'Not Assigned' }}</td>
                                 <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-warning" onclick="openReassignModal({{ app.id }}, '{{ app.member_name }}', {{ app.assigned_ci_staff or 'null' }})">
+                                    <button class="btn btn-sm btn-warning" onclick='openReassignModal({{ app.id }}, {{ app.member_name|tojson }}, {{ app.assigned_ci_staff or "null" }})'>
                                         <i class="bi bi-arrow-repeat"></i>
                                         <span class="btn-text">Reassign CI</span>
                                     </button>
@@ -312,7 +312,7 @@
                     <input type="hidden" id="reassignAppId" name="app_id">
                     <div class="mb-3">
                         <label class="form-label">Select New CI/BI *</label>
-                        <select name="new_ci_staff" id="newCiStaffSelect" class="form-select" required>
+                        <select name="new_ci_staff_id" id="newCiStaffSelect" class="form-select" required>
                             <option value="">-- Select CI/BI --</option>
                             {% for staff in ci_staff %}
                             <option value="{{ staff.id }}">
@@ -412,6 +412,11 @@
     overflow-x: auto;
 }
 
+.table-scroll-5 {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
 /* Search Box Styles */
 .search-container {
     position: relative;
@@ -505,7 +510,7 @@ socket.on('user_offline', function(data) {
 });
 
 function updateCIStaffStatus(userId, isOnline, userName) {
-    const staffItem = document.querySelector(`.ci-staff-item[data-user-id="${userId}"]`);
+    const staffItem = document.querySelector(`.ci-staff-item-compact[data-user-id="${userId}"]`);
     if (!staffItem) return;
     
     const indicator = staffItem.querySelector('.status-indicator');

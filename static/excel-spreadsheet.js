@@ -644,10 +644,9 @@ class ExcelSpreadsheet {
 
     // Handle SUM function
     handleSumFunction(expression) {
-        const sumPattern = /SUM\(([A-Z]+\d+):([A-Z]+\d+)\)/gi;
-        
-        return expression.replace(sumPattern, (match, start, end) => {
-            const values = this.getCellRange(start, end);
+        const sumPattern = /SUM\(([^)]+)\)/gi;
+        return expression.replace(sumPattern, (match, args) => {
+            const values = this.getFunctionArgValues(args);
             const sum = values.reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
             return sum;
         });
@@ -655,22 +654,20 @@ class ExcelSpreadsheet {
 
     // Handle AVERAGE function
     handleAverageFunction(expression) {
-        const avgPattern = /AVERAGE\(([A-Z]+\d+):([A-Z]+\d+)\)/gi;
-        
-        return expression.replace(avgPattern, (match, start, end) => {
-            const values = this.getCellRange(start, end);
+        const avgPattern = /AVERAGE\(([^)]+)\)/gi;
+        return expression.replace(avgPattern, (match, args) => {
+            const values = this.getFunctionArgValues(args);
             const sum = values.reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
-            const avg = sum / values.length;
+            const avg = values.length ? (sum / values.length) : 0;
             return avg;
         });
     }
     
     // Handle MIN function
     handleMinFunction(expression) {
-        const minPattern = /MIN\(([A-Z]+\d+):([A-Z]+\d+)\)/gi;
-        
-        return expression.replace(minPattern, (match, start, end) => {
-            const values = this.getCellRange(start, end);
+        const minPattern = /MIN\(([^)]+)\)/gi;
+        return expression.replace(minPattern, (match, args) => {
+            const values = this.getFunctionArgValues(args);
             const numbers = values.map(v => parseFloat(v) || 0).filter(n => !isNaN(n));
             return numbers.length > 0 ? Math.min(...numbers) : 0;
         });
@@ -678,10 +675,9 @@ class ExcelSpreadsheet {
     
     // Handle MAX function
     handleMaxFunction(expression) {
-        const maxPattern = /MAX\(([A-Z]+\d+):([A-Z]+\d+)\)/gi;
-        
-        return expression.replace(maxPattern, (match, start, end) => {
-            const values = this.getCellRange(start, end);
+        const maxPattern = /MAX\(([^)]+)\)/gi;
+        return expression.replace(maxPattern, (match, args) => {
+            const values = this.getFunctionArgValues(args);
             const numbers = values.map(v => parseFloat(v) || 0).filter(n => !isNaN(n));
             return numbers.length > 0 ? Math.max(...numbers) : 0;
         });
@@ -689,13 +685,36 @@ class ExcelSpreadsheet {
     
     // Handle COUNT function
     handleCountFunction(expression) {
-        const countPattern = /COUNT\(([A-Z]+\d+):([A-Z]+\d+)\)/gi;
-        
-        return expression.replace(countPattern, (match, start, end) => {
-            const values = this.getCellRange(start, end);
+        const countPattern = /COUNT\(([^)]+)\)/gi;
+        return expression.replace(countPattern, (match, args) => {
+            const values = this.getFunctionArgValues(args);
             const numbers = values.filter(v => v !== '' && !isNaN(parseFloat(v)));
             return numbers.length;
         });
+    }
+
+    // Supports function args like: A1:A10, A1, B2, 100, A1:B2, C5
+    getFunctionArgValues(argsString) {
+        const tokens = argsString.split(',').map(t => t.trim()).filter(Boolean);
+        const values = [];
+
+        tokens.forEach((token) => {
+            const rangeMatch = token.match(/^([A-Z]+\d+):([A-Z]+\d+)$/i);
+            const cellMatch = token.match(/^([A-Z]+\d+)$/i);
+            const num = parseFloat(token);
+
+            if (rangeMatch) {
+                values.push(...this.getCellRange(rangeMatch[1].toUpperCase(), rangeMatch[2].toUpperCase()));
+            } else if (cellMatch) {
+                const ref = cellMatch[1].toUpperCase();
+                const cell = this.cells[ref];
+                values.push(cell ? (cell.display || cell.value || '0') : '0');
+            } else if (!isNaN(num)) {
+                values.push(num);
+            }
+        });
+
+        return values;
     }
     
     // Handle IF function - basic support: IF(condition, true_value, false_value)
