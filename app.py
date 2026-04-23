@@ -23,6 +23,22 @@ import requests  # For SMS API
 # Load environment variables
 load_dotenv()
 
+# DIAGNOSTIC: Print environment info on startup (helps debug Render issues)
+print("\n" + "="*80)
+print("🚀 DCCCO Loan Management System - Starting Up")
+print("="*80)
+print(f"📌 DATABASE_URL: {'SET ✓' if os.getenv('DATABASE_URL') else 'NOT SET ❌'}")
+if os.getenv('DATABASE_URL'):
+    db_url = os.getenv('DATABASE_URL')
+    if db_url.startswith('postgresql') or db_url.startswith('postgres'):
+        print(f"   Type: PostgreSQL ✓")
+    else:
+        print(f"   Type: {db_url.split(':')[0]}")
+else:
+    print("   ⚠️  WARNING: DATABASE_URL not set! App will use SQLite (local only)")
+    print("   For Render deployment, set DATABASE_URL in dashboard!")
+print("="*80 + "\n")
+
 # Always store UTC - JS will convert to local time for display
 def now_ph():
     """Return current UTC time for DB storage (JS handles timezone display)"""
