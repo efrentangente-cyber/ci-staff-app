@@ -10,7 +10,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import sqlite3
+from database import get_db, get_database_type  # Use database abstraction layer
 import os
 import uuid
 import re
@@ -136,7 +136,7 @@ login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 
-DATABASE = 'app.db'
+# Database is now managed by database.py - supports both SQLite and PostgreSQL
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -232,10 +232,7 @@ def send_verification_email(to_email, code, user_name):
         traceback.print_exc()
         return False
 
-def get_db():
-    conn = sqlite3.connect(DATABASE, timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+# Removed old get_db() function - now using database.py
 
 def has_permission(user, permission):
     """Check if user has specific permission"""
@@ -247,9 +244,20 @@ def has_permission(user, permission):
     return False
 
 def init_db():
-    """Initialize database if it doesn't exist"""
-    if not os.path.exists(DATABASE):
-        conn = sqlite3.connect(DATABASE)
+    """Initialize database if it doesn't exist (SQLite only - PostgreSQL uses migrations)"""
+    db_type = get_database_type()
+    
+    if db_type == 'postgresql':
+        # PostgreSQL is already initialized via migration
+        print("📊 Using PostgreSQL - database already initialized")
+        os.makedirs('uploads', exist_ok=True)
+        os.makedirs('signatures', exist_ok=True)
+        return
+    
+    # SQLite initialization
+    if not os.path.exists('app.db'):
+        print("📊 Initializing SQLite database...")
+        conn = get_db()
         with open('schema.sql', 'r') as f:
             conn.executescript(f.read())
         
@@ -268,10 +276,11 @@ def init_db():
         
         conn.commit()
         conn.close()
+        print("✓ SQLite database initialized")
         
-        # Create directories
-        os.makedirs('uploads', exist_ok=True)
-        os.makedirs('signatures', exist_ok=True)
+    # Create directories
+    os.makedirs('uploads', exist_ok=True)
+    os.makedirs('signatures', exist_ok=True)
 
 # Initialize database on startup
 init_db()

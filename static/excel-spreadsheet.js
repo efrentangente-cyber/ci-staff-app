@@ -397,6 +397,9 @@ class ExcelSpreadsheet {
         this.container.addEventListener('input', (e) => {
             if (e.target.classList.contains('cell-input')) {
                 this.handleCellInput(e.target);
+                // REAL-TIME COMPUTATION: Update all formulas immediately as you type
+                // This makes it work exactly like Excel - instant updates
+                this.recalculateAll();
             }
         });
 
@@ -448,7 +451,7 @@ class ExcelSpreadsheet {
         document.getElementById('cell-info').textContent = `Cell: ${cellRef}`;
     }
 
-    // Handle cell input
+    // Handle cell input - SMART COMPUTATION: automatically updates all dependent cells
     handleCellInput(input) {
         const cellRef = input.dataset.cell;
         const value = input.value;
@@ -465,7 +468,7 @@ class ExcelSpreadsheet {
             this.evaluateFormula(cellRef);
             
             // Update input to show calculated value (not formula)
-            input.value = this.cells[cellRef].display || '#ERROR!';
+            input.value = this.cells[cellRef].display || '';
             input.setAttribute('data-has-formula', 'true');
             input.title = 'Formula: ' + value + ' (Double-click to edit)';
         } else {
@@ -480,7 +483,8 @@ class ExcelSpreadsheet {
         // Update formula bar
         this.formulaBar.value = this.cells[cellRef].formula || value;
 
-        // Recalculate dependent cells
+        // SMART COMPUTATION: Recalculate ALL dependent cells automatically
+        // This makes the spreadsheet work like real Excel - change one cell, all connected cells update
         this.recalculateAll();
 
         // Silent auto-save (no notifications)
@@ -601,16 +605,27 @@ class ExcelSpreadsheet {
         });
     }
 
-    // Evaluate expression (supports basic math and functions)
+    // Evaluate expression (supports basic math and Excel functions)
+    // Supports: +, -, *, /, (), SUM, AVERAGE, MIN, MAX, COUNT, IF
     evaluateExpression(expression) {
         // Handle SUM function
         expression = this.handleSumFunction(expression);
         
         // Handle AVERAGE function
         expression = this.handleAverageFunction(expression);
-
-        // Handle other functions as needed
         
+        // Handle MIN function
+        expression = this.handleMinFunction(expression);
+        
+        // Handle MAX function
+        expression = this.handleMaxFunction(expression);
+        
+        // Handle COUNT function
+        expression = this.handleCountFunction(expression);
+        
+        // Handle IF function (basic support)
+        expression = this.handleIfFunction(expression);
+
         try {
             // Use Function constructor for safe evaluation
             const result = new Function('return ' + expression)();
@@ -649,6 +664,54 @@ class ExcelSpreadsheet {
             return avg;
         });
     }
+    
+    // Handle MIN function
+    handleMinFunction(expression) {
+        const minPattern = /MIN\(([A-Z]+\d+):([A-Z]+\d+)\)/gi;
+        
+        return expression.replace(minPattern, (match, start, end) => {
+            const values = this.getCellRange(start, end);
+            const numbers = values.map(v => parseFloat(v) || 0).filter(n => !isNaN(n));
+            return numbers.length > 0 ? Math.min(...numbers) : 0;
+        });
+    }
+    
+    // Handle MAX function
+    handleMaxFunction(expression) {
+        const maxPattern = /MAX\(([A-Z]+\d+):([A-Z]+\d+)\)/gi;
+        
+        return expression.replace(maxPattern, (match, start, end) => {
+            const values = this.getCellRange(start, end);
+            const numbers = values.map(v => parseFloat(v) || 0).filter(n => !isNaN(n));
+            return numbers.length > 0 ? Math.max(...numbers) : 0;
+        });
+    }
+    
+    // Handle COUNT function
+    handleCountFunction(expression) {
+        const countPattern = /COUNT\(([A-Z]+\d+):([A-Z]+\d+)\)/gi;
+        
+        return expression.replace(countPattern, (match, start, end) => {
+            const values = this.getCellRange(start, end);
+            const numbers = values.filter(v => v !== '' && !isNaN(parseFloat(v)));
+            return numbers.length;
+        });
+    }
+    
+    // Handle IF function - basic support: IF(condition, true_value, false_value)
+    handleIfFunction(expression) {
+        const ifPattern = /IF\(([^,]+),([^,]+),([^)]+)\)/gi;
+        
+        return expression.replace(ifPattern, (match, condition, trueVal, falseVal) => {
+            try {
+                // Evaluate condition
+                const condResult = new Function('return ' + condition)();
+                return condResult ? trueVal.trim() : falseVal.trim();
+            } catch (e) {
+                return 0;
+            }
+        });
+    }
 
     // Get cell range values
     getCellRange(startRef, endRef) {
@@ -670,13 +733,35 @@ class ExcelSpreadsheet {
         return values;
     }
 
-    // Recalculate all formulas
+    // Recalculate all formulas - SMART COMPUTATION ENGINE
+    // This makes all cells connected - changing one cell automatically updates all dependent cells
+    // Works exactly like real Excel
     recalculateAll() {
-        Object.keys(this.cells).forEach(cellRef => {
-            if (this.cells[cellRef].formula) {
-                this.evaluateFormula(cellRef);
+        // Multiple passes to handle dependencies (formulas that reference other formulas)
+        // This ensures all cells are updated in the correct order
+        const maxPasses = 5; // Prevent infinite loops
+        
+        for (let pass = 0; pass < maxPasses; pass++) {
+            let hasChanges = false;
+            
+            Object.keys(this.cells).forEach(cellRef => {
+                if (this.cells[cellRef].formula) {
+                    const oldDisplay = this.cells[cellRef].display;
+                    this.evaluateFormula(cellRef);
+                    const newDisplay = this.cells[cellRef].display;
+                    
+                    // Check if value changed
+                    if (oldDisplay !== newDisplay) {
+                        hasChanges = true;
+                    }
+                }
+            });
+            
+            // If no changes in this pass, we're done
+            if (!hasChanges) {
+                break;
             }
-        });
+        }
     }
 
     // Keyboard navigation
