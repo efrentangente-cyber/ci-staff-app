@@ -775,7 +775,9 @@ def login():
             
             user = User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], 
                        row['backup_email'] if 'backup_email' in row.keys() else None,
-                       row['profile_photo'] if 'profile_photo' in row.keys() else None)
+                       row['profile_photo'] if 'profile_photo' in row.keys() else None,
+                       row['assigned_route'] if 'assigned_route' in row.keys() else None,
+                       row['permissions'] if 'permissions' in row.keys() else None)
             login_user(user, remember=False)  # Session expires when browser closes
             session.permanent = False  # Ensure session is not permanent
             flash('Logged in successfully.', 'success')
@@ -1393,50 +1395,58 @@ def admin_dashboard():
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    conn = get_db()
     
-    # Get applications for review (ci_completed, approved, disapproved, deferred, or direct submissions)
-    applications = conn.execute('''
-        SELECT la.*, 
-               u1.name as loan_staff_name,
-               u2.name as ci_staff_name
-        FROM loan_applications la
-        LEFT JOIN users u1 ON la.submitted_by = u1.id
-        LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
-        WHERE la.status IN ('ci_completed', 'approved', 'disapproved', 'deferred')
-           OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
-        ORDER BY la.submitted_at ASC
-    ''').fetchall()
-    
-    # Get "In Process" applications (between LPS and CI)
-    in_process_applications = conn.execute('''
-        SELECT la.*, 
-               u1.name as loan_staff_name,
-               u2.name as ci_staff_name
-        FROM loan_applications la
-        LEFT JOIN users u1 ON la.submitted_by = u1.id
-        LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
-        WHERE la.status IN ('submitted', 'assigned_to_ci')
-        ORDER BY la.submitted_at ASC
-    ''').fetchall()
-    
-    # Get online CI staff
-    ci_staff = conn.execute('''
-        SELECT id, name, email, is_online, last_seen, profile_photo
-        FROM users 
-        WHERE role = 'ci_staff'
-        ORDER BY is_online DESC, name ASC
-    ''').fetchall()
-    
-    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
-                                (current_user.id,)).fetchone()
-    unread_count = row['count'] if row else 0
-    conn.close()
-    return render_template('admin_dashboard.html', 
+    try:
+        conn = get_db()
+        
+        # Get applications for review (ci_completed, approved, disapproved, deferred, or direct submissions)
+        applications = conn.execute('''
+            SELECT la.*, 
+                   u1.name as loan_staff_name,
+                   u2.name as ci_staff_name
+            FROM loan_applications la
+            LEFT JOIN users u1 ON la.submitted_by = u1.id
+            LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
+            WHERE la.status IN ('ci_completed', 'approved', 'disapproved', 'deferred')
+               OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
+            ORDER BY la.submitted_at ASC
+        ''').fetchall()
+        
+        # Get "In Process" applications (between LPS and CI)
+        in_process_applications = conn.execute('''
+            SELECT la.*, 
+                   u1.name as loan_staff_name,
+                   u2.name as ci_staff_name
+            FROM loan_applications la
+            LEFT JOIN users u1 ON la.submitted_by = u1.id
+            LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
+            WHERE la.status IN ('submitted', 'assigned_to_ci')
+            ORDER BY la.submitted_at ASC
+        ''').fetchall()
+        
+        # Get online CI staff
+        ci_staff = conn.execute('''
+            SELECT id, name, email, is_online, last_seen, profile_photo
+            FROM users 
+            WHERE role = 'ci_staff'
+            ORDER BY is_online DESC, name ASC
+        ''').fetchall()
+        
+        row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                    (current_user.id,)).fetchone()
+        unread_count = row['count'] if row else 0
+        conn.close()
+        return render_template('admin_dashboard.html', 
                          applications=applications, 
                          in_process_applications=in_process_applications,
                          ci_staff=ci_staff, 
                          unread_count=unread_count)
+    except Exception as e:
+        print(f"❌ ERROR in admin_dashboard: {e}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Database error: {str(e)}', 'danger')
+        return redirect(url_for('login'))
 
 @app.route('/admin/application/<int:id>', methods=['GET','POST'])
 @login_required
