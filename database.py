@@ -18,17 +18,70 @@ except ImportError:
     print("   For local development with SQLite, this is fine.")
     print("   For Render deployment, run: pip install psycopg2-binary")
 
+class DatabaseConnection:
+    """Wrapper for database connection that handles SQL placeholder conversion"""
+    
+    def __init__(self, conn, db_type):
+        self._conn = conn
+        self._db_type = db_type
+    
+    def cursor(self):
+        """Get cursor from underlying connection"""
+        return self._conn.cursor()
+    
+    def execute(self, query, params=None):
+        """Execute query with automatic placeholder conversion"""
+        # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
+        if self._db_type == 'postgresql' and '?' in query:
+            query = query.replace('?', '%s')
+        
+        cursor = self._conn.cursor()
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        return cursor
+    
+    def executescript(self, script):
+        """Execute SQL script (SQLite only)"""
+        if self._db_type == 'sqlite':
+            return self._conn.executescript(script)
+        else:
+            # For PostgreSQL, execute statements one by one
+            cursor = self._conn.cursor()
+            cursor.execute(script)
+            return cursor
+    
+    def commit(self):
+        """Commit transaction"""
+        return self._conn.commit()
+    
+    def rollback(self):
+        """Rollback transaction"""
+        return self._conn.rollback()
+    
+    def close(self):
+        """Close connection"""
+        return self._conn.close()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.rollback()
+        self.close()
+
 def get_db():
     """
     Get database connection - automatically uses PostgreSQL or SQLite
     
     Returns:
-        Database connection object
+        DatabaseConnection wrapper object
         
     Usage:
         conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users")
+        cursor = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
         rows = cursor.fetchall()
         conn.close()
     """
@@ -45,7 +98,7 @@ def get_db():
         
         try:
             conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor, sslmode='require')
-            return conn
+            return DatabaseConnection(conn, 'postgresql')
         except Exception as e:
             print(f"❌ PostgreSQL connection failed: {e}")
             print(f"   DATABASE_URL: {database_url[:50]}...")
@@ -56,7 +109,7 @@ def get_db():
         database_file = os.getenv('SQLITE_DATABASE', 'app.db')
         conn = sqlite3.connect(database_file, timeout=10)
         conn.row_factory = sqlite3.Row
-        return conn
+        return DatabaseConnection(conn, 'sqlite')
 
 def get_database_type():
     """
