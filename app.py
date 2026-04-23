@@ -1385,12 +1385,22 @@ def submit_application():
             flash(f'Error processing form data: {str(e)}', 'danger')
             return redirect(url_for('submit_application'))
         try:
-            cursor = conn.execute('''
-                INSERT INTO loan_applications 
-                (member_name, member_contact, member_address, loan_amount, loan_type, lps_remarks, needs_ci_interview, submitted_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (member_name, member_contact, member_address, loan_amount, loan_type, lps_remarks, needs_ci, current_user.id))
-            app_id = cursor.lastrowid
+            app_id = _insert_loan_application(
+                conn,
+                member_name,
+                member_contact,
+                member_address,
+                loan_amount,
+                loan_type,
+                lps_remarks,
+                needs_ci,
+                current_user.id,
+            )
+            if not app_id:
+                conn.rollback()
+                conn.close()
+                flash('Could not save the application. Please try again.', 'danger')
+                return redirect(url_for('submit_application'))
             # Handle file uploads
             if 'documents' in request.files:
                 files = request.files.getlist('documents')
@@ -2804,6 +2814,84 @@ def unread_messages_count():
     count = row['count'] if row else 0
     conn.close()
     return jsonify({'count': count})
+
+
+def _insert_loan_application(
+    conn,
+    member_name,
+    member_contact,
+    member_address,
+    loan_amount,
+    loan_type,
+    lps_remarks,
+    needs_ci,
+    submitted_by_id,
+):
+    """
+    Insert a new row into loan_applications and return the new id.
+    PostgreSQL: psycopg2 cursors have no lastrowid — must use RETURNING id.
+    """
+    status = "submitted"
+    # Coerce amount for DB drivers (RealDictCursor / numeric columns).
+    try:
+        amt = float(loan_amount) if loan_amount is not None and str(loan_amount).strip() != "" else 0.0
+    except (TypeError, ValueError):
+        amt = 0.0
+    needs_flag = 1 if int(needs_ci) else 0
+
+    if is_postgresql():
+        cursor = conn.execute(
+            """
+            INSERT INTO loan_applications
+            (member_name, member_contact, member_address, loan_amount, loan_type,
+             lps_remarks, needs_ci_interview, submitted_by, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                member_name,
+                member_contact,
+                member_address,
+                amt,
+                loan_type,
+                lps_remarks or "",
+                needs_flag,
+                submitted_by_id,
+                status,
+            ),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        try:
+            return int(row["id"])
+        except Exception:
+            try:
+                return int(row[0])
+            except Exception:
+                return None
+
+    cursor = conn.execute(
+        """
+        INSERT INTO loan_applications
+        (member_name, member_contact, member_address, loan_amount, loan_type,
+         lps_remarks, needs_ci_interview, submitted_by, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            member_name,
+            member_contact,
+            member_address,
+            amt,
+            loan_type,
+            lps_remarks or "",
+            needs_flag,
+            submitted_by_id,
+            status,
+        ),
+    )
+    return getattr(cursor, "lastrowid", None)
+
 
 def _insert_direct_message(conn, sender_id, receiver_id, message, message_type='text', file_path=None, file_name=None):
     """Insert a direct message in a DB-agnostic way and return the new id."""
