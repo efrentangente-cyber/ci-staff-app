@@ -1073,8 +1073,9 @@ def submit_application():
         ORDER BY name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
-                                (current_user.id,)).fetchone()['count']
+    unread_count_row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
+                                (current_user.id,)).fetchone()
+    unread_count = unread_count_row['count'] if unread_count_row else 0
     conn.close()
     return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
 
@@ -1093,8 +1094,9 @@ def ci_dashboard():
         WHERE la.assigned_ci_staff = ?
         ORDER BY la.submitted_at ASC
     ''', (current_user.id,)).fetchall()
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     conn.close()
     return render_template('ci_dashboard.html', applications=applications, unread_count=unread_count)
 
@@ -1204,8 +1206,9 @@ def ci_checklist_wizard(id):
         conn.close()
         return redirect(url_for('ci_dashboard'))
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     
     conn.close()
     return render_template('ci_checklist_wizard.html', application=app_data, unread_count=unread_count)
@@ -1245,8 +1248,9 @@ def ci_review_application(id):
     # Get uploaded documents
     documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC', (id,)).fetchall()
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     conn.close()
     
     return render_template('ci_review_application.html', 
@@ -1408,8 +1412,9 @@ def admin_dashboard():
         ORDER BY is_online DESC, name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     conn.close()
     return render_template('admin_dashboard.html', 
                          applications=applications, 
@@ -1505,8 +1510,9 @@ def admin_application(id):
         ORDER BY name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     conn.close()
     
     return render_template('admin_application.html', 
@@ -1769,8 +1775,9 @@ def loan_application(id):
         ORDER BY name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     conn.close()
     
     # Check if application can be edited
@@ -2034,7 +2041,8 @@ def unread_message_count():
 @login_required
 def unread_messages_count():
     conn = get_db()
-    count = conn.execute('SELECT COUNT(*) as count FROM direct_messages WHERE receiver_id=? AND is_read=0 AND is_deleted=0', (current_user.id,)).fetchone()['count']
+    row = conn.execute('SELECT COUNT(*) as count FROM direct_messages WHERE receiver_id=? AND is_read=0 AND is_deleted=0', (current_user.id,)).fetchone()
+    count = row['count'] if row else 0
     conn.close()
     return jsonify({'count': count})
 
@@ -2759,8 +2767,9 @@ def manage_users():
         ORDER BY name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     conn.close()
     
     return render_template('manage_users.html', 
@@ -2979,12 +2988,18 @@ def system_settings():
     settings = conn.execute('SELECT * FROM system_settings ORDER BY setting_key').fetchall()
     
     # Get system statistics
+    row1 = conn.execute('SELECT COUNT(*) as count FROM users WHERE is_approved=1').fetchone()
+    row2 = conn.execute('SELECT COUNT(*) as count FROM loan_applications').fetchone()
+    row3 = conn.execute('SELECT COUNT(*) as count FROM loan_applications WHERE status="assigned_to_ci"').fetchone()
+    row4 = conn.execute('SELECT COUNT(*) as count FROM loan_applications WHERE status="approved"').fetchone()
+    row5 = conn.execute('SELECT COALESCE(SUM(loan_amount), 0) as total FROM loan_applications WHERE status="approved"').fetchone()
+    
     stats = {
-        'total_users': conn.execute('SELECT COUNT(*) as count FROM users WHERE is_approved=1').fetchone()['count'],
-        'total_applications': conn.execute('SELECT COUNT(*) as count FROM loan_applications').fetchone()['count'],
-        'pending_ci': conn.execute('SELECT COUNT(*) as count FROM loan_applications WHERE status="assigned_to_ci"').fetchone()['count'],
-        'approved_loans': conn.execute('SELECT COUNT(*) as count FROM loan_applications WHERE status="approved"').fetchone()['count'],
-        'total_loan_amount': conn.execute('SELECT COALESCE(SUM(loan_amount), 0) as total FROM loan_applications WHERE status="approved"').fetchone()['total']
+        'total_users': row1['count'] if row1 else 0,
+        'total_applications': row2['count'] if row2 else 0,
+        'pending_ci': row3['count'] if row3 else 0,
+        'approved_loans': row4['count'] if row4 else 0,
+        'total_loan_amount': row5['total'] if row5 else 0
     }
     
     conn.close()
@@ -3054,11 +3069,12 @@ def manage_permissions():
         ''').fetchall()
         
         # Get unread notification count
-        unread_count = conn.execute('''
+        row = conn.execute('''
             SELECT COUNT(*) as count 
             FROM notifications 
             WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
-        ''', (current_user.id,)).fetchone()['count']
+        ''', (current_user.id,)).fetchone()
+        unread_count = row['count'] if row else 0
         
         conn.close()
         
@@ -3537,8 +3553,9 @@ def change_password():
         return redirect(url_for('index'))
     
     conn = get_db()
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''',
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     conn.close()
     return render_template('change_password.html', unread_count=unread_count)
 
@@ -3884,8 +3901,9 @@ def manage_loan_types():
     
     conn = get_db()
     loan_types = conn.execute('SELECT * FROM loan_types ORDER BY name ASC').fetchall()
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
-                                (current_user.id,)).fetchone()['count']
+    row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
+                                (current_user.id,)).fetchone()
+    unread_count = row['count'] if row else 0
     conn.close()
     
     return render_template('manage_loan_types.html', loan_types=loan_types, unread_count=unread_count)
@@ -4337,10 +4355,11 @@ def manage_sms_templates():
         deferred_count = len(deferred_templates)
         custom_count = len(custom_templates)
         
-        unread_count = conn.execute('''
+        row = conn.execute('''
             SELECT COUNT(*) as count FROM notifications 
             WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"
-        ''', (current_user.id,)).fetchone()['count']
+        ''', (current_user.id,)).fetchone()
+        unread_count = row['count'] if row else 0
         
         conn.close()
         
