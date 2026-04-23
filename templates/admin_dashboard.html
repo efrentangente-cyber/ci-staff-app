@@ -147,7 +147,7 @@
                                 </td>
                                 <td>{{ app.loan_staff_name }}</td>
                                 <td>{{ app.ci_staff_name or 'N/A' }}</td>
-                                <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                                <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                                 <td>
                                     <a href="{{ url_for('admin_application', id=app.id) }}" class="btn btn-sm btn-primary">
                                         <i class="bi bi-eye"></i>
@@ -216,7 +216,7 @@
                                 </td>
                                 <td>{{ app.loan_staff_name }}</td>
                                 <td>{{ app.ci_staff_name or 'N/A' }}</td>
-                                <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                                <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                                 <td>
                                     <a href="{{ url_for('admin_application', id=app.id) }}" class="btn btn-sm btn-primary">
                                         <i class="bi bi-eye"></i>
@@ -281,7 +281,7 @@
                                 </td>
                                 <td>{{ app.loan_staff_name }}</td>
                                 <td>{{ app.ci_staff_name or 'Not Assigned' }}</td>
-                                <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                                <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                                 <td>
                                     <button class="btn btn-sm btn-warning" onclick="openReassignModal({{ app.id }}, '{{ app.member_name }}', {{ app.assigned_ci_staff or 'null' }})">
                                         <i class="bi bi-arrow-repeat"></i>

@@ -171,7 +171,7 @@
                     <li class="list-group-item d-flex justify-content-between align-items-center">
                         <span>
                             <i class="bi bi-file-earmark"></i> {{ doc.file_name }}
-                            <small class="text-muted">({{ doc.uploaded_at[:16] }})</small>
+                            <small class="text-muted">({{ doc.uploaded_at|fmt_datetime('%Y-%m-%d %H:%M') }})</small>
                         </span>
                         <a href="{{ url_for('download_document', doc_id=doc.id) }}" class="btn btn-sm btn-primary">
                             <i class="bi bi-download"></i> Download
@@ -197,7 +197,7 @@
                     <div class="message {% if msg.sender_id == current_user.id %}sent{% else %}received{% endif %}">
                         <strong>{{ msg.sender_name }}:</strong><br>
                         {{ msg.message }}<br>
-                        <small class="text-muted">{{ msg.sent_at[:16] }}</small>
+                        <small class="text-muted">{{ msg.sent_at|fmt_datetime('%Y-%m-%d %H:%M') }}</small>
                     </div>
                     {% endfor %}
                 </div>

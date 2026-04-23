@@ -44,6 +44,7 @@ def now_ph():
     """Return current UTC time for DB storage (JS handles timezone display)"""
     return datetime.utcnow()
 
+
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'replace-this-with-a-secure-random-secret')
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -59,6 +60,21 @@ app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
 app.config['SESSION_COOKIE_SECURE'] = True  # Only send cookie over HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+
+
+@app.template_filter('fmt_datetime')
+def fmt_datetime(value, fmt='%Y-%m-%d %H:%M'):
+    """Format datetime values safely for templates (datetime or ISO string)."""
+    if value is None:
+        return ''
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00')).strftime(fmt)
+        except ValueError:
+            return value[:16] if len(value) >= 16 else value
+    return str(value)
 
 # Allowed file extensions for uploads
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm', 'mp3', 'wav'}

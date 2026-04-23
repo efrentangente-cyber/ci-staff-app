@@ -42,7 +42,7 @@
                 </div>
                 <div class="notification-content">
                     <p class="notification-message">{{ notif.message }}</p>
-                    <small class="notification-time">{{ notif.created_at[:16] }}</small>
+                    <small class="notification-time">{{ notif.created_at|fmt_datetime('%Y-%m-%d %H:%M') }}</small>
                 </div>
             </a>
             {% endfor %}

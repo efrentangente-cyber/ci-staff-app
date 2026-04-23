@@ -120,7 +120,7 @@
                     {% if app.status == 'assigned_to_ci' %}
                     <tr>
                         <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
-                        <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                        <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                         <td>{{ app.member_address }}</td>
                         <td>
                             <a href="{{ url_for('ci_review_application', id=app.id) }}" class="btn btn-sm btn-warning">
@@ -174,7 +174,7 @@
                     {% if app.status == 'ci_completed' %}
                     <tr>
                         <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
-                        <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                        <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                         <td>{{ app.member_address }}</td>
                         <td>
                             <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-primary">
