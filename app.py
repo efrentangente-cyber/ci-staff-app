@@ -300,85 +300,108 @@ def setup_production_users():
         ]
         
         for email, password, name, role in users:
-            existing = conn.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
-            
-            if existing:
-                # Update existing user's name and role
-                conn.execute('UPDATE users SET name = ?, role = ?, is_approved = 1 WHERE email = ?',
-                           (name, role, email))
-            else:
-                # Create new user
-                password_hash = generate_password_hash(password)
-                conn.execute('''
-                    INSERT INTO users (email, password_hash, name, role, is_approved)
-                    VALUES (?, ?, ?, ?, 1)
-                ''', (email, password_hash, name, role))
+            try:
+                existing = conn.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+                
+                if existing:
+                    # Update existing user's name and role
+                    conn.execute('UPDATE users SET name = ?, role = ?, is_approved = 1 WHERE email = ?',
+                               (name, role, email))
+                else:
+                    # Create new user
+                    password_hash = generate_password_hash(password)
+                    conn.execute('''
+                        INSERT INTO users (email, password_hash, name, role, is_approved)
+                        VALUES (?, ?, ?, ?, 1)
+                    ''', (email, password_hash, name, role))
+            except Exception as user_error:
+                print(f"⚠️  User setup warning for {email}: {user_error}")
+                continue
         
         conn.commit()
         print("✓ Production users setup complete")
         
         # Setup default loan types if table is empty
-        count = conn.execute('SELECT COUNT(*) as count FROM loan_types').fetchone()
-        if count['count'] == 0:
-            print("Setting up default DCCCO loan types...")
-            loan_types = [
-                ('Agricultural with Chattel', 'Agricultural loan with chattel mortgage', 1),
-                ('Agricultural with REM', 'Agricultural loan with real estate mortgage', 1),
-                ('Agricultural w/o Collateral', 'Agricultural loan without collateral', 1),
-                ('Business with Chattel', 'Business loan with chattel mortgage', 1),
-                ('Business with REM', 'Business loan with real estate mortgage', 1),
-                ('Business w/o Collateral', 'Business loan without collateral', 1),
-                ('Multipurpose with Chattel', 'Multipurpose loan with chattel mortgage', 1),
-                ('Multipurpose with REM', 'Multipurpose loan with real estate mortgage', 1),
-                ('Multipurpose w/o Collateral', 'Multipurpose loan without collateral', 1),
-                ('Salary ATM - Dim', 'Salary loan via ATM', 1),
-                ('Salary MOA - Dim', 'Salary loan via MOA', 1),
-                ('Car Loan - Dim (surplus)', 'Car loan for surplus vehicles', 1),
-                ('Car Loan (Brand New) - Dim', 'Car loan for brand new vehicles', 1),
-                ('Back-to-back Loan', 'Back-to-back loan', 1),
-                ('Pension Loan', 'Pension loan', 1),
-                ('Hospitalization Loan', 'Hospitalization loan', 1),
-                ('Petty Cash Loan', 'Petty cash loan', 1),
-                ('Incentive Loan', 'Incentive loan', 1)
-            ]
-            
-            for loan_name, description, is_active in loan_types:
-                conn.execute('''
-                    INSERT INTO loan_types (loan_name, description, is_active)
-                    VALUES (?, ?, ?)
-                ''', (loan_name, description, is_active))
-            
-            conn.commit()
-            print(f"✓ Created {len(loan_types)} default loan types")
+        try:
+            count = conn.execute('SELECT COUNT(*) as count FROM loan_types').fetchone()
+            if count and count['count'] == 0:
+                print("Setting up default DCCCO loan types...")
+                loan_types = [
+                    ('Agricultural with Chattel', 'Agricultural loan with chattel mortgage', 1),
+                    ('Agricultural with REM', 'Agricultural loan with real estate mortgage', 1),
+                    ('Agricultural w/o Collateral', 'Agricultural loan without collateral', 1),
+                    ('Business with Chattel', 'Business loan with chattel mortgage', 1),
+                    ('Business with REM', 'Business loan with real estate mortgage', 1),
+                    ('Business w/o Collateral', 'Business loan without collateral', 1),
+                    ('Multipurpose with Chattel', 'Multipurpose loan with chattel mortgage', 1),
+                    ('Multipurpose with REM', 'Multipurpose loan with real estate mortgage', 1),
+                    ('Multipurpose w/o Collateral', 'Multipurpose loan without collateral', 1),
+                    ('Salary ATM - Dim', 'Salary loan via ATM', 1),
+                    ('Salary MOA - Dim', 'Salary loan via MOA', 1),
+                    ('Car Loan - Dim (surplus)', 'Car loan for surplus vehicles', 1),
+                    ('Car Loan (Brand New) - Dim', 'Car loan for brand new vehicles', 1),
+                    ('Back-to-back Loan', 'Back-to-back loan', 1),
+                    ('Pension Loan', 'Pension loan', 1),
+                    ('Hospitalization Loan', 'Hospitalization loan', 1),
+                    ('Petty Cash Loan', 'Petty cash loan', 1),
+                    ('Incentive Loan', 'Incentive loan', 1)
+                ]
+                
+                for loan_name, description, is_active in loan_types:
+                    try:
+                        conn.execute('''
+                            INSERT INTO loan_types (loan_name, description, is_active)
+                            VALUES (?, ?, ?)
+                        ''', (loan_name, description, is_active))
+                    except Exception as loan_error:
+                        print(f"⚠️  Loan type warning for {loan_name}: {loan_error}")
+                        continue
+                
+                conn.commit()
+                print(f"✓ Created {len(loan_types)} default loan types")
+        except Exception as loan_types_error:
+            print(f"⚠️  Loan types setup warning: {loan_types_error}")
         
         # Setup default system settings if table is empty
-        count = conn.execute('SELECT COUNT(*) as count FROM system_settings').fetchone()
-        if count['count'] == 0:
-            print("Setting up default system settings...")
-            settings = [
-                ('company_name', 'DCCCO Multipurpose Cooperative', 'Company name displayed in the system'),
-                ('max_loan_amount', '500000', 'Maximum loan amount allowed'),
-                ('min_loan_amount', '5000', 'Minimum loan amount allowed'),
-                ('default_interest_rate', '12', 'Default annual interest rate (%)'),
-                ('ci_required_threshold', '50000', 'Loan amount threshold requiring CI')
-            ]
-            
-            for key, value, description in settings:
-                conn.execute('''
-                    INSERT INTO system_settings (setting_key, setting_value, description)
-                    VALUES (?, ?, ?)
-                ''', (key, value, description))
-            
-            conn.commit()
-            print(f"✓ Created {len(settings)} default system settings")
+        try:
+            count = conn.execute('SELECT COUNT(*) as count FROM system_settings').fetchone()
+            if count and count['count'] == 0:
+                print("Setting up default system settings...")
+                settings = [
+                    ('company_name', 'DCCCO Multipurpose Cooperative', 'Company name displayed in the system'),
+                    ('max_loan_amount', '500000', 'Maximum loan amount allowed'),
+                    ('min_loan_amount', '5000', 'Minimum loan amount allowed'),
+                    ('default_interest_rate', '12', 'Default annual interest rate (%)'),
+                    ('ci_required_threshold', '50000', 'Loan amount threshold requiring CI')
+                ]
+                
+                for key, value, description in settings:
+                    try:
+                        conn.execute('''
+                            INSERT INTO system_settings (setting_key, setting_value, description)
+                            VALUES (?, ?, ?)
+                        ''', (key, value, description))
+                    except Exception as setting_error:
+                        print(f"⚠️  Setting warning for {key}: {setting_error}")
+                        continue
+                
+                conn.commit()
+                print(f"✓ Created {len(settings)} default system settings")
+        except Exception as settings_error:
+            print(f"⚠️  System settings setup warning: {settings_error}")
         
         conn.close()
     except Exception as e:
-        print(f"Setup error: {e}")
+        print(f"⚠️  Setup warning: {e}")
         import traceback
         traceback.print_exc()
+        print("⚠️  Continuing app startup despite setup warnings...")
 
-setup_production_users()
+try:
+    setup_production_users()
+except Exception as e:
+    print(f"⚠️  Production users setup failed: {e}")
+    print("⚠️  App will continue without default users")
 
 def create_notification(user_id, message, link=None):
     try:
