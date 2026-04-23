@@ -210,6 +210,18 @@ def _fetch_loan_types_flexible(conn, active_only=False):
         normalized.append(row_dict)
     return normalized
 
+
+def _loan_types_schema_info(conn):
+    """Return loan_types schema metadata for cross-db compatibility."""
+    preview = conn.execute('SELECT * FROM loan_types LIMIT 0')
+    cols = [d[0] for d in preview.description] if preview and preview.description else []
+    if not cols:
+        return {'columns': [], 'name_key': 'name'}
+    for candidate in ('name', 'loan_type', 'loan_name', 'type_name'):
+        if candidate in cols:
+            return {'columns': cols, 'name_key': candidate}
+    return {'columns': cols, 'name_key': 'name'}
+
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",  # Allow all origins - authentication handles security
@@ -424,14 +436,18 @@ def ensure_performance_indexes():
         statements = [
             "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
             "CREATE INDEX IF NOT EXISTS idx_users_role_approved_workload ON users(role, is_approved, current_workload)",
+            "CREATE INDEX IF NOT EXISTS idx_users_approved_role_name ON users(is_approved, role, name)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_status_submitted_at ON loan_applications(status, submitted_at)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_assigned_ci_staff ON loan_applications(assigned_ci_staff)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_submitted_by ON loan_applications(submitted_by)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_member_name ON loan_applications(member_name)",
+            "CREATE INDEX IF NOT EXISTS idx_loan_applications_lower_member_name ON loan_applications(LOWER(member_name))",
             "CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, is_read, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_documents_loan_uploaded ON documents(loan_application_id, uploaded_at)",
             "CREATE INDEX IF NOT EXISTS idx_messages_app_sent ON messages(loan_application_id, sent_at)",
-            "CREATE INDEX IF NOT EXISTS idx_direct_messages_receiver_read_sent ON direct_messages(receiver_id, is_read, sent_at)"
+            "CREATE INDEX IF NOT EXISTS idx_direct_messages_receiver_read_sent ON direct_messages(receiver_id, is_read, sent_at)",
+            "CREATE INDEX IF NOT EXISTS idx_direct_messages_sender_receiver_sent ON direct_messages(sender_id, receiver_id, sent_at)",
+            "CREATE INDEX IF NOT EXISTS idx_location_tracking_user_tracked ON location_tracking(user_id, tracked_at)"
         ]
         for statement in statements:
             conn.execute(statement)
@@ -472,6 +488,46 @@ def ensure_direct_message_columns():
     except Exception as e:
         print(f"⚠️  direct_messages migration warning: {e}")
 
+
+def ensure_sms_templates_table():
+    """Create sms_templates table in a DB-compatible way."""
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+        if db_type == 'postgresql':
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS sms_templates (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL CHECK(category IN ('approved', 'disapproved', 'deferred', 'custom')),
+                    message TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.execute('ALTER TABLE sms_templates ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1')
+        else:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS sms_templates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL CHECK(category IN ('approved', 'disapproved', 'deferred', 'custom')),
+                    message TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            # SQLite fallback for existing tables missing is_active.
+            cols = conn.execute("PRAGMA table_info(sms_templates)").fetchall()
+            col_names = {c['name'] if hasattr(c, 'keys') else c[1] for c in cols}
+            if 'is_active' not in col_names:
+                conn.execute('ALTER TABLE sms_templates ADD COLUMN is_active INTEGER DEFAULT 1')
+        conn.commit()
+        conn.close()
+        print("✓ sms_templates table ensured")
+    except Exception as e:
+        print(f"⚠️  sms_templates migration warning: {e}")
+
 # Initialize database on startup
 try:
     init_db()
@@ -481,6 +537,7 @@ except Exception as e:
 
 ensure_performance_indexes()
 ensure_direct_message_columns()
+ensure_sms_templates_table()
 
 # Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
@@ -499,14 +556,17 @@ def setup_production_users():
         for email, password, name, role in users:
             try:
                 existing = conn.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+                password_hash = generate_password_hash(password)
                 
                 if existing:
-                    # Update existing user's name and role
-                    conn.execute('UPDATE users SET name = ?, role = ?, is_approved = 1 WHERE email = ?',
-                               (name, role, email))
+                    # Keep default accounts deterministic on every startup.
+                    conn.execute('''
+                        UPDATE users
+                        SET name = ?, role = ?, password_hash = ?, is_approved = 1
+                        WHERE email = ?
+                    ''', (name, role, password_hash, email))
                 else:
                     # Create new user
-                    password_hash = generate_password_hash(password)
                     conn.execute('''
                         INSERT INTO users (email, password_hash, name, role, is_approved)
                         VALUES (?, ?, ?, ?, 1)
@@ -514,6 +574,15 @@ def setup_production_users():
             except Exception as user_error:
                 print(f"⚠️  User setup warning for {email}: {user_error}")
                 continue
+
+        # Keep only approved default system accounts.
+        allowed_emails = tuple(u[0] for u in users)
+        placeholders = ','.join(['?'] * len(allowed_emails))
+        conn.execute(f'''
+            UPDATE users
+            SET is_approved = 0
+            WHERE email NOT IN ({placeholders})
+        ''', allowed_emails)
         
         conn.commit()
         print("✓ Production users setup complete")
@@ -1594,9 +1663,13 @@ def view_ci_checklist(id):
     if app_data['ci_checklist_data']:
         try:
             import json
-            checklist_data = json.loads(app_data['ci_checklist_data'])
-        except:
-            pass
+            parsed = json.loads(app_data['ci_checklist_data'])
+            if isinstance(parsed, dict):
+                checklist_data = parsed
+            else:
+                checklist_data = {}
+        except Exception:
+            checklist_data = {}
     
     conn.close()
     return render_template('view_ci_checklist.html', application=app_data, checklist_data=checklist_data)
@@ -2189,57 +2262,73 @@ def messages():
             SELECT id, name, email, role, profile_photo 
             FROM users 
             WHERE id != ?
+              AND is_approved = 1
+              AND role IN ('admin', 'loan_officer', 'loan_staff', 'ci_staff')
             ORDER BY name
         ''', (current_user.id,)).fetchall()
         
-        # Get unique users we've chatted with
-        chat_users = conn.execute('''
-            SELECT DISTINCT
-                CASE 
-                    WHEN sender_id = ? THEN receiver_id 
-                    ELSE sender_id 
-                END as user_id
-            FROM direct_messages
-            WHERE sender_id = ? OR receiver_id = ?
-        ''', (current_user.id, current_user.id, current_user.id)).fetchall()
-        
         conversations = []
-        for chat_user in chat_users:
-            other_id = chat_user['user_id']
-            
-            # Get user info; skip stale conversations pointing to deleted users.
-            user_info = conn.execute('SELECT name, role, profile_photo FROM users WHERE id = ?', (other_id,)).fetchone()
-            if not user_info:
-                continue
-            
-            # Get last message
-            last_msg = conn.execute('''
-                SELECT message, sent_at 
-                FROM direct_messages 
-                WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)
-                ORDER BY sent_at DESC 
-                LIMIT 1
-            ''', (current_user.id, other_id, other_id, current_user.id)).fetchone()
-            
-            # Get unread count
-            unread = conn.execute('''
-                SELECT COUNT(*) as count 
-                FROM direct_messages 
-                WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
-            ''', (other_id, current_user.id)).fetchone()
-            
-            conversations.append({
-                'other_user_id': other_id,
-                'other_user_name': user_info['name'],
-                'other_user_role': user_info['role'],
-                'other_user_photo': user_info['profile_photo'],
-                'last_message': last_msg['message'] if last_msg else '',
-                'last_message_time': last_msg['sent_at'] if last_msg else '',
-                'unread_count': unread['count'] if unread else 0
-            })
-        
-        # Sort by last message time
-        conversations.sort(key=lambda x: x['last_message_time'], reverse=True)
+        latest_rows = conn.execute('''
+            SELECT other_id, message, sent_at
+            FROM (
+                SELECT
+                    CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS other_id,
+                    message,
+                    sent_at,
+                    id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END
+                        ORDER BY sent_at DESC, id DESC
+                    ) AS rn
+                FROM direct_messages
+                WHERE sender_id = ? OR receiver_id = ?
+            ) ranked
+            WHERE rn = 1
+            ORDER BY sent_at DESC
+            LIMIT 50
+        ''', (current_user.id, current_user.id, current_user.id, current_user.id)).fetchall()
+
+        chat_user_ids = [row['other_id'] for row in latest_rows if row.get('other_id') is not None]
+        if chat_user_ids:
+            placeholders = ','.join(['?'] * len(chat_user_ids))
+            latest_map = {row['other_id']: row for row in latest_rows}
+
+            user_rows = conn.execute(
+                f'''
+                SELECT id, name, role, profile_photo
+                FROM users
+                WHERE id IN ({placeholders})
+                  AND is_approved = 1
+                ''',
+                tuple(chat_user_ids)
+            ).fetchall()
+            user_map = {u['id']: u for u in user_rows}
+
+            unread_rows = conn.execute(
+                f'''
+                SELECT sender_id as other_id, COUNT(*) as count
+                FROM direct_messages
+                WHERE receiver_id = ? AND is_read = 0 AND sender_id IN ({placeholders})
+                GROUP BY sender_id
+                ''',
+                (current_user.id, *chat_user_ids)
+            ).fetchall()
+            unread_map = {row['other_id']: row['count'] for row in unread_rows}
+
+            for other_id in chat_user_ids:
+                user_info = user_map.get(other_id)
+                if not user_info:
+                    continue
+                last_msg = latest_map.get(other_id)
+                conversations.append({
+                    'other_user_id': other_id,
+                    'other_user_name': user_info['name'],
+                    'other_user_role': user_info['role'],
+                    'other_user_photo': user_info['profile_photo'],
+                    'last_message': last_msg['message'] if last_msg else '',
+                    'last_message_time': last_msg['sent_at'] if last_msg else '',
+                    'unread_count': unread_map.get(other_id, 0)
+                })
         
         return render_template('messages_dark.html', staff=staff, conversations=conversations, unread_count=0)
     except Exception as e:
@@ -4331,15 +4420,22 @@ def add_loan_type():
     
     conn = get_db()
     try:
-        conn.execute('INSERT INTO loan_types (name, description) VALUES (?, ?)', (name, description))
+        schema = _loan_types_schema_info(conn)
+        name_key = schema['name_key']
+        cols = schema['columns']
+
+        if 'description' in cols:
+            conn.execute(f'INSERT INTO loan_types ({name_key}, description) VALUES (?, ?)', (name, description))
+        else:
+            conn.execute(f'INSERT INTO loan_types ({name_key}) VALUES (?)', (name,))
         conn.commit()
         conn.close()
         return jsonify({'success': True, 'message': 'Loan type added successfully'})
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Loan type already exists'}), 400
     except Exception as e:
         conn.close()
+        msg = str(e).lower()
+        if 'duplicate' in msg or 'unique' in msg:
+            return jsonify({'success': False, 'error': 'Loan type already exists'}), 400
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/loan-types/update/<int:id>', methods=['POST'])
@@ -4357,16 +4453,28 @@ def update_loan_type(id):
     
     conn = get_db()
     try:
-        conn.execute('UPDATE loan_types SET name=?, description=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', 
-                    (name, description, id))
+        schema = _loan_types_schema_info(conn)
+        name_key = schema['name_key']
+        cols = schema['columns']
+
+        set_parts = [f"{name_key}=?"]
+        values = [name]
+        if 'description' in cols:
+            set_parts.append('description=?')
+            values.append(description)
+        if 'updated_at' in cols:
+            set_parts.append('updated_at=CURRENT_TIMESTAMP')
+        values.append(id)
+
+        conn.execute(f"UPDATE loan_types SET {', '.join(set_parts)} WHERE id=?", tuple(values))
         conn.commit()
         conn.close()
         return jsonify({'success': True, 'message': 'Loan type updated successfully'})
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Loan type name already exists'}), 400
     except Exception as e:
         conn.close()
+        msg = str(e).lower()
+        if 'duplicate' in msg or 'unique' in msg:
+            return jsonify({'success': False, 'error': 'Loan type name already exists'}), 400
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/loan-types/toggle/<int:id>', methods=['POST'])
@@ -4714,29 +4822,9 @@ def manage_sms_templates():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
-    conn = get_db()
-    
     try:
-        # Check if sms_templates table exists
-        table_check = conn.execute('''
-            SELECT name FROM sqlite_master 
-            WHERE type='table' AND name='sms_templates'
-        ''').fetchone()
-        
-        if not table_check:
-            # Create sms_templates table
-            conn.execute('''
-                CREATE TABLE sms_templates (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    category TEXT NOT NULL CHECK(category IN ('approved', 'disapproved', 'deferred', 'custom')),
-                    message TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            conn.commit()
-            flash('SMS Templates system initialized successfully!', 'success')
-        
+        ensure_sms_templates_table()
+        conn = get_db()
         # Get all templates
         templates = conn.execute('''
             SELECT * FROM sms_templates 
@@ -4776,7 +4864,10 @@ def manage_sms_templates():
                              unread_count=unread_count)
     
     except Exception as e:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
         flash(f'Error loading SMS templates: {str(e)}', 'danger')
         return redirect(url_for('admin_dashboard'))
 
@@ -4784,6 +4875,7 @@ def manage_sms_templates():
 @login_required
 def get_sms_templates(category):
     """Get SMS templates by category (approved, disapproved, deferred)"""
+    ensure_sms_templates_table()
     conn = get_db()
     templates = conn.execute('''
         SELECT id, name, message, category 
