@@ -800,6 +800,7 @@ def loan_dashboard():
         ORDER BY name ASC
     ''').fetchall()
     
+    # Fixed: Handle None case when no notifications exist
     unread_count_row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                                 (current_user.id,)).fetchone()
     unread_count = unread_count_row['count'] if unread_count_row else 0
@@ -810,6 +811,7 @@ def loan_dashboard():
 @login_required
 def notification_count():
     conn = get_db()
+    # Fixed: Handle None case when no notifications exist
     count_row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
                         (current_user.id,)).fetchone()
     count = count_row['count'] if count_row else 0
