@@ -1398,6 +1398,18 @@ def admin_dashboard():
     
     try:
         conn = get_db()
+
+        def _normalize_datetime_fields(rows):
+            """Convert datetime values to strings for template slicing compatibility."""
+            normalized = []
+            for row in rows:
+                row_dict = dict(row)
+                for field in ('submitted_at', 'admin_decision_at', 'ci_completed_at'):
+                    value = row_dict.get(field)
+                    if isinstance(value, datetime):
+                        row_dict[field] = value.strftime('%Y-%m-%d %H:%M:%S')
+                normalized.append(row_dict)
+            return normalized
         
         # Get applications for review (ci_completed, approved, disapproved, deferred, or direct submissions)
         applications = conn.execute('''
@@ -1411,6 +1423,7 @@ def admin_dashboard():
                OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
             ORDER BY la.submitted_at ASC
         ''').fetchall()
+        applications = _normalize_datetime_fields(applications)
         
         # Get "In Process" applications (between LPS and CI)
         in_process_applications = conn.execute('''
@@ -1423,6 +1436,9 @@ def admin_dashboard():
             WHERE la.status IN ('submitted', 'assigned_to_ci')
             ORDER BY la.submitted_at ASC
         ''').fetchall()
+        in_process_applications = _normalize_datetime_fields(
+            in_process_applications
+        )
         
         # Get online CI staff
         ci_staff = conn.execute('''
