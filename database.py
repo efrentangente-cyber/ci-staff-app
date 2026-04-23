@@ -7,10 +7,12 @@ Updated: 2026-04-23 - Fixed PostgreSQL compatibility
 
 import os
 import sqlite3
+import threading
 
 # Try to import PostgreSQL driver (only needed for production)
 try:
     import psycopg2
+    from psycopg2 import pool
     from psycopg2.extras import RealDictCursor
     POSTGRES_AVAILABLE = True
 except ImportError:
@@ -22,9 +24,10 @@ except ImportError:
 class DatabaseConnection:
     """Wrapper for database connection that handles SQL placeholder conversion"""
     
-    def __init__(self, conn, db_type):
+    def __init__(self, conn, db_type, release_callback=None):
         self._conn = conn
         self._db_type = db_type
+        self._release_callback = release_callback
     
     def cursor(self):
         """Get cursor from underlying connection"""
@@ -109,6 +112,8 @@ class DatabaseConnection:
     
     def close(self):
         """Close connection"""
+        if self._release_callback:
+            return self._release_callback(self._conn)
         return self._conn.close()
     
     def __enter__(self):
@@ -144,8 +149,8 @@ def get_db():
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
         
         try:
-            conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor, sslmode='require')
-            return DatabaseConnection(conn, 'postgresql')
+            conn = _get_postgresql_pool(database_url).getconn()
+            return DatabaseConnection(conn, 'postgresql', release_callback=_release_postgresql_connection)
         except Exception as e:
             print(f"❌ PostgreSQL connection failed: {e}")
             print(f"   DATABASE_URL: {database_url[:50]}...")
@@ -177,6 +182,47 @@ def is_postgresql():
 def is_sqlite():
     """Check if using SQLite"""
     return get_database_type() == 'sqlite'
+
+
+_pg_pool = None
+_pg_pool_lock = threading.Lock()
+
+
+def _get_postgresql_pool(database_url):
+    """Create/reuse a PostgreSQL connection pool for fast request handling."""
+    global _pg_pool
+    if _pg_pool is not None:
+        return _pg_pool
+
+    with _pg_pool_lock:
+        if _pg_pool is None:
+            _pg_pool = pool.ThreadedConnectionPool(
+                1,
+                int(os.getenv('POSTGRES_POOL_MAX', '20')),
+                dsn=database_url,
+                sslmode='require',
+                connect_timeout=int(os.getenv('POSTGRES_CONNECT_TIMEOUT', '5')),
+                cursor_factory=RealDictCursor
+            )
+            print("✓ PostgreSQL connection pool initialized")
+    return _pg_pool
+
+
+def _release_postgresql_connection(conn):
+    """Return pooled connection to pool safely."""
+    global _pg_pool
+    if _pg_pool is None:
+        conn.close()
+        return
+    try:
+        if conn.closed:
+            return
+        _pg_pool.putconn(conn)
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 # Print database info on import (helpful for debugging)
 if __name__ != '__main__':

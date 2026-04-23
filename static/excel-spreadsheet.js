@@ -536,9 +536,6 @@ class ExcelSpreadsheet {
 
         try {
             let formula = cell.formula.substring(1); // Remove '='
-
-            // Replace cell references with values
-            formula = this.replaceCellReferences(formula);
             
             // Check if formula contains only zeros or empty values
             // If so, leave cell empty instead of showing 0
@@ -622,6 +619,10 @@ class ExcelSpreadsheet {
         
         // Handle COUNT function
         expression = this.handleCountFunction(expression);
+
+        // Replace remaining standalone cell references (e.g., A1+B1).
+        // Do this AFTER range functions so refs like D6:D7 are preserved for SUM.
+        expression = this.replaceCellReferences(expression);
         
         // Handle IF function (basic support)
         expression = this.handleIfFunction(expression);

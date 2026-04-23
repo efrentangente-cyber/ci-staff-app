@@ -14,6 +14,7 @@ from database import get_db, get_database_type  # Use database abstraction layer
 import os
 import uuid
 import re
+import json
 from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
@@ -205,6 +206,31 @@ class User(UserMixin):
         self.assigned_route = assigned_route
         self.permissions = permissions
 
+
+ROLE_ALIASES = {
+    'superadmin': 'admin',
+    'super_admin': 'admin',
+    'loan officer': 'loan_officer',
+    'loan_officer': 'loan_officer',
+    'ci/bi': 'ci_staff',
+    'ci-bi': 'ci_staff',
+    'ci_bi': 'ci_staff',
+    'ci staff': 'ci_staff',
+    'lps': 'loan_staff',
+    'loan staff': 'loan_staff'
+}
+
+VALID_ROLES = {'admin', 'loan_officer', 'loan_staff', 'ci_staff'}
+
+
+def normalize_role(role):
+    """Normalize legacy/display role names to system role keys."""
+    if role is None:
+        return None
+    role_key = str(role).strip().lower()
+    mapped = ROLE_ALIASES.get(role_key, role_key)
+    return mapped if mapped in VALID_ROLES else None
+
 def send_verification_email(to_email, code, user_name):
     """Send verification code email using Resend"""
     try:
@@ -314,12 +340,39 @@ def init_db():
     os.makedirs('uploads', exist_ok=True)
     os.makedirs('signatures', exist_ok=True)
 
+
+def ensure_performance_indexes():
+    """Create indexes for login, dashboards, and high-traffic actions."""
+    try:
+        conn = get_db()
+        statements = [
+            "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+            "CREATE INDEX IF NOT EXISTS idx_users_role_approved_workload ON users(role, is_approved, current_workload)",
+            "CREATE INDEX IF NOT EXISTS idx_loan_applications_status_submitted_at ON loan_applications(status, submitted_at)",
+            "CREATE INDEX IF NOT EXISTS idx_loan_applications_assigned_ci_staff ON loan_applications(assigned_ci_staff)",
+            "CREATE INDEX IF NOT EXISTS idx_loan_applications_submitted_by ON loan_applications(submitted_by)",
+            "CREATE INDEX IF NOT EXISTS idx_loan_applications_member_name ON loan_applications(member_name)",
+            "CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, is_read, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_documents_loan_uploaded ON documents(loan_application_id, uploaded_at)",
+            "CREATE INDEX IF NOT EXISTS idx_messages_app_sent ON messages(loan_application_id, sent_at)",
+            "CREATE INDEX IF NOT EXISTS idx_direct_messages_receiver_read_sent ON direct_messages(receiver_id, is_read, sent_at)"
+        ]
+        for statement in statements:
+            conn.execute(statement)
+        conn.commit()
+        conn.close()
+        print("✓ Performance indexes ensured")
+    except Exception as e:
+        print(f"⚠️  Performance index warning: {e}")
+
 # Initialize database on startup
 try:
     init_db()
 except Exception as e:
     print(f"⚠️  Database initialization warning: {e}")
     print("⚠️  Continuing app startup...")
+
+ensure_performance_indexes()
 
 # Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
@@ -460,6 +513,11 @@ def run_background_task(func, *args, **kwargs):
             print(f"⚠️  Background task failed: {task_error}")
 
     socketio.start_background_task(_runner)
+
+
+def enqueue_notification(user_id, message, link=None):
+    """Queue notification creation so endpoints stay fast."""
+    run_background_task(create_notification, user_id, message, link)
 
 
 def send_sms(phone_number, message):
@@ -733,13 +791,22 @@ Be friendly and conversational while maintaining professionalism."""
 def load_user(user_id):
     conn = get_db()
     row = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-    conn.close()
     if row:
+        normalized_role = normalize_role(row['role'])
+        effective_role = normalized_role if normalized_role else row['role']
+        if normalized_role and normalized_role != row['role']:
+            try:
+                conn.execute('UPDATE users SET role=? WHERE id=?', (normalized_role, user_id))
+                conn.commit()
+            except Exception as role_update_error:
+                print(f"⚠️  Role normalization warning (user_loader): {role_update_error}")
         backup_email = row['backup_email'] if 'backup_email' in row.keys() else None
         profile_photo = row['profile_photo'] if 'profile_photo' in row.keys() else None
         assigned_route = row['assigned_route'] if 'assigned_route' in row.keys() else None
         permissions = row['permissions'] if 'permissions' in row.keys() else None
-        return User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], backup_email, profile_photo, assigned_route, permissions)
+        conn.close()
+        return User(row['id'], row['email'], row['name'], effective_role, row['signature_path'], backup_email, profile_photo, assigned_route, permissions)
+    conn.close()
     return None
 
 # Add security headers to prevent caching of authenticated pages
@@ -777,15 +844,91 @@ def require_admin_or_loan_officer():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
 
+
+def _split_member_name(full_name):
+    """Best-effort split for pre-filling CI applicant name fields."""
+    if not full_name:
+        return {'last': '', 'first': '', 'middle': ''}
+    parts = [p for p in str(full_name).strip().split() if p]
+    if len(parts) == 1:
+        return {'last': parts[0], 'first': '', 'middle': ''}
+    if len(parts) == 2:
+        return {'last': parts[-1], 'first': parts[0], 'middle': ''}
+    return {'last': parts[-1], 'first': parts[0], 'middle': ' '.join(parts[1:-1])}
+
+
+def _split_address(addr):
+    """Best-effort split for pre-filling CI address fields."""
+    if not addr:
+        return {'house_no': '', 'street': '', 'barangay': '', 'city': '', 'province': ''}
+    chunks = [c.strip() for c in str(addr).split(',') if c.strip()]
+    # Heuristic mapping: house/street/barangay/city/province
+    mapped = {'house_no': '', 'street': '', 'barangay': '', 'city': '', 'province': ''}
+    if len(chunks) >= 1:
+        mapped['street'] = chunks[0]
+    if len(chunks) >= 2:
+        mapped['barangay'] = chunks[1]
+    if len(chunks) >= 3:
+        mapped['city'] = chunks[2]
+    if len(chunks) >= 4:
+        mapped['province'] = chunks[3]
+    return mapped
+
+
+def _build_ci_prefill_data(application, ci_name):
+    """Create initial CI form values from LPS application details."""
+    app_dict = dict(application)
+    name = _split_member_name(app_dict.get('member_name'))
+    addr = _split_address(app_dict.get('member_address'))
+    today = now_ph().strftime('%Y-%m-%d')
+    amount = app_dict.get('loan_amount') or 0
+
+    prefill = {
+        'applicant_last_name': name['last'],
+        'applicant_first_name': name['first'],
+        'applicant_middle_name': name['middle'],
+        'house_no': addr['house_no'],
+        'street': addr['street'],
+        'barangay': addr['barangay'],
+        'city': addr['city'],
+        'province': addr['province'],
+        'app_contact': app_dict.get('member_contact') or '',
+        'comp_member_name': app_dict.get('member_name') or '',
+        'comp_loan_type': app_dict.get('loan_type') or '',
+        'comp_applied_amount': amount,
+        'assess_member_name': app_dict.get('member_name') or '',
+        'assess_loan_type': app_dict.get('loan_type') or '',
+        'assess_loan_amount': amount,
+        'new_loan_amount': amount,
+        'date_reported': today,
+        'date_investigated': today,
+        'prepared_by': ci_name or '',
+        'assess_prepared_by': ci_name or ''
+    }
+
+    # If checklist already exists, use saved values as strongest source.
+    saved_payload = app_dict.get('ci_checklist_data')
+    if saved_payload:
+        try:
+            saved = json.loads(saved_payload)
+            if isinstance(saved, dict):
+                prefill.update(saved)
+        except Exception:
+            pass
+
+    return prefill
+
 @app.route('/')
 def index():
     if current_user.is_authenticated:
         if current_user.role in ['admin', 'loan_officer']:
             return redirect(url_for('admin_dashboard'))
-        elif current_user.role == 'loan_staff':
+        if current_user.role == 'loan_staff':
             return redirect(url_for('loan_dashboard'))
-        else:
+        if current_user.role == 'ci_staff':
             return redirect(url_for('ci_dashboard'))
+        flash('Account role is not configured correctly. Please contact super admin.', 'danger')
+        return redirect(url_for('logout'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET','POST'])
@@ -794,15 +937,31 @@ def login():
         email = request.form['email']
         password = request.form['password']
         conn = get_db()
-        row = conn.execute('SELECT * FROM users WHERE email=?', (email,)).fetchone()
+        row = conn.execute('''
+            SELECT id, email, password_hash, name, role, signature_path, backup_email, profile_photo, assigned_route, permissions, is_approved
+            FROM users
+            WHERE email=?
+            LIMIT 1
+        ''', (email,)).fetchone()
         conn.close()
         if row and check_password_hash(row['password_hash'], password):
+            normalized_role = normalize_role(row['role'])
+            effective_role = normalized_role if normalized_role else row['role']
+            if normalized_role and normalized_role != row['role']:
+                try:
+                    role_conn = get_db()
+                    role_conn.execute('UPDATE users SET role=? WHERE id=?', (normalized_role, row['id']))
+                    role_conn.commit()
+                    role_conn.close()
+                except Exception as role_update_error:
+                    print(f"⚠️  Role normalization warning (login): {role_update_error}")
+
             # Check if user is approved
             if row['is_approved'] == 0:
                 flash('Your account is pending admin approval. Please wait.', 'warning')
                 return render_template('login.html')
             
-            user = User(row['id'], row['email'], row['name'], row['role'], row['signature_path'], 
+            user = User(row['id'], row['email'], row['name'], effective_role, row['signature_path'], 
                        row['backup_email'] if 'backup_email' in row.keys() else None,
                        row['profile_photo'] if 'profile_photo' in row.keys() else None,
                        row['assigned_route'] if 'assigned_route' in row.keys() else None,
@@ -907,9 +1066,11 @@ def update_ci_staff_assignment(app_id):
         conn.execute('UPDATE loan_applications SET assigned_ci_staff=?, status=? WHERE id=?', 
                     (ci_staff_id, 'assigned_to_ci', app_id))
         # Send notification to CI staff
-        create_notification(int(ci_staff_id), 
-                          f'New loan application assigned to you',
-                          f'/ci/application/{app_id}')
+        enqueue_notification(
+            int(ci_staff_id),
+            'New loan application assigned to you',
+            f'/ci/application/{app_id}'
+        )
     else:
         conn.execute('UPDATE loan_applications SET assigned_ci_staff=NULL WHERE id=?', (app_id,))
     
@@ -948,8 +1109,6 @@ def submit_application():
             lps_remarks = request.form.get('lps_remarks', '').strip()
             needs_ci_value = request.form.get('needs_ci', '1')
             
-            print(f"DEBUG: Submitting application - Name: {member_name}, Amount: {loan_amount}")
-            
             conn = get_db()
             
             # Check for duplicate member name
@@ -978,19 +1137,15 @@ def submit_application():
             flash(f'Error processing form data: {str(e)}', 'danger')
             return redirect(url_for('submit_application'))
         try:
-            print(f"DEBUG: Inserting application into database")
             cursor = conn.execute('''
                 INSERT INTO loan_applications 
                 (member_name, member_contact, member_address, loan_amount, loan_type, lps_remarks, needs_ci_interview, submitted_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (member_name, member_contact, member_address, loan_amount, loan_type, lps_remarks, needs_ci, current_user.id))
             app_id = cursor.lastrowid
-            print(f"DEBUG: Application created with ID: {app_id}")
-            
             # Handle file uploads
             if 'documents' in request.files:
                 files = request.files.getlist('documents')
-                print(f"DEBUG: Processing {len(files)} files")
                 for file in files:
                     if file and file.filename:
                         # Validate file extension
@@ -1003,7 +1158,6 @@ def submit_application():
                         filename = sanitize_filename(file.filename)
                         unique_filename = f"{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
                         filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-                        print(f"DEBUG: Saving file to {filepath}")
                         file.save(filepath)
                         conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
                                    (app_id, filename, filepath, current_user.id))
@@ -1013,7 +1167,6 @@ def submit_application():
                 if specific_ci_id:
                     # Assign to specific CI staff
                     ci_staff_id = specific_ci_id
-                    print(f"DEBUG: Assigning to specific CI staff: {ci_staff_id}")
                 else:
                     # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route
                     ci_staff_id = None
@@ -1051,13 +1204,8 @@ def submit_application():
                                 LIMIT 1
                             ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
                             ci_staff_id = ci_staff['id'] if ci_staff else None
-                            print(f"DEBUG: Route-based assignment - Route: {matched_route}, CI: {ci_staff_id}")
-                        else:
-                            print(f"DEBUG: No matching route found for address: {member_address}")
-                    
                     # Fallback to workload-based if no route match
                     if not ci_staff_id:
-                        print(f"DEBUG: Falling back to workload-based assignment")
                         ci_staff = conn.execute('''
                             SELECT id FROM users 
                             WHERE role='ci_staff' AND is_approved=1
@@ -1065,7 +1213,6 @@ def submit_application():
                             LIMIT 1
                         ''').fetchone()
                         ci_staff_id = ci_staff['id'] if ci_staff else None
-                        print(f"DEBUG: Workload-based assignment - CI: {ci_staff_id}")
                 
                 if ci_staff_id:
                     conn.execute('UPDATE loan_applications SET status=?, assigned_ci_staff=? WHERE id=?',
@@ -1074,9 +1221,11 @@ def submit_application():
                                (ci_staff_id,))
                     conn.commit()
                     conn.close()
-                    create_notification(ci_staff_id, 
-                                      f'New loan application assigned: {member_name}',
-                                      f'/ci/application/{app_id}')
+                    enqueue_notification(
+                        ci_staff_id,
+                        f'New loan application assigned: {member_name}',
+                        f'/ci/application/{app_id}'
+                    )
                 else:
                     conn.commit()
                     conn.close()
@@ -1086,11 +1235,12 @@ def submit_application():
                 conn.commit()
                 conn.close()
                 if loan_officer:
-                    create_notification(loan_officer['id'],
-                                      f'New loan application submitted: {member_name}',
-                                      f'/admin/application/{app_id}')
+                    enqueue_notification(
+                        loan_officer['id'],
+                        f'New loan application submitted: {member_name}',
+                        f'/admin/application/{app_id}'
+                    )
             
-            print(f"DEBUG: Application submitted successfully")
             flash('Application submitted successfully!', 'success')
             
             # Emit WebSocket event for instant dashboard update
@@ -1252,13 +1402,25 @@ def ci_checklist_wizard(id):
         flash('Application not found', 'danger')
         conn.close()
         return redirect(url_for('ci_dashboard'))
+
+    # Ensure CI only accesses assigned application.
+    if app_data.get('assigned_ci_staff') != current_user.id:
+        flash('This application is not assigned to your account.', 'warning')
+        conn.close()
+        return redirect(url_for('ci_dashboard'))
     
     row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
                                 (current_user.id,)).fetchone()
     unread_count = row['count'] if row else 0
-    
+    prefill_data = _build_ci_prefill_data(app_data, current_user.name)
+
     conn.close()
-    return render_template('ci_checklist_wizard.html', application=app_data, unread_count=unread_count)
+    return render_template(
+        'ci_checklist_wizard.html',
+        application=app_data,
+        unread_count=unread_count,
+        prefill_data=prefill_data
+    )
 
 @app.route('/ci/application/<int:id>', methods=['GET','POST'])
 @login_required
@@ -1423,9 +1585,11 @@ def submit_ci_checklist(id):
         conn.close()
         
         if loan_officer:
-            create_notification(loan_officer['id'],
-                              f'CI interview completed for: {app_data["member_name"]}',
-                              f'/admin/application/{id}')
+            enqueue_notification(
+                loan_officer['id'],
+                f'CI interview completed for: {app_data["member_name"]}',
+                f'/admin/application/{id}'
+            )
         
         flash('CI Checklist submitted successfully!', 'success')
         return redirect(url_for('ci_dashboard'))
@@ -2413,7 +2577,7 @@ def send_message():
         users_to_notify.append(app_data['assigned_ci_staff'])
     
     for user_id in users_to_notify:
-        create_notification(user_id, f'New message from {current_user.name}', f'/application/{app_id}')
+        enqueue_notification(user_id, f'New message from {current_user.name}', f'/application/{app_id}')
     
     socketio.emit('new_message', {
         'application_id': app_id,
@@ -2474,7 +2638,7 @@ def send_message_with_attachment():
         users_to_notify.append(app_data['assigned_ci_staff'])
     
     for user_id in users_to_notify:
-        create_notification(user_id, f'New message from {current_user.name}', f'/application/{app_id}')
+        enqueue_notification(user_id, f'New message from {current_user.name}', f'/application/{app_id}')
     
     socketio.emit('new_message', {
         'application_id': int(app_id),

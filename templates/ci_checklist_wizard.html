@@ -1194,6 +1194,28 @@ nav[style*="position: fixed"][style*="bottom"],
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
 
 <script>
+const serverPrefillData = {{ (prefill_data or {})|tojson }};
+
+function applyServerPrefill() {
+    Object.keys(serverPrefillData).forEach((key) => {
+        const el = document.querySelector(`[name="${key}"]`);
+        if (!el) return;
+
+        if (el.type === 'checkbox') {
+            // Keep existing user/local value if already checked.
+            if (!el.checked) {
+                el.checked = Boolean(serverPrefillData[key]);
+            }
+            return;
+        }
+
+        // Don't overwrite anything already typed/loaded.
+        if (!el.value) {
+            el.value = serverPrefillData[key] ?? '';
+        }
+    });
+}
+
 function submitChecklist() {
     // Validate signature - check if user has registered signature
     const signatureInput = document.getElementById('ci_signature');
@@ -1447,6 +1469,10 @@ function showCINotification(type, message) {
         notification.remove();
     }, 3000);
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    applyServerPrefill();
+});
 </script>
 
 <!-- CI Camera Modal -->
