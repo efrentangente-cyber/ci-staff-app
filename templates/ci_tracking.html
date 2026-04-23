@@ -64,7 +64,7 @@
                                 </small>
                                 <small class="text-muted" id="time-{{ staff.id }}">
                                     {% if staff.tracked_at %}
-                                    <i class="bi bi-clock"></i> {{ staff.tracked_at[5:16] }}
+                                    <i class="bi bi-clock"></i> {{ staff.tracked_at|fmt_datetime('%m-%d %H:%M') }}
                                     {% endif %}
                                 </small>
                             </div>
@@ -130,7 +130,7 @@ let map;
 let markers = {};
 const staffData = {
     {% for staff in ci_staff %}
-    {{ staff.id }}: { name:'{{ staff.name }}', lat:{{ staff.latitude or 'null' }}, lng:{{ staff.longitude or 'null' }}, cases:{{ staff.active_cases }}, activity:'{{ staff.activity or "Active" }}', trackedAt:'{{ staff.tracked_at[5:16] if staff.tracked_at else "" }}' },
+    {{ staff.id }}: { name:'{{ staff.name }}', lat:{{ staff.latitude or 'null' }}, lng:{{ staff.longitude or 'null' }}, cases:{{ staff.active_cases }}, activity:'{{ staff.activity or "Active" }}', trackedAt:'{{ staff.tracked_at|fmt_datetime("%m-%d %H:%M") if staff.tracked_at else "" }}' },
     {% endfor %}
 };
 

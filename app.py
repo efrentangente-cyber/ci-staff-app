@@ -15,6 +15,7 @@ import os
 import uuid
 import re
 import json
+import time
 from datetime import datetime, timedelta
 import pytz
 from dotenv import load_dotenv
@@ -123,13 +124,7 @@ def utility_processor():
     try:
         from flask_login import current_user as _cu
         if _cu.is_authenticated:
-            conn = get_db()
-            row = conn.execute('''
-                SELECT COUNT(*) as count FROM direct_messages
-                WHERE receiver_id = ? AND is_read = 0
-            ''', (_cu.id,)).fetchone()
-            conn.close()
-            message_unread_count = row['count'] if row else 0
+            message_unread_count = get_unread_message_count(_cu.id)
     except Exception:
         pass
 
@@ -139,6 +134,81 @@ def utility_processor():
         secure_token=secure_token,
         csrf_token=csrf_token
     )
+
+
+def _get_cached_count(cache, user_id):
+    now_ts = time.time()
+    with _count_cache_lock:
+        cached = cache.get(user_id)
+        if cached and (now_ts - cached['ts']) <= _COUNT_CACHE_TTL_SECONDS:
+            return cached['value']
+    return None
+
+
+def _set_cached_count(cache, user_id, value):
+    with _count_cache_lock:
+        cache[user_id] = {'value': int(value), 'ts': time.time()}
+
+
+def get_unread_message_count(user_id):
+    cached = _get_cached_count(_message_count_cache, user_id)
+    if cached is not None:
+        return cached
+    conn = get_db()
+    row = conn.execute('''
+        SELECT COUNT(*) as count FROM direct_messages
+        WHERE receiver_id = ? AND is_read = 0
+    ''', (user_id,)).fetchone()
+    conn.close()
+    count = row['count'] if row else 0
+    _set_cached_count(_message_count_cache, user_id, count)
+    return count
+
+
+def get_unread_notification_count(user_id):
+    cached = _get_cached_count(_notification_count_cache, user_id)
+    if cached is not None:
+        return cached
+    conn = get_db()
+    row = conn.execute(
+        "SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
+        (user_id,)
+    ).fetchone()
+    conn.close()
+    count = row['count'] if row else 0
+    _set_cached_count(_notification_count_cache, user_id, count)
+    return count
+
+
+def _fetch_loan_types_flexible(conn, active_only=False):
+    """
+    Read loan_types with backward-compatible column mapping.
+    Supports legacy schemas where 'name' might be stored as loan_type/loan_name.
+    """
+    preview = conn.execute('SELECT * FROM loan_types LIMIT 0')
+    cols = [d[0] for d in preview.description] if preview and preview.description else []
+    if not cols:
+        return []
+
+    name_key = None
+    for candidate in ('name', 'loan_type', 'loan_name', 'type_name'):
+        if candidate in cols:
+            name_key = candidate
+            break
+
+    base_query = 'SELECT * FROM loan_types'
+    if active_only and 'is_active' in cols:
+        base_query += ' WHERE is_active=1'
+    if name_key:
+        base_query += f' ORDER BY {name_key} ASC'
+    rows = conn.execute(base_query).fetchall()
+
+    normalized = []
+    for row in rows:
+        row_dict = dict(row)
+        row_dict['name'] = (row_dict.get(name_key) if name_key else None) or row_dict.get('name') or 'Loan Type'
+        normalized.append(row_dict)
+    return normalized
 
 socketio = SocketIO(
     app,
@@ -154,6 +224,12 @@ socketio = SocketIO(
 
 # Track online users
 online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timestamp}}
+
+# Tiny in-memory caches to reduce repeated COUNT(*) queries per request.
+_COUNT_CACHE_TTL_SECONDS = 5
+_count_cache_lock = eventlet.semaphore.Semaphore()
+_notification_count_cache = {}
+_message_count_cache = {}
 
 # Serve static files for PWA
 @app.route('/static/<path:filename>')
@@ -365,6 +441,37 @@ def ensure_performance_indexes():
     except Exception as e:
         print(f"⚠️  Performance index warning: {e}")
 
+
+def ensure_direct_message_columns():
+    """Backfill direct_messages columns required by messaging UI/APIs."""
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+
+        if db_type == 'sqlite':
+            existing_cols = set()
+            rows = conn.execute("PRAGMA table_info(direct_messages)").fetchall()
+            for row in rows:
+                col_name = row['name'] if isinstance(row, dict) or hasattr(row, 'keys') else row[1]
+                existing_cols.add(col_name)
+
+            if 'is_deleted' not in existing_cols:
+                conn.execute("ALTER TABLE direct_messages ADD COLUMN is_deleted INTEGER DEFAULT 0")
+            if 'is_edited' not in existing_cols:
+                conn.execute("ALTER TABLE direct_messages ADD COLUMN is_edited INTEGER DEFAULT 0")
+            if 'edited_at' not in existing_cols:
+                conn.execute("ALTER TABLE direct_messages ADD COLUMN edited_at TEXT")
+        else:
+            conn.execute("ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
+            conn.execute("ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS is_edited INTEGER DEFAULT 0")
+            conn.execute("ALTER TABLE direct_messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP")
+
+        conn.commit()
+        conn.close()
+        print("✓ direct_messages columns ensured")
+    except Exception as e:
+        print(f"⚠️  direct_messages migration warning: {e}")
+
 # Initialize database on startup
 try:
     init_db()
@@ -373,6 +480,7 @@ except Exception as e:
     print("⚠️  Continuing app startup...")
 
 ensure_performance_indexes()
+ensure_direct_message_columns()
 
 # Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
@@ -499,6 +607,8 @@ def create_notification(user_id, message, link=None):
                      (user_id, message, link))
         conn.commit()
         conn.close()
+        with _count_cache_lock:
+            _notification_count_cache.pop(user_id, None)
         socketio.emit('new_notification', {'message': message}, room=str(user_id))
     except Exception as e:
         pass
@@ -1016,12 +1126,7 @@ def loan_dashboard():
 @app.route('/notifications/count')
 @login_required
 def notification_count():
-    conn = get_db()
-    # Fixed: Handle None case when no notifications exist
-    count_row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'", 
-                        (current_user.id,)).fetchone()
-    count = count_row['count'] if count_row else 0
-    conn.close()
+    count = get_unread_notification_count(current_user.id)
     return jsonify({'count': count})
 
 @app.route('/loan/update_status/<int:app_id>', methods=['POST'])
@@ -1231,7 +1336,7 @@ def submit_application():
                     conn.close()
             else:
                 # Send directly to loan officer
-                loan_officer = conn.execute('SELECT id FROM users WHERE role="loan_officer" LIMIT 1').fetchone()
+                loan_officer = conn.execute("SELECT id FROM users WHERE role='loan_officer' LIMIT 1").fetchone()
                 conn.commit()
                 conn.close()
                 if loan_officer:
@@ -1581,7 +1686,7 @@ def submit_ci_checklist(id):
         })
         
         # Notify loan officer
-        loan_officer = conn.execute('SELECT id FROM users WHERE role="loan_officer" LIMIT 1').fetchone()
+        loan_officer = conn.execute("SELECT id FROM users WHERE role='loan_officer' LIMIT 1").fetchone()
         conn.close()
         
         if loan_officer:
@@ -2016,9 +2121,11 @@ def loan_application(id):
                                (new_ci_staff_id, 'assigned_to_ci', id))
                     
                     # Notify new CI staff
-                    create_notification(new_ci_staff_id, 
-                                      f'Loan application reassigned to you: {member_name}',
-                                      f'/ci/application/{id}')
+                    enqueue_notification(
+                        new_ci_staff_id,
+                        f'Loan application reassigned to you: {member_name}',
+                        f'/ci/application/{id}'
+                    )
             
             conn.commit()
             conn.close()
@@ -2076,65 +2183,71 @@ def loan_application(id):
 @login_required
 def messages():
     conn = get_db()
-    
-    # Get all staff members for chat
-    staff = conn.execute('''
-        SELECT id, name, email, role, profile_photo 
-        FROM users 
-        WHERE id != ?
-        ORDER BY name
-    ''', (current_user.id,)).fetchall()
-    
-    # Get unique users we've chatted with
-    chat_users = conn.execute('''
-        SELECT DISTINCT
-            CASE 
-                WHEN sender_id = ? THEN receiver_id 
-                ELSE sender_id 
-            END as user_id
-        FROM direct_messages
-        WHERE sender_id = ? OR receiver_id = ?
-    ''', (current_user.id, current_user.id, current_user.id)).fetchall()
-    
-    conversations = []
-    for chat_user in chat_users:
-        other_id = chat_user['user_id']
+    try:
+        # Get all staff members for chat
+        staff = conn.execute('''
+            SELECT id, name, email, role, profile_photo 
+            FROM users 
+            WHERE id != ?
+            ORDER BY name
+        ''', (current_user.id,)).fetchall()
         
-        # Get user info
-        user_info = conn.execute('SELECT name, role, profile_photo FROM users WHERE id = ?', (other_id,)).fetchone()
+        # Get unique users we've chatted with
+        chat_users = conn.execute('''
+            SELECT DISTINCT
+                CASE 
+                    WHEN sender_id = ? THEN receiver_id 
+                    ELSE sender_id 
+                END as user_id
+            FROM direct_messages
+            WHERE sender_id = ? OR receiver_id = ?
+        ''', (current_user.id, current_user.id, current_user.id)).fetchall()
         
-        # Get last message
-        last_msg = conn.execute('''
-            SELECT message, sent_at 
-            FROM direct_messages 
-            WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)
-            ORDER BY sent_at DESC 
-            LIMIT 1
-        ''', (current_user.id, other_id, other_id, current_user.id)).fetchone()
+        conversations = []
+        for chat_user in chat_users:
+            other_id = chat_user['user_id']
+            
+            # Get user info; skip stale conversations pointing to deleted users.
+            user_info = conn.execute('SELECT name, role, profile_photo FROM users WHERE id = ?', (other_id,)).fetchone()
+            if not user_info:
+                continue
+            
+            # Get last message
+            last_msg = conn.execute('''
+                SELECT message, sent_at 
+                FROM direct_messages 
+                WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)
+                ORDER BY sent_at DESC 
+                LIMIT 1
+            ''', (current_user.id, other_id, other_id, current_user.id)).fetchone()
+            
+            # Get unread count
+            unread = conn.execute('''
+                SELECT COUNT(*) as count 
+                FROM direct_messages 
+                WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
+            ''', (other_id, current_user.id)).fetchone()
+            
+            conversations.append({
+                'other_user_id': other_id,
+                'other_user_name': user_info['name'],
+                'other_user_role': user_info['role'],
+                'other_user_photo': user_info['profile_photo'],
+                'last_message': last_msg['message'] if last_msg else '',
+                'last_message_time': last_msg['sent_at'] if last_msg else '',
+                'unread_count': unread['count'] if unread else 0
+            })
         
-        # Get unread count
-        unread = conn.execute('''
-            SELECT COUNT(*) as count 
-            FROM direct_messages 
-            WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
-        ''', (other_id, current_user.id)).fetchone()
+        # Sort by last message time
+        conversations.sort(key=lambda x: x['last_message_time'], reverse=True)
         
-        conversations.append({
-            'other_user_id': other_id,
-            'other_user_name': user_info['name'],
-            'other_user_role': user_info['role'],
-            'other_user_photo': user_info['profile_photo'],
-            'last_message': last_msg['message'] if last_msg else '',
-            'last_message_time': last_msg['sent_at'] if last_msg else '',
-            'unread_count': unread['count']
-        })
-    
-    # Sort by last message time
-    conversations.sort(key=lambda x: x['last_message_time'], reverse=True)
-    
-    conn.close()
-    
-    return render_template('messages_dark.html', staff=staff, conversations=conversations, unread_count=0)
+        return render_template('messages_dark.html', staff=staff, conversations=conversations, unread_count=0)
+    except Exception as e:
+        print(f"ERROR loading messages page: {e}")
+        flash('Could not load messages right now. Please try again.', 'warning')
+        return redirect(url_for('index'))
+    finally:
+        conn.close()
 
 @app.route('/messages/<int:user_id>')
 @login_required
@@ -2997,13 +3110,15 @@ def signup():
             conn.commit()
             
             # Notify admin
-            admin = conn.execute('SELECT id FROM users WHERE role="admin" LIMIT 1').fetchone()
+            admin = conn.execute("SELECT id FROM users WHERE role='admin' LIMIT 1").fetchone()
             conn.close()
             
             if admin:
-                create_notification(admin['id'], 
-                                  f'New staff registration: {name} - Role and route assignment required',
-                                  '/manage_users')
+                enqueue_notification(
+                    admin['id'],
+                    f'New staff registration: {name} - Role and route assignment required',
+                    '/manage_users'
+                )
             
             flash('Registration successful! Please wait for admin to assign your role and approve your account.', 'success')
             return redirect(url_for('login'))
@@ -3090,9 +3205,11 @@ def approve_user(user_id):
     conn.close()
     
     # Notify the user
-    create_notification(user_id, 
-                      'Your account has been approved! You can now login.',
-                      '/login')
+    enqueue_notification(
+        user_id,
+        'Your account has been approved! You can now login.',
+        '/login'
+    )
     
     flash(f'User {user["name"]} approved successfully!', 'success')
     return redirect(url_for('manage_users'))
@@ -3220,9 +3337,11 @@ def update_ci_route():
     
     # Notify the CI staff if route assigned
     if assigned_route:
-        create_notification(int(user_id), 
-                          f'Your assigned route has been updated',
-                          '/ci/dashboard')
+        enqueue_notification(
+            int(user_id),
+            'Your assigned route has been updated',
+            '/ci/dashboard'
+        )
     
     # Return appropriate response
     if request.is_json:
@@ -3241,7 +3360,7 @@ def reports():
         return redirect(url_for('index'))
     
     conn = get_db()
-    ci_staff = conn.execute('SELECT id, name FROM users WHERE role="ci_staff" ORDER BY name').fetchall()
+    ci_staff = conn.execute("SELECT id, name FROM users WHERE role='ci_staff' ORDER BY name").fetchall()
     conn.close()
     
     return render_template('reports.html', ci_staff=ci_staff)
@@ -3271,9 +3390,9 @@ def system_settings():
     # Get system statistics
     row1 = conn.execute('SELECT COUNT(*) as count FROM users WHERE is_approved=1').fetchone()
     row2 = conn.execute('SELECT COUNT(*) as count FROM loan_applications').fetchone()
-    row3 = conn.execute('SELECT COUNT(*) as count FROM loan_applications WHERE status="assigned_to_ci"').fetchone()
-    row4 = conn.execute('SELECT COUNT(*) as count FROM loan_applications WHERE status="approved"').fetchone()
-    row5 = conn.execute('SELECT COALESCE(SUM(loan_amount), 0) as total FROM loan_applications WHERE status="approved"').fetchone()
+    row3 = conn.execute("SELECT COUNT(*) as count FROM loan_applications WHERE status='assigned_to_ci'").fetchone()
+    row4 = conn.execute("SELECT COUNT(*) as count FROM loan_applications WHERE status='approved'").fetchone()
+    row5 = conn.execute("SELECT COALESCE(SUM(loan_amount), 0) as total FROM loan_applications WHERE status='approved'").fetchone()
     
     stats = {
         'total_users': row1['count'] if row1 else 0,
@@ -3388,7 +3507,7 @@ def update_permissions(user_id):
         
         # Update user permissions
         permissions_str = ','.join(permissions) if permissions else None
-        conn.execute('UPDATE users SET permissions=? WHERE id=? AND role="loan_officer"', 
+        conn.execute("UPDATE users SET permissions=? WHERE id=? AND role='loan_officer'", 
                      (permissions_str, user_id))
         conn.commit()
         
@@ -3415,7 +3534,7 @@ def get_user_permissions(user_id):
     
     try:
         conn = get_db()
-        user = conn.execute('SELECT permissions FROM users WHERE id=? AND role="loan_officer"', (user_id,)).fetchone()
+        user = conn.execute("SELECT permissions FROM users WHERE id=? AND role='loan_officer'", (user_id,)).fetchone()
         conn.close()
         
         if not user:
@@ -3447,7 +3566,7 @@ def update_permissions_inline(user_id):
         conn = get_db()
         
         # Verify user is a loan officer
-        user = conn.execute('SELECT name FROM users WHERE id=? AND role="loan_officer"', (user_id,)).fetchone()
+        user = conn.execute("SELECT name FROM users WHERE id=? AND role='loan_officer'", (user_id,)).fetchone()
         if not user:
             conn.close()
             return jsonify({'success': False, 'error': 'User not found or not a loan officer'}), 404
@@ -4181,7 +4300,7 @@ def manage_loan_types():
         return redirect(url_for('index'))
     
     conn = get_db()
-    loan_types = conn.execute('SELECT * FROM loan_types ORDER BY name ASC').fetchall()
+    loan_types = _fetch_loan_types_flexible(conn, active_only=False)
     row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
                                 (current_user.id,)).fetchone()
     unread_count = row['count'] if row else 0
@@ -4193,9 +4312,9 @@ def manage_loan_types():
 def get_loan_types():
     """Get all active loan types for dropdowns - Public API for submit form"""
     conn = get_db()
-    loan_types = conn.execute('SELECT id, name FROM loan_types WHERE is_active=1 ORDER BY name ASC').fetchall()
+    loan_types = _fetch_loan_types_flexible(conn, active_only=True)
     conn.close()
-    return jsonify([{'id': lt['id'], 'name': lt['name']} for lt in loan_types])
+    return jsonify([{'id': lt.get('id'), 'name': lt.get('name')} for lt in loan_types])
 
 @app.route('/api/loan-types/add', methods=['POST'])
 @login_required

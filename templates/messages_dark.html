@@ -67,7 +67,7 @@
                     <div class="conv-info">
                         <div class="conv-top">
                             <h6>{{ conv.other_user_name }}</h6>
-                            <span class="conv-time" data-time="{{ conv.last_message_time }}">{{ conv.last_message_time[11:16] if conv.last_message_time else '' }}</span>
+                            <span class="conv-time" data-time="{{ conv.last_message_time|fmt_datetime('%Y-%m-%d %H:%M:%S') if conv.last_message_time else '' }}">{{ conv.last_message_time|fmt_datetime('%H:%M') if conv.last_message_time else '' }}</span>
                         </div>
                         <div class="conv-bottom">
                             <p class="conv-message">{{ conv.last_message[:35] }}{% if conv.last_message|length > 35 %}...{% endif %}</p>

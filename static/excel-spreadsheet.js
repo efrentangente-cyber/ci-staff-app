@@ -894,7 +894,7 @@ class ExcelSpreadsheet {
                     const col = match[1];
                     const row = parseInt(match[2]);
                     
-                    if (row > insertAfterRow) {
+                    if (row >= insertAfterRow) {
                         // Move this cell down by 1 row
                         const newRef = col + (row + 1);
                         newCells[newRef] = this.cells[cellRef];
@@ -913,7 +913,7 @@ class ExcelSpreadsheet {
                     const col = match[1];
                     const row = parseInt(match[2]);
                     
-                    if (row > insertAfterRow) {
+                    if (row >= insertAfterRow) {
                         const newRef = col + (row + 1);
                         newMergedCells[newRef] = this.mergedCells[cellRef];
                     } else {
