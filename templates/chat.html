@@ -9,11 +9,11 @@
         </a>
         <div class="chat-user-info">
             <div class="avatar-circle bg-primary">
-                {{ other_user.name[0].upper() }}
+                {{ (other_user.name or 'U')[0]|upper }}
             </div>
             <div>
-                <h5>{{ other_user.name }}</h5>
-                <small class="text-muted">{{ other_user.role.replace('_', ' ').title() }}</small>
+                <h5>{{ other_user.name or 'User' }}</h5>
+                <small class="text-muted">{{ (other_user.role or 'user').replace('_', ' ').title() }}</small>
             </div>
         </div>
         <div class="call-buttons ms-auto">
@@ -286,9 +286,7 @@ function sendMessage() {
 
 function addMessageToChat(message, sender, timestamp, isSent) {
     const messagesArea = document.getElementById('messagesArea');
-    const raw = timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T');
-    const utcStr = raw.endsWith('Z') ? raw : raw + 'Z';
-    const d = new Date(utcStr);
+    const d = __parseChatTs(timestamp) || new Date();
     const time = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
     
     const messageHtml = `
@@ -316,12 +314,19 @@ document.getElementById('messageInput').addEventListener('keypress', function(e)
 document.getElementById('messagesArea').scrollTop = document.getElementById('messagesArea').scrollHeight;
 
 // Format existing message timestamps to local time
+function __parseChatTs(raw) {
+    if (!raw) return null;
+    let r = String(raw).trim();
+    if (!r) return null;
+    r = r.includes('T') ? r : r.replace(' ', 'T');
+    if (!/[zZ]$|[+\-]\d{2}:?\d{2}$/.test(r)) r += 'Z';
+    const d = new Date(r);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
 document.querySelectorAll('.message-time[data-time]').forEach(el => {
-    const raw = el.getAttribute('data-time');
-    if (raw) {
-        const ts = raw.includes('T') ? raw : raw.replace(' ', 'T');
-        const utcStr = ts.endsWith('Z') ? ts : ts + 'Z';
-        el.textContent = new Date(utcStr).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
+    const d = __parseChatTs(el.getAttribute('data-time'));
+    if (d) {
+        el.textContent = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
     }
 });
 </script>

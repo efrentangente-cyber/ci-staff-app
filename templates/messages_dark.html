@@ -1032,41 +1032,79 @@ socket.on('new_direct_message', function(data) {
     }
 });
 
+// Simple client-side cache so tab-switches feel instant.
+window.__chatCache = window.__chatCache || {};
+window.__chatLoadToken = window.__chatLoadToken || 0;
+
 function loadChat(userId, userName, userRole) {
     currentChatUserId = userId;
-    
+    userRole = userRole || 'user';
+
+    const loadToken = ++window.__chatLoadToken;
+
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('activeChat').style.display = 'flex';
     document.getElementById('chatUserName').textContent = userName;
-    
-    // Show online status
+
     const isOnline = onlineUsers.has(userId);
-    const statusText = userRole.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const statusText = userRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     const statusElement = document.getElementById('chatUserRole');
     statusElement.textContent = isOnline ? statusText + ' • Online' : statusText;
     statusElement.style.color = isOnline ? '#31a24c' : 'var(--text-secondary)';
-    
-    document.getElementById('chatAvatar').src = `https://ui-avatars.com/api/?name=${userName}&background=random&color=fff`;
-    
-    document.querySelectorAll('.conversation-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    event.currentTarget?.classList.add('active');
-    
-    fetch(`/api/get_messages/${userId}`)
+
+    document.getElementById('chatAvatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random&color=fff`;
+
+    // Activate clicked conversation pill instantly.
+    document.querySelectorAll('.conversation-item').forEach(item => item.classList.remove('active'));
+    try {
+        if (window.event && window.event.currentTarget && window.event.currentTarget.classList) {
+            window.event.currentTarget.classList.add('active');
+        } else {
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                const oc = item.getAttribute('onclick') || '';
+                if (oc.includes(`loadChat(${userId},`)) item.classList.add('active');
+            });
+        }
+    } catch (_) {}
+
+    const container = document.getElementById('messagesContainer');
+
+    // 1) Paint cached messages instantly if we already have them.
+    const cached = window.__chatCache[userId];
+    if (cached && cached.length) {
+        container.innerHTML = '';
+        cached.forEach(msg => {
+            if (!msg.is_deleted) {
+                const isSent = msg.sender_id == {{ current_user.id }};
+                addMessageToChat(msg.message, msg.sender_name, msg.sent_at, isSent, msg.id, msg.is_edited, msg.message_type, msg.file_path);
+            }
+        });
+        container.scrollTop = container.scrollHeight;
+    } else {
+        container.innerHTML = '<div class="text-center text-muted py-4" style="font-size:13px;opacity:0.7;">Loading conversation…</div>';
+    }
+
+    // 2) Fetch fresh data in the background and reconcile.
+    fetch(`/api/get_messages/${userId}`, { credentials: 'same-origin' })
         .then(response => response.json())
         .then(data => {
-            const container = document.getElementById('messagesContainer');
+            if (loadToken !== window.__chatLoadToken) return; // user switched again
+            const msgs = (data && data.messages) || [];
+            window.__chatCache[userId] = msgs;
             container.innerHTML = '';
-            
-            data.messages.forEach(msg => {
+            msgs.forEach(msg => {
                 if (!msg.is_deleted) {
                     const isSent = msg.sender_id == {{ current_user.id }};
                     addMessageToChat(msg.message, msg.sender_name, msg.sent_at, isSent, msg.id, msg.is_edited, msg.message_type, msg.file_path);
                 }
             });
-            
             container.scrollTop = container.scrollHeight;
+        })
+        .catch(() => {
+            if (loadToken !== window.__chatLoadToken) return;
+            if (!(cached && cached.length)) {
+                container.innerHTML = '<div class="text-center text-muted py-4">Could not load messages. Please try again.</div>';
+            }
         });
 }
 
@@ -1084,6 +1122,23 @@ function sendMessage() {
     const now = new Date().toISOString();
     const tempId = 'temp_' + Date.now();
     addMessageToChat(message, '{{ current_user.name }}', now, true, tempId, false);
+    // Keep client cache coherent so tab-switch stays instant.
+    try {
+        window.__chatCache = window.__chatCache || {};
+        const arr = window.__chatCache[currentChatUserId] || [];
+        arr.push({
+            id: tempId,
+            sender_id: {{ current_user.id }},
+            sender_name: '{{ current_user.name }}',
+            message: message,
+            sent_at: now,
+            is_edited: false,
+            is_deleted: false,
+            message_type: 'text',
+            file_path: null
+        });
+        window.__chatCache[currentChatUserId] = arr;
+    } catch (_) {}
 
     // 3. Update conversation list preview instantly
     const list = document.querySelector('.conversations-list');
@@ -1268,18 +1323,41 @@ document.getElementById('searchStaff')?.addEventListener('input', function(e) {
 
 // UTC timestamp → local 12h time string
 function parseTimestampToDate(ts) {
-    if (!ts) return null;
+    if (ts === null || ts === undefined) return null;
+    if (ts instanceof Date) return Number.isNaN(ts.getTime()) ? null : ts;
+
+    // Epoch numbers (seconds or ms).
+    if (typeof ts === 'number' && Number.isFinite(ts)) {
+        const ms = ts > 1e12 ? ts : ts * 1000;
+        const d = new Date(ms);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+
     let raw = String(ts).trim();
     if (!raw) return null;
 
-    raw = raw.includes('T') ? raw : raw.replace(' ', 'T');
-    // Keep timezone if present (+08:00 / -05:00 / Z). If missing, assume UTC.
-    if (!/[zZ]$|[+\-]\d{2}:\d{2}$/.test(raw)) {
-        raw += 'Z';
+    // Numeric string? Treat as epoch.
+    if (/^\d{10,13}$/.test(raw)) {
+        const ms = raw.length === 13 ? parseInt(raw, 10) : parseInt(raw, 10) * 1000;
+        const d = new Date(ms);
+        if (!Number.isNaN(d.getTime())) return d;
     }
 
-    const d = new Date(raw);
-    return Number.isNaN(d.getTime()) ? null : d;
+    // Try native parse first (handles RFC2822 like "Thu, 23 Apr 2026 02:09:48 GMT").
+    let d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d;
+
+    // Normalise "YYYY-MM-DD HH:MM:SS[.ffffff]" to ISO.
+    let iso = raw.replace(' ', 'T');
+    // Trim microseconds to milliseconds if too long.
+    iso = iso.replace(/(\.\d{3})\d+/, '$1');
+    if (!/[zZ]$|[+\-]\d{2}:?\d{2}$/.test(iso)) {
+        iso += 'Z';
+    }
+    d = new Date(iso);
+    if (!Number.isNaN(d.getTime())) return d;
+
+    return null;
 }
 
 function fmtTime(ts) {

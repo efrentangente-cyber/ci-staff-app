@@ -10,7 +10,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from database import get_db, get_database_type  # Use database abstraction layer
+from database import get_db, get_database_type, is_postgresql  # Use database abstraction layer
 import os
 import uuid
 import re
@@ -148,6 +148,14 @@ def _get_cached_count(cache, user_id):
 def _set_cached_count(cache, user_id, value):
     with _count_cache_lock:
         cache[user_id] = {'value': int(value), 'ts': time.time()}
+
+
+def _clear_cached_count(cache, user_id):
+    try:
+        with _count_cache_lock:
+            cache.pop(user_id, None)
+    except Exception:
+        pass
 
 
 def get_unread_message_count(user_id):
@@ -489,6 +497,51 @@ def ensure_direct_message_columns():
         print(f"⚠️  direct_messages migration warning: {e}")
 
 
+def ensure_users_columns():
+    """Backfill optional columns on the users table (e.g. permissions) on both DBs."""
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+
+        if db_type == 'sqlite':
+            rows = conn.execute("PRAGMA table_info(users)").fetchall()
+            existing = set()
+            for row in rows:
+                col_name = row['name'] if hasattr(row, 'keys') else row[1]
+                existing.add(col_name)
+            if 'permissions' not in existing:
+                conn.execute("ALTER TABLE users ADD COLUMN permissions TEXT")
+            if 'backup_email' not in existing:
+                conn.execute("ALTER TABLE users ADD COLUMN backup_email TEXT")
+            if 'profile_photo' not in existing:
+                conn.execute("ALTER TABLE users ADD COLUMN profile_photo TEXT")
+            if 'signature_path' not in existing:
+                conn.execute("ALTER TABLE users ADD COLUMN signature_path TEXT")
+            if 'assigned_route' not in existing:
+                conn.execute("ALTER TABLE users ADD COLUMN assigned_route TEXT")
+            if 'approval_type' not in existing:
+                conn.execute("ALTER TABLE users ADD COLUMN approval_type TEXT")
+            if 'current_workload' not in existing:
+                conn.execute("ALTER TABLE users ADD COLUMN current_workload INTEGER DEFAULT 0")
+        else:
+            for col, ddl in (
+                ('permissions', 'TEXT'),
+                ('backup_email', 'TEXT'),
+                ('profile_photo', 'TEXT'),
+                ('signature_path', 'TEXT'),
+                ('assigned_route', 'TEXT'),
+                ('approval_type', 'TEXT'),
+                ('current_workload', 'INTEGER DEFAULT 0'),
+            ):
+                conn.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {ddl}")
+
+        conn.commit()
+        conn.close()
+        print("✓ users columns ensured")
+    except Exception as e:
+        print(f"⚠️  users columns migration warning: {e}")
+
+
 def ensure_sms_templates_table():
     """Create sms_templates table in a DB-compatible way."""
     try:
@@ -537,6 +590,7 @@ except Exception as e:
 
 ensure_performance_indexes()
 ensure_direct_message_columns()
+ensure_users_columns()
 ensure_sms_templates_table()
 
 # Setup production users (runs on every startup to ensure correct roles)
@@ -1275,13 +1329,26 @@ def submit_application():
     
     if request.method == 'POST':
         try:
-            member_name = request.form['member_name']
-            member_contact = request.form.get('member_contact')
-            member_address = request.form.get('member_address')
-            loan_amount = request.form.get('loan_amount')
-            loan_type = request.form.get('loan_type')
+            member_name = (request.form.get('member_name') or '').strip()
+            member_contact = (request.form.get('member_contact') or '').strip()
+            member_address = (request.form.get('member_address') or '').strip()
+            loan_amount = (request.form.get('loan_amount') or '').strip()
+            # Support both the visible typeahead field and hidden selected value.
+            loan_type = (request.form.get('loan_type_hidden') or request.form.get('loan_type') or '').strip()
             lps_remarks = request.form.get('lps_remarks', '').strip()
             needs_ci_value = request.form.get('needs_ci', '1')
+
+            if not member_name or not loan_amount or not loan_type:
+                flash('Please fill in member name, loan amount, and loan type.', 'danger')
+                return redirect(url_for('submit_application'))
+
+            try:
+                amount_value = float(loan_amount)
+                if amount_value <= 0:
+                    raise ValueError('Loan amount must be greater than zero')
+            except Exception:
+                flash('Loan amount is invalid. Please enter a valid number.', 'danger')
+                return redirect(url_for('submit_application'))
             
             conn = get_db()
             
@@ -1300,10 +1367,17 @@ def submit_application():
             # Check if specific CI staff was selected
             specific_ci_id = None
             if needs_ci_value.startswith('ci_'):
-                specific_ci_id = int(needs_ci_value.replace('ci_', ''))
+                ci_id_raw = needs_ci_value.replace('ci_', '').strip()
+                if not ci_id_raw.isdigit():
+                    raise ValueError('Invalid CI staff selection')
+                specific_ci_id = int(ci_id_raw)
                 needs_ci = 1
             else:
-                needs_ci = int(needs_ci_value)
+                try:
+                    needs_ci = int(needs_ci_value)
+                except Exception:
+                    needs_ci = 1
+                needs_ci = 1 if needs_ci not in (0, 1) else needs_ci
         except Exception as e:
             print(f"ERROR in form processing: {str(e)}")
             import traceback
@@ -1405,7 +1479,14 @@ def submit_application():
                     conn.close()
             else:
                 # Send directly to loan officer
-                loan_officer = conn.execute("SELECT id FROM users WHERE role='loan_officer' LIMIT 1").fetchone()
+                loan_officer = conn.execute('''
+                    SELECT id
+                    FROM users
+                    WHERE is_approved = 1
+                      AND role IN ('loan_officer', 'admin')
+                    ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id ASC
+                    LIMIT 1
+                ''').fetchone()
                 conn.commit()
                 conn.close()
                 if loan_officer:
@@ -1649,30 +1730,104 @@ def view_ci_checklist(id):
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
+
     conn = get_db()
-    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
-    
-    if not app_data:
-        flash('Application not found', 'danger')
-        conn.close()
-        return redirect(url_for('admin_dashboard'))
-    
-    # Parse checklist data
-    checklist_data = {}
-    if app_data['ci_checklist_data']:
-        try:
-            import json
-            parsed = json.loads(app_data['ci_checklist_data'])
-            if isinstance(parsed, dict):
-                checklist_data = parsed
-            else:
+    try:
+        app_row = conn.execute('''
+            SELECT la.*,
+                   COALESCE(ci.name, '') AS ci_staff_name,
+                   COALESCE(ci.signature_path, '') AS ci_signature_path,
+                   COALESCE(lps.name, '') AS loan_staff_name
+            FROM loan_applications la
+            LEFT JOIN users ci ON la.assigned_ci_staff = ci.id
+            LEFT JOIN users lps ON la.submitted_by = lps.id
+            WHERE la.id=?
+        ''', (id,)).fetchone()
+
+        if not app_row:
+            flash('Application not found', 'danger')
+            return redirect(url_for('admin_dashboard'))
+
+        app_data = dict(app_row)
+
+        # Make sure printing the checklist always has a CI signature available.
+        if not app_data.get('ci_signature') and app_data.get('ci_signature_path'):
+            try:
+                sig_file = (app_data['ci_signature_path'] or '').replace('\\', '/').split('/')[-1]
+                if sig_file:
+                    app_data['ci_signature'] = url_for('serve_signature', filename=sig_file)
+            except Exception:
+                pass
+
+        # Ensure completed timestamp is a plain string for the template.
+        if app_data.get('ci_completed_at') and not isinstance(app_data['ci_completed_at'], str):
+            try:
+                app_data['ci_completed_at'] = app_data['ci_completed_at'].strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                app_data['ci_completed_at'] = str(app_data['ci_completed_at'])
+
+        # Parse checklist data (may be empty if CI only uploaded photos).
+        checklist_data = {}
+        raw_checklist = app_data.get('ci_checklist_data')
+        if raw_checklist:
+            try:
+                import json as _json
+                parsed = _json.loads(raw_checklist)
+                if isinstance(parsed, dict):
+                    checklist_data = parsed
+            except Exception:
                 checklist_data = {}
+
+        # Prefill commonly referenced identity fields from the loan application
+        # so the printed page is never empty when CI just uploaded photos.
+        checklist_data.setdefault('applicant_first_name', app_data.get('member_name') or '')
+        checklist_data.setdefault('applicant_last_name', '')
+        checklist_data.setdefault('applicant_contact', app_data.get('phone_number') or '')
+        checklist_data.setdefault('house_no', app_data.get('address') or '')
+        checklist_data.setdefault('prepared_by', app_data.get('ci_staff_name') or '')
+
+        # Gather LPS-submitted reference photos and any CI uploads.
+        docs = conn.execute(
+            'SELECT * FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC',
+            (id,)
+        ).fetchall()
+
+        lps_photos = []
+        ci_photos = []
+        image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')
+        for doc in docs:
+            d = dict(doc)
+            path = (d.get('file_path') or '').replace('\\', '/')
+            filename = path.split('/')[-1] if path else ''
+            is_image = filename.lower().endswith(image_exts)
+            entry = {
+                'file_name': d.get('file_name') or filename,
+                'filename': filename,
+                'is_image': is_image,
+                'uploaded_by': d.get('uploaded_by'),
+                'uploaded_at': d.get('uploaded_at'),
+            }
+            if d.get('uploaded_by') == app_data.get('assigned_ci_staff'):
+                ci_photos.append(entry)
+            else:
+                lps_photos.append(entry)
+
+        return render_template(
+            'view_ci_checklist.html',
+            application=app_data,
+            checklist_data=checklist_data,
+            lps_photos=lps_photos,
+            ci_photos=ci_photos,
+        )
+    except Exception as exc:
+        app.logger.exception("view_ci_checklist failed: %s", exc)
+        flash('Unable to load CI checklist for viewing.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+    finally:
+        try:
+            conn.close()
         except Exception:
-            checklist_data = {}
-    
-    conn.close()
-    return render_template('view_ci_checklist.html', application=app_data, checklist_data=checklist_data)
+            pass
 
 @app.route('/ci/checklist/<int:id>', methods=['POST'])
 @login_required
@@ -2288,7 +2443,14 @@ def messages():
             LIMIT 50
         ''', (current_user.id, current_user.id, current_user.id, current_user.id)).fetchall()
 
-        chat_user_ids = [row['other_id'] for row in latest_rows if row.get('other_id') is not None]
+        chat_user_ids = []
+        for row in latest_rows or []:
+            try:
+                other_id = row['other_id']
+            except (KeyError, IndexError, TypeError):
+                other_id = None
+            if other_id is not None:
+                chat_user_ids.append(other_id)
         if chat_user_ids:
             placeholders = ','.join(['?'] * len(chat_user_ids))
             latest_map = {row['other_id']: row for row in latest_rows}
@@ -2342,50 +2504,155 @@ def messages():
 @login_required
 def chat_with_user(user_id):
     conn = get_db()
-    
-    # Get the other user's info
-    other_user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-    
-    # Get all messages between current user and other user
-    messages = conn.execute('''
-        SELECT dm.*, u.name as sender_name
-        FROM direct_messages dm
-        JOIN users u ON dm.sender_id = u.id
-        WHERE (dm.sender_id = ? AND dm.receiver_id = ?)
-           OR (dm.sender_id = ? AND dm.receiver_id = ?)
-        ORDER BY dm.sent_at ASC
-    ''', (current_user.id, user_id, user_id, current_user.id)).fetchall()
-    
-    # Mark messages as read
-    conn.execute('''
-        UPDATE direct_messages 
-        SET is_read = 1 
-        WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
-    ''', (user_id, current_user.id))
-    conn.commit()
-    conn.close()
-    
-    return render_template('chat.html', other_user=other_user, messages=messages, unread_count=0)
+    try:
+        other_user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        if not other_user:
+            flash('That user is no longer available.', 'warning')
+            return redirect(url_for('messages'))
+
+        # Normalise so templates never blow up on missing / None fields.
+        other_user = dict(other_user)
+        other_user.setdefault('id', user_id)
+        if not other_user.get('name'):
+            other_user['name'] = other_user.get('email') or 'User'
+        if not other_user.get('role'):
+            other_user['role'] = 'user'
+
+        messages = conn.execute('''
+            SELECT dm.*, COALESCE(u.name, '') as sender_name
+            FROM direct_messages dm
+            LEFT JOIN users u ON dm.sender_id = u.id
+            WHERE (dm.sender_id = ? AND dm.receiver_id = ?)
+               OR (dm.sender_id = ? AND dm.receiver_id = ?)
+            ORDER BY dm.sent_at ASC
+        ''', (current_user.id, user_id, user_id, current_user.id)).fetchall()
+
+        safe_messages = []
+        for msg in messages or []:
+            m = dict(msg)
+            sent_at = m.get('sent_at')
+            if isinstance(sent_at, datetime):
+                m['sent_at'] = sent_at.strftime('%Y-%m-%d %H:%M:%S')
+            elif sent_at is None:
+                m['sent_at'] = ''
+            safe_messages.append(m)
+
+        conn.execute('''
+            UPDATE direct_messages
+            SET is_read = 1
+            WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
+        ''', (user_id, current_user.id))
+        conn.commit()
+        return render_template(
+            'chat.html',
+            other_user=other_user,
+            messages=safe_messages,
+            unread_count=0,
+        )
+    except Exception as e:
+        print(f"ERROR loading chat with user {user_id}: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash('Could not load this conversation right now. Please try again.', 'warning')
+        return redirect(url_for('messages'))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 @app.route('/notifications')
 @login_required
 def notifications():
     conn = get_db()
-    
-    # Get regular notifications
-    notifs = conn.execute('''
-        SELECT * FROM notifications 
-        WHERE user_id=? 
-        ORDER BY created_at DESC 
-        LIMIT 50
-    ''', (current_user.id,)).fetchall()
-    
-    # Mark notifications as read
-    conn.execute('UPDATE notifications SET is_read=1 WHERE user_id=?', (current_user.id,))
-    conn.commit()
-    conn.close()
-    
-    return render_template('notifications.html', notifications=notifs, unread_count=0)
+    try:
+        rows = conn.execute('''
+            SELECT * FROM notifications
+            WHERE user_id=?
+            ORDER BY created_at DESC
+            LIMIT 50
+        ''', (current_user.id,)).fetchall()
+
+        notifs = []
+        for r in rows:
+            item = dict(r)
+            link = (item.get('link') or '').strip()
+            # Normalise legacy links so clicking always goes somewhere real.
+            if not link or link in ('#', 'None'):
+                item['link'] = url_for('index')
+            else:
+                item['link'] = link
+            ts = item.get('created_at')
+            if ts and not isinstance(ts, str):
+                try:
+                    item['created_at'] = ts.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    item['created_at'] = str(ts)
+            notifs.append(item)
+
+        conn.execute('UPDATE notifications SET is_read=1 WHERE user_id=? AND is_read=0', (current_user.id,))
+        conn.commit()
+        try:
+            _clear_cached_count(_notification_count_cache, current_user.id)
+        except Exception:
+            pass
+        return render_template('notifications.html', notifications=notifs, unread_count=0)
+    except Exception as exc:
+        app.logger.exception("notifications list failed: %s", exc)
+        flash('Unable to load notifications right now.', 'danger')
+        return redirect(url_for('index'))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route('/api/notifications/mark_all_read', methods=['POST'])
+@login_required
+def api_mark_all_notifications_read():
+    conn = get_db()
+    try:
+        conn.execute('UPDATE notifications SET is_read=1 WHERE user_id=? AND is_read=0', (current_user.id,))
+        conn.commit()
+        try:
+            _clear_cached_count(_notification_count_cache, current_user.id)
+        except Exception:
+            pass
+        return jsonify({'success': True})
+    except Exception as exc:
+        app.logger.exception("mark_all_notifications_read failed: %s", exc)
+        return jsonify({'success': False, 'error': 'server_error'}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route('/api/notifications/<int:notif_id>/read', methods=['POST'])
+@login_required
+def api_mark_notification_read(notif_id):
+    conn = get_db()
+    try:
+        conn.execute('UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?',
+                     (notif_id, current_user.id))
+        conn.commit()
+        try:
+            _clear_cached_count(_notification_count_cache, current_user.id)
+        except Exception:
+            pass
+        return jsonify({'success': True})
+    except Exception as exc:
+        app.logger.exception("mark_notification_read failed: %s", exc)
+        return jsonify({'success': False, 'error': 'server_error'}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 @app.route('/ci-tracking')
 @login_required
@@ -2471,31 +2738,40 @@ def get_online_users():
 @app.route('/api/get_messages/<int:user_id>')
 @login_required
 def get_messages(user_id):
-    conn = get_db()
-    
-    # Get all messages between current user and other user
-    messages = conn.execute('''
-        SELECT dm.*, u.name as sender_name
-        FROM direct_messages dm
-        JOIN users u ON dm.sender_id = u.id
-        WHERE (dm.sender_id = ? AND dm.receiver_id = ?)
-           OR (dm.sender_id = ? AND dm.receiver_id = ?)
-        ORDER BY dm.sent_at ASC
-    ''', (current_user.id, user_id, user_id, current_user.id)).fetchall()
-    
-    # Mark messages as read
-    conn.execute('''
-        UPDATE direct_messages 
-        SET is_read = 1 
-        WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
-    ''', (user_id, current_user.id))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({
-        'success': True,
-        'messages': [dict(msg) for msg in messages]
-    })
+    try:
+        conn = get_db()
+        try:
+            messages = conn.execute('''
+                SELECT dm.*, COALESCE(u.name, '') as sender_name
+                FROM direct_messages dm
+                LEFT JOIN users u ON dm.sender_id = u.id
+                WHERE (dm.sender_id = ? AND dm.receiver_id = ?)
+                   OR (dm.sender_id = ? AND dm.receiver_id = ?)
+                ORDER BY dm.sent_at ASC
+            ''', (current_user.id, user_id, user_id, current_user.id)).fetchall()
+            conn.execute('''
+                UPDATE direct_messages
+                SET is_read = 1
+                WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
+            ''', (user_id, current_user.id))
+            conn.commit()
+        finally:
+            conn.close()
+
+        safe = []
+        for msg in messages or []:
+            m = dict(msg)
+            for field in ('sent_at', 'edited_at'):
+                value = m.get(field)
+                if isinstance(value, datetime):
+                    m[field] = value.strftime('%Y-%m-%d %H:%M:%S')
+                elif value is None:
+                    m[field] = ''
+            safe.append(m)
+        return jsonify({'success': True, 'messages': safe})
+    except Exception as e:
+        print(f"ERROR get_messages: {e}")
+        return jsonify({'success': False, 'error': 'Could not load messages', 'messages': []}), 500
 
 @app.route('/api/mark_messages_read/<int:sender_id>', methods=['POST'])
 @login_required
@@ -2529,155 +2805,260 @@ def unread_messages_count():
     conn.close()
     return jsonify({'count': count})
 
+def _insert_direct_message(conn, sender_id, receiver_id, message, message_type='text', file_path=None, file_name=None):
+    """Insert a direct message in a DB-agnostic way and return the new id."""
+    if is_postgresql():
+        cursor = conn.execute('''
+            INSERT INTO direct_messages (sender_id, receiver_id, message, message_type, file_path, file_name)
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
+        ''', (sender_id, receiver_id, message, message_type, file_path, file_name))
+        row = cursor.fetchone()
+        msg_id = None
+        if row is not None:
+            try:
+                msg_id = row['id']
+            except Exception:
+                try:
+                    msg_id = row[0]
+                except Exception:
+                    msg_id = None
+        return msg_id
+    cursor = conn.execute('''
+        INSERT INTO direct_messages (sender_id, receiver_id, message, message_type, file_path, file_name)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (sender_id, receiver_id, message, message_type, file_path, file_name))
+    return getattr(cursor, 'lastrowid', None)
+
+
 @app.route('/api/send_direct_message', methods=['POST'])
 @login_required
 def send_direct_message():
-    data = request.json
-    receiver_id = data.get('receiver_id')
-    message = data.get('message')
-    
-    if not receiver_id or not message:
-        return jsonify({'success': False, 'error': 'Missing data'})
-    
-    conn = get_db()
-    cursor = conn.execute('''
-        INSERT INTO direct_messages (sender_id, receiver_id, message)
-        VALUES (?, ?, ?)
-    ''', (current_user.id, receiver_id, message))
-    msg_id = cursor.lastrowid
-    conn.commit()
-    
-    # Get receiver info for socket notification
-    receiver = conn.execute('SELECT * FROM users WHERE id=?', (receiver_id,)).fetchone()
-    conn.close()
-    
-    # Emit socket event to both receiver and sender for zero-delay realtime
-    payload = {
-        'message_id': msg_id,
-        'sender_id': current_user.id,
-        'sender_name': current_user.name,
-        'receiver_id': receiver_id,
-        'message': message,
-        'timestamp': now_ph().isoformat()
-    }
-    socketio.emit('new_direct_message', payload, room=str(receiver_id))
-    socketio.emit('new_direct_message', payload, room=str(current_user.id))
-    
-    return jsonify({'success': True, 'message_id': msg_id})
+    data = request.get_json(silent=True) or {}
+    try:
+        receiver_id_raw = data.get('receiver_id')
+        message = (data.get('message') or '').strip()
+        if not receiver_id_raw or not message:
+            return jsonify({'success': False, 'error': 'Missing data'}), 400
+        try:
+            receiver_id = int(receiver_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid receiver'}), 400
+        if receiver_id == current_user.id:
+            return jsonify({'success': False, 'error': 'Cannot message yourself'}), 400
+
+        conn = get_db()
+        try:
+            receiver = conn.execute('SELECT id FROM users WHERE id=?', (receiver_id,)).fetchone()
+            if not receiver:
+                return jsonify({'success': False, 'error': 'Receiver not found'}), 404
+
+            msg_id = _insert_direct_message(conn, current_user.id, receiver_id, message)
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = {
+            'message_id': msg_id,
+            'sender_id': current_user.id,
+            'sender_name': current_user.name,
+            'receiver_id': receiver_id,
+            'message': message,
+            'timestamp': now_ph().isoformat(),
+        }
+        try:
+            socketio.emit('new_direct_message', payload, room=str(receiver_id))
+            socketio.emit('new_direct_message', payload, room=str(current_user.id))
+        except Exception as emit_err:
+            print(f"WARN socket emit failed in send_direct_message: {emit_err}")
+
+        return jsonify({'success': True, 'message_id': msg_id})
+    except Exception as e:
+        print(f"ERROR send_direct_message: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not send message'}), 500
 
 @app.route('/api/send_image_message', methods=['POST'])
 @login_required
 def send_image_message():
-    receiver_id = request.form.get('receiver_id')
-    
-    if not receiver_id or 'image' not in request.files:
-        return jsonify({'success': False, 'error': 'Missing data'})
-    
-    file = request.files['image']
-    if not file or not file.filename:
-        return jsonify({'success': False, 'error': 'No file'})
-    
-    # Save image
-    filename = secure_filename(file.filename)
-    unique_filename = f"dm_img_{current_user.id}_{uuid.uuid4().hex[:8]}_{filename}"
-    filepath = os.path.join('message_attachments', unique_filename)
-    
-    # Create folder if not exists
-    os.makedirs('message_attachments', exist_ok=True)
-    file.save(filepath)
-    
-    # Save to database
-    conn = get_db()
-    cursor = conn.execute('''
-        INSERT INTO direct_messages (sender_id, receiver_id, message, message_type, file_path, file_name)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (current_user.id, receiver_id, '[Image]', 'image', filepath, filename))
-    msg_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True, 'message_id': msg_id})
+    try:
+        receiver_id_raw = request.form.get('receiver_id')
+        if not receiver_id_raw or 'image' not in request.files:
+            return jsonify({'success': False, 'error': 'Missing data'}), 400
+        try:
+            receiver_id = int(receiver_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid receiver'}), 400
+
+        file = request.files['image']
+        if not file or not file.filename:
+            return jsonify({'success': False, 'error': 'No file'}), 400
+
+        filename = secure_filename(file.filename) or 'image.bin'
+        unique_filename = f"dm_img_{current_user.id}_{uuid.uuid4().hex[:8]}_{filename}"
+        os.makedirs('message_attachments', exist_ok=True)
+        filepath = os.path.join('message_attachments', unique_filename)
+        file.save(filepath)
+
+        conn = get_db()
+        try:
+            msg_id = _insert_direct_message(
+                conn, current_user.id, receiver_id, '[Image]',
+                message_type='image', file_path=filepath, file_name=filename,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = {
+            'message_id': msg_id,
+            'sender_id': current_user.id,
+            'sender_name': current_user.name,
+            'receiver_id': receiver_id,
+            'message': '[Image]',
+            'message_type': 'image',
+            'file_name': filename,
+            'timestamp': now_ph().isoformat(),
+        }
+        try:
+            socketio.emit('new_direct_message', payload, room=str(receiver_id))
+            socketio.emit('new_direct_message', payload, room=str(current_user.id))
+        except Exception:
+            pass
+
+        return jsonify({'success': True, 'message_id': msg_id})
+    except Exception as e:
+        print(f"ERROR send_image_message: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not send image'}), 500
 
 @app.route('/api/send_voice_message', methods=['POST'])
 @login_required
 def send_voice_message():
-    receiver_id = request.form.get('receiver_id')
-    
-    if not receiver_id or 'voice' not in request.files:
-        return jsonify({'success': False, 'error': 'Missing data'})
-    
-    file = request.files['voice']
-    if not file:
-        return jsonify({'success': False, 'error': 'No file'})
-    
-    # Save voice message
-    unique_filename = f"voice_dm_{current_user.id}_{uuid.uuid4().hex[:8]}.webm"
-    filepath = os.path.join('voice_messages', unique_filename)
-    
-    # Create folder if not exists
-    os.makedirs('voice_messages', exist_ok=True)
-    file.save(filepath)
-    
-    # Save to database
-    conn = get_db()
-    cursor = conn.execute('''
-        INSERT INTO direct_messages (sender_id, receiver_id, message, message_type, file_path)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (current_user.id, receiver_id, '[Voice Message]', 'voice', filepath))
-    msg_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True, 'message_id': msg_id})
+    try:
+        receiver_id_raw = request.form.get('receiver_id')
+        if not receiver_id_raw or 'voice' not in request.files:
+            return jsonify({'success': False, 'error': 'Missing data'}), 400
+        try:
+            receiver_id = int(receiver_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid receiver'}), 400
+
+        file = request.files['voice']
+        if not file:
+            return jsonify({'success': False, 'error': 'No file'}), 400
+
+        unique_filename = f"voice_dm_{current_user.id}_{uuid.uuid4().hex[:8]}.webm"
+        os.makedirs('voice_messages', exist_ok=True)
+        filepath = os.path.join('voice_messages', unique_filename)
+        file.save(filepath)
+
+        conn = get_db()
+        try:
+            msg_id = _insert_direct_message(
+                conn, current_user.id, receiver_id, '[Voice Message]',
+                message_type='voice', file_path=filepath,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = {
+            'message_id': msg_id,
+            'sender_id': current_user.id,
+            'sender_name': current_user.name,
+            'receiver_id': receiver_id,
+            'message': '[Voice Message]',
+            'message_type': 'voice',
+            'timestamp': now_ph().isoformat(),
+        }
+        try:
+            socketio.emit('new_direct_message', payload, room=str(receiver_id))
+            socketio.emit('new_direct_message', payload, room=str(current_user.id))
+        except Exception:
+            pass
+
+        return jsonify({'success': True, 'message_id': msg_id})
+    except Exception as e:
+        print(f"ERROR send_voice_message: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not send voice message'}), 500
 
 @app.route('/api/edit_direct_message', methods=['POST'])
 @login_required
 def edit_direct_message():
-    data = request.json
-    message_id = data.get('message_id')
-    new_text = data.get('new_text')
-    
-    conn = get_db()
-    msg = conn.execute('SELECT sender_id, receiver_id FROM direct_messages WHERE id=?', (message_id,)).fetchone()
-    
-    if msg and msg['sender_id'] == current_user.id:
-        conn.execute('''
-            UPDATE direct_messages 
-            SET message=?, is_edited=1, edited_at=? 
-            WHERE id=?
-        ''', (new_text, now_ph().isoformat(), message_id))
-        conn.commit()
-        conn.close()
-        # Emit realtime edit to both users
+    try:
+        data = request.get_json(silent=True) or {}
+        message_id = data.get('message_id')
+        new_text = (data.get('new_text') or '').strip()
+        if not message_id or not new_text:
+            return jsonify({'success': False, 'error': 'Missing data'}), 400
+
+        conn = get_db()
+        try:
+            msg = conn.execute(
+                'SELECT sender_id, receiver_id FROM direct_messages WHERE id=?',
+                (message_id,)
+            ).fetchone()
+            if not msg or msg['sender_id'] != current_user.id:
+                return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+            conn.execute('''
+                UPDATE direct_messages
+                SET message=?, is_edited=1, edited_at=?
+                WHERE id=?
+            ''', (new_text, now_ph().isoformat(), message_id))
+            conn.commit()
+            receiver_id = msg['receiver_id']
+        finally:
+            conn.close()
+
         payload = {'message_id': message_id, 'new_text': new_text}
-        socketio.emit('message_edited', payload, room=str(current_user.id))
-        socketio.emit('message_edited', payload, room=str(msg['receiver_id']))
+        try:
+            socketio.emit('message_edited', payload, room=str(current_user.id))
+            socketio.emit('message_edited', payload, room=str(receiver_id))
+        except Exception:
+            pass
         return jsonify({'success': True})
-    
-    conn.close()
-    return jsonify({'success': False, 'error': 'Unauthorized'})
+    except Exception as e:
+        print(f"ERROR edit_direct_message: {e}")
+        return jsonify({'success': False, 'error': 'Could not edit message'}), 500
 
 @app.route('/api/delete_direct_message', methods=['POST'])
 @login_required
 def delete_direct_message():
-    data = request.json
-    message_id = data.get('message_id')
-    
-    conn = get_db()
-    msg = conn.execute('SELECT sender_id, receiver_id FROM direct_messages WHERE id=?', (message_id,)).fetchone()
-    
-    if msg and msg['sender_id'] == current_user.id:
-        conn.execute('UPDATE direct_messages SET is_deleted=1 WHERE id=?', (message_id,))
-        conn.commit()
-        conn.close()
-        # Emit realtime delete to both users
+    try:
+        data = request.get_json(silent=True) or {}
+        message_id = data.get('message_id')
+        if not message_id:
+            return jsonify({'success': False, 'error': 'Missing message id'}), 400
+
+        conn = get_db()
+        try:
+            msg = conn.execute(
+                'SELECT sender_id, receiver_id FROM direct_messages WHERE id=?',
+                (message_id,)
+            ).fetchone()
+            if not msg or msg['sender_id'] != current_user.id:
+                return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+            conn.execute('UPDATE direct_messages SET is_deleted=1 WHERE id=?', (message_id,))
+            conn.commit()
+            receiver_id = msg['receiver_id']
+        finally:
+            conn.close()
+
         payload = {'message_id': message_id}
-        socketio.emit('message_deleted', payload, room=str(current_user.id))
-        socketio.emit('message_deleted', payload, room=str(msg['receiver_id']))
+        try:
+            socketio.emit('message_deleted', payload, room=str(current_user.id))
+            socketio.emit('message_deleted', payload, room=str(receiver_id))
+        except Exception:
+            pass
         return jsonify({'success': True})
-    
-    conn.close()
-    return jsonify({'success': False, 'error': 'Unauthorized'})
+    except Exception as e:
+        print(f"ERROR delete_direct_message: {e}")
+        return jsonify({'success': False, 'error': 'Could not delete message'}), 500
 
 @app.route('/download/<int:doc_id>')
 @login_required
@@ -2754,102 +3135,141 @@ def serve_message_file(filename):
 @app.route('/api/send_message', methods=['POST'])
 @login_required
 def send_message():
-    data = request.json
-    app_id = data.get('application_id')
-    message = data.get('message')
-    
-    if not app_id or not message:
-        return jsonify({'error': 'Missing data'}), 400
-    
-    conn = get_db()
-    conn.execute('INSERT INTO messages (loan_application_id, sender_id, message) VALUES (?, ?, ?)',
-                (app_id, current_user.id, message))
-    conn.commit()
-    
-    # Get all users involved in this application
-    app_data = conn.execute('SELECT submitted_by, assigned_ci_staff FROM loan_applications WHERE id=?', 
-                           (app_id,)).fetchone()
-    conn.close()
-    
-    # Notify other users
-    users_to_notify = []
-    if app_data['submitted_by'] and app_data['submitted_by'] != current_user.id:
-        users_to_notify.append(app_data['submitted_by'])
-    if app_data['assigned_ci_staff'] and app_data['assigned_ci_staff'] != current_user.id:
-        users_to_notify.append(app_data['assigned_ci_staff'])
-    
-    for user_id in users_to_notify:
-        enqueue_notification(user_id, f'New message from {current_user.name}', f'/application/{app_id}')
-    
-    socketio.emit('new_message', {
-        'application_id': app_id,
-        'sender': current_user.name,
-        'message': message,
-        'timestamp': now_ph().isoformat()
-    }, room=f'app_{app_id}')
-    
-    return jsonify({'success': True})
+    try:
+        data = request.get_json(silent=True) or {}
+        app_id = data.get('application_id')
+        message = (data.get('message') or '').strip()
+        if not app_id or not message:
+            return jsonify({'error': 'Missing data'}), 400
+        try:
+            app_id = int(app_id)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid application id'}), 400
+
+        conn = get_db()
+        try:
+            conn.execute(
+                'INSERT INTO messages (loan_application_id, sender_id, message) VALUES (?, ?, ?)',
+                (app_id, current_user.id, message)
+            )
+            app_data = conn.execute(
+                'SELECT submitted_by, assigned_ci_staff FROM loan_applications WHERE id=?',
+                (app_id,)
+            ).fetchone()
+            conn.commit()
+        finally:
+            conn.close()
+
+        if app_data:
+            users_to_notify = []
+            submitted_by = app_data['submitted_by'] if app_data else None
+            assigned_ci = app_data['assigned_ci_staff'] if app_data else None
+            if submitted_by and submitted_by != current_user.id:
+                users_to_notify.append(submitted_by)
+            if assigned_ci and assigned_ci != current_user.id:
+                users_to_notify.append(assigned_ci)
+            for user_id in users_to_notify:
+                enqueue_notification(
+                    user_id,
+                    f'New message from {current_user.name}',
+                    f'/application/{app_id}'
+                )
+
+        try:
+            socketio.emit('new_message', {
+                'application_id': app_id,
+                'sender': current_user.name,
+                'message': message,
+                'timestamp': now_ph().isoformat(),
+            }, room=f'app_{app_id}')
+        except Exception:
+            pass
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"ERROR send_message: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Could not send message'}), 500
 
 # Modern Messenger Routes
 @app.route('/api/send_message_with_attachment', methods=['POST'])
 @login_required
 def send_message_with_attachment():
-    app_id = request.form.get('application_id')
-    message = request.form.get('message', '')
-    message_type = request.form.get('message_type', 'text')
-    
-    file_path = None
-    file_name = None
-    
-    if 'attachment' in request.files:
-        file = request.files['attachment']
-        if file and file.filename:
-            filename = secure_filename(file.filename)
-            
-            if message_type == 'voice':
-                folder = 'voice_messages'
-                unique_filename = f"voice_{app_id}_{uuid.uuid4().hex[:8]}.webm"
-            elif message_type == 'image':
-                folder = 'message_attachments'
-                unique_filename = f"img_{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
-            else:
-                folder = 'message_attachments'
-                unique_filename = f"file_{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
-            
-            file_path = os.path.join(folder, unique_filename)
-            file.save(file_path)
-            file_name = filename
-    
-    conn = get_db()
-    conn.execute('''
-        INSERT INTO messages (loan_application_id, sender_id, message, message_type, file_path, file_name)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (app_id, current_user.id, message, message_type, file_path, file_name))
-    conn.commit()
-    
-    # Get all users involved
-    app_data = conn.execute('SELECT submitted_by, assigned_ci_staff FROM loan_applications WHERE id=?', 
-                           (app_id,)).fetchone()
-    conn.close()
-    
-    # Notify other users
-    users_to_notify = []
-    if app_data['submitted_by'] and app_data['submitted_by'] != current_user.id:
-        users_to_notify.append(app_data['submitted_by'])
-    if app_data['assigned_ci_staff'] and app_data['assigned_ci_staff'] != current_user.id:
-        users_to_notify.append(app_data['assigned_ci_staff'])
-    
-    for user_id in users_to_notify:
-        enqueue_notification(user_id, f'New message from {current_user.name}', f'/application/{app_id}')
-    
-    socketio.emit('new_message', {
-        'application_id': int(app_id),
-        'sender': current_user.name,
-        'message': message,
-        'timestamp': now_ph().isoformat()
-    }, room=f'app_{app_id}')
-    
-    return jsonify({'success': True})
+    try:
+        app_id_raw = request.form.get('application_id')
+        message = (request.form.get('message') or '').strip()
+        message_type = request.form.get('message_type', 'text')
+        if not app_id_raw:
+            return jsonify({'success': False, 'error': 'Missing application id'}), 400
+        try:
+            app_id = int(app_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid application id'}), 400
+
+        file_path = None
+        file_name = None
+        if 'attachment' in request.files:
+            file = request.files['attachment']
+            if file and file.filename:
+                filename = secure_filename(file.filename) or 'attachment.bin'
+                if message_type == 'voice':
+                    folder = 'voice_messages'
+                    unique_filename = f"voice_{app_id}_{uuid.uuid4().hex[:8]}.webm"
+                elif message_type == 'image':
+                    folder = 'message_attachments'
+                    unique_filename = f"img_{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
+                else:
+                    folder = 'message_attachments'
+                    unique_filename = f"file_{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
+                os.makedirs(folder, exist_ok=True)
+                file_path = os.path.join(folder, unique_filename)
+                file.save(file_path)
+                file_name = filename
+
+        conn = get_db()
+        try:
+            conn.execute('''
+                INSERT INTO messages (loan_application_id, sender_id, message, message_type, file_path, file_name)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (app_id, current_user.id, message, message_type, file_path, file_name))
+            app_data = conn.execute(
+                'SELECT submitted_by, assigned_ci_staff FROM loan_applications WHERE id=?',
+                (app_id,)
+            ).fetchone()
+            conn.commit()
+        finally:
+            conn.close()
+
+        if app_data:
+            users_to_notify = []
+            submitted_by = app_data['submitted_by']
+            assigned_ci = app_data['assigned_ci_staff']
+            if submitted_by and submitted_by != current_user.id:
+                users_to_notify.append(submitted_by)
+            if assigned_ci and assigned_ci != current_user.id:
+                users_to_notify.append(assigned_ci)
+            for user_id in users_to_notify:
+                enqueue_notification(
+                    user_id,
+                    f'New message from {current_user.name}',
+                    f'/application/{app_id}'
+                )
+
+        try:
+            socketio.emit('new_message', {
+                'application_id': app_id,
+                'sender': current_user.name,
+                'message': message,
+                'timestamp': now_ph().isoformat(),
+            }, room=f'app_{app_id}')
+        except Exception:
+            pass
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"ERROR send_message_with_attachment: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Could not send message'}), 500
 
 @app.route('/api/edit_message', methods=['POST'])
 @login_required
@@ -3268,40 +3688,66 @@ def approve_user(user_id):
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
+
     conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-    
-    if not user:
-        flash('User not found', 'danger')
-        conn.close()
+    try:
+        user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        if not user:
+            flash('User not found', 'danger')
+            return redirect(url_for('manage_users'))
+        if not user['role']:
+            flash(f'Cannot approve {user["name"]} - Please assign a role first!', 'warning')
+            return redirect(url_for('manage_users'))
+        if user['role'] == 'ci_staff' and not user['assigned_route']:
+            flash(f'Cannot approve {user["name"]} - CI staff must have a route assigned!', 'warning')
+            return redirect(url_for('manage_users'))
+
+        conn.execute('UPDATE users SET is_approved = 1 WHERE id=?', (user_id,))
+        conn.commit()
+        display_name = user['name'] or user['email'] or f'User #{user_id}'
+    except Exception as e:
+        print(f"ERROR approve_user: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash(f'Could not approve user: {e}', 'danger')
         return redirect(url_for('manage_users'))
-    
-    # Check if role is assigned
-    if not user['role']:
-        flash(f'Cannot approve {user["name"]} - Please assign a role first!', 'warning')
-        conn.close()
-        return redirect(url_for('manage_users'))
-    
-    # Check if CI staff has route assigned
-    if user['role'] == 'ci_staff' and not user['assigned_route']:
-        flash(f'Cannot approve {user["name"]} - CI staff must have a route assigned!', 'warning')
-        conn.close()
-        return redirect(url_for('manage_users'))
-    
-    conn.execute('UPDATE users SET is_approved = 1 WHERE id=?', (user_id,))
-    conn.commit()
-    conn.close()
-    
-    # Notify the user
-    enqueue_notification(
-        user_id,
-        'Your account has been approved! You can now login.',
-        '/login'
-    )
-    
-    flash(f'User {user["name"]} approved successfully!', 'success')
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    try:
+        enqueue_notification(
+            user_id,
+            'Your account has been approved! You can now login.',
+            '/login',
+        )
+    except Exception:
+        pass
+    flash(f'User {display_name} approved successfully!', 'success')
     return redirect(url_for('manage_users'))
+
+
+def _purge_user_dependencies(conn, user_id):
+    """Remove dependent rows so we can cleanly delete/disapprove a user on PostgreSQL."""
+    cleanup_statements = [
+        ("DELETE FROM direct_messages WHERE sender_id=? OR receiver_id=?", (user_id, user_id)),
+        ("DELETE FROM messages WHERE sender_id=?", (user_id,)),
+        ("DELETE FROM notifications WHERE user_id=?", (user_id,)),
+        ("DELETE FROM location_tracking WHERE user_id=?", (user_id,)),
+        ("DELETE FROM documents WHERE uploaded_by=?", (user_id,)),
+        ("UPDATE loan_applications SET submitted_by=NULL WHERE submitted_by=?", (user_id,)),
+        ("UPDATE loan_applications SET assigned_ci_staff=NULL WHERE assigned_ci_staff=?", (user_id,)),
+    ]
+    for sql, params in cleanup_statements:
+        try:
+            conn.execute(sql, params)
+        except Exception as sub_err:
+            print(f"  cleanup skipped ({sql.split()[0:2]}): {sub_err}")
+
 
 @app.route('/disapprove_user/<int:user_id>', methods=['POST'])
 @login_required
@@ -3309,21 +3755,54 @@ def disapprove_user(user_id):
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
+
     conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-    
-    if not user:
-        flash('User not found', 'danger')
-        conn.close()
-        return redirect(url_for('manage_users'))
-    
-    # Delete the user
-    conn.execute('DELETE FROM users WHERE id=?', (user_id,))
-    conn.commit()
-    conn.close()
-    
-    flash(f'User {user["name"]} disapproved and removed.', 'info')
+    try:
+        user = conn.execute('SELECT id, name, email, role FROM users WHERE id=?', (user_id,)).fetchone()
+        if not user:
+            flash('User not found', 'danger')
+            return redirect(url_for('manage_users'))
+
+        display_name = user['name'] or user['email'] or f'User #{user_id}'
+        protected_emails = {
+            'superadmin@dccco.test',
+            'admin@dccco.test',
+            'loan@dccco.test',
+            'ci@dccco.test',
+        }
+        if (user['email'] or '').lower() in protected_emails:
+            flash(f'Cannot remove the protected default account {display_name}.', 'danger')
+            return redirect(url_for('manage_users'))
+
+        _purge_user_dependencies(conn, user_id)
+
+        try:
+            conn.execute('DELETE FROM users WHERE id=?', (user_id,))
+            conn.commit()
+            flash(f'User {display_name} disapproved and removed.', 'info')
+        except Exception as delete_err:
+            print(f"WARN hard delete failed, falling back to soft disapprove: {delete_err}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            conn.execute('UPDATE users SET is_approved = 0 WHERE id=?', (user_id,))
+            conn.commit()
+            flash(f'User {display_name} disapproved (kept for history).', 'warning')
+    except Exception as e:
+        print(f"ERROR disapprove_user: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash(f'Could not disapprove user: {e}', 'danger')
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
     return redirect(url_for('manage_users'))
 
 @app.route('/assign_role/<int:user_id>', methods=['POST'])
@@ -3331,31 +3810,35 @@ def disapprove_user(user_id):
 def assign_role(user_id):
     if current_user.role not in ['admin', 'loan_officer']:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    
-    data = request.get_json()
+
+    data = request.get_json(silent=True) or {}
     role = data.get('role')
-    
     if not role or role not in ['admin', 'loan_officer', 'loan_staff', 'ci_staff']:
         return jsonify({'success': False, 'error': 'Invalid role'}), 400
-    
+
     conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-    
-    if not user:
-        conn.close()
-        return jsonify({'success': False, 'error': 'User not found'}), 404
-    
-    # Update role
-    conn.execute('UPDATE users SET role=? WHERE id=?', (role, user_id))
-    
-    # If changing from ci_staff to another role, clear assigned_route
-    if user['role'] == 'ci_staff' and role != 'ci_staff':
-        conn.execute('UPDATE users SET assigned_route=NULL WHERE id=?', (user_id,))
-    
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True, 'message': 'Role assigned successfully'})
+    try:
+        user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+        conn.execute('UPDATE users SET role=? WHERE id=?', (role, user_id))
+        if user['role'] == 'ci_staff' and role != 'ci_staff':
+            conn.execute('UPDATE users SET assigned_route=NULL WHERE id=?', (user_id,))
+        conn.commit()
+        return jsonify({'success': True, 'message': 'Role assigned successfully'})
+    except Exception as e:
+        print(f"ERROR assign_role: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': 'Could not assign role'}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 
 @app.route('/deactivate_user/<int:user_id>', methods=['POST'])
 @login_required
@@ -3363,25 +3846,34 @@ def deactivate_user(user_id):
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
+
     conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-    
-    if not user:
-        flash('User not found', 'danger')
-        conn.close()
-        return redirect(url_for('manage_users'))
-    
-    if user['role'] == 'admin':
-        flash('Cannot deactivate admin users', 'danger')
-        conn.close()
-        return redirect(url_for('manage_users'))
-    
-    conn.execute('UPDATE users SET is_approved = 0 WHERE id=?', (user_id,))
-    conn.commit()
-    conn.close()
-    
-    flash(f'User {user["name"]} deactivated.', 'warning')
+    try:
+        user = conn.execute(
+            'SELECT id, name, email, role FROM users WHERE id=?', (user_id,)
+        ).fetchone()
+        if not user:
+            flash('User not found', 'danger')
+            return redirect(url_for('manage_users'))
+        if user['role'] == 'admin':
+            flash('Cannot deactivate admin users', 'danger')
+            return redirect(url_for('manage_users'))
+        conn.execute('UPDATE users SET is_approved = 0 WHERE id=?', (user_id,))
+        conn.commit()
+        display_name = user['name'] or user['email'] or f'User #{user_id}'
+        flash(f'User {display_name} deactivated.', 'warning')
+    except Exception as e:
+        print(f"ERROR deactivate_user: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash(f'Could not deactivate user: {e}', 'danger')
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
     return redirect(url_for('manage_users'))
 
 @app.route('/update_ci_route', methods=['POST'])
@@ -3535,46 +4027,43 @@ def manage_permissions():
     if current_user.role != 'admin':
         flash('Unauthorized - Super Admin access required', 'danger')
         return redirect(url_for('index'))
-    
+
     conn = get_db()
-    
     try:
-        # Check if permissions column exists, if not add it
-        columns = conn.execute('PRAGMA table_info(users)').fetchall()
-        column_names = [col[1] for col in columns]
-        
-        if 'permissions' not in column_names:
-            # Add permissions column
-            conn.execute('ALTER TABLE users ADD COLUMN permissions TEXT')
-            conn.commit()
-            flash('Permissions system initialized successfully!', 'success')
-        
-        # Get all loan officers
         loan_officers = conn.execute('''
             SELECT id, name, email, permissions
             FROM users
             WHERE role = 'loan_officer' AND is_approved = 1
             ORDER BY name ASC
         ''').fetchall()
-        
-        # Get unread notification count
+
         row = conn.execute('''
-            SELECT COUNT(*) as count 
-            FROM notifications 
+            SELECT COUNT(*) as count
+            FROM notifications
             WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'
         ''', (current_user.id,)).fetchone()
         unread_count = row['count'] if row else 0
-        
-        conn.close()
-        
-        return render_template('manage_permissions.html', 
-                             loan_officers=loan_officers,
-                             unread_count=unread_count)
-    
+
+        return render_template(
+            'manage_permissions.html',
+            loan_officers=loan_officers,
+            unread_count=unread_count,
+        )
     except Exception as e:
-        conn.close()
-        flash(f'Error loading permissions page: {str(e)}', 'danger')
+        print(f"ERROR manage_permissions: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash('Could not load permissions right now. Please try again.', 'warning')
         return redirect(url_for('admin_dashboard'))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 @app.route('/update_permissions/<int:user_id>', methods=['POST'])
 @login_required
@@ -3675,6 +4164,38 @@ def update_permissions_inline(user_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _report_date(value):
+    """Format DB date values (datetime or string or None) as YYYY-MM-DD for reports."""
+    if value is None or value == '':
+        return 'N/A'
+    if isinstance(value, datetime):
+        return value.strftime('%Y-%m-%d')
+    try:
+        return str(value)[:10]
+    except Exception:
+        return 'N/A'
+
+
+def _report_text(value, max_len=None, fallback='N/A'):
+    """Safely format any DB value as a short report string."""
+    if value is None:
+        return fallback
+    try:
+        text = str(value)
+    except Exception:
+        return fallback
+    if max_len and len(text) > max_len:
+        text = text[:max_len]
+    return text or fallback
+
+
+def _report_money(value):
+    try:
+        return f"₱{float(value):,.2f}"
+    except Exception:
+        return '₱0.00'
+
+
 @app.route('/generate_report/<report_type>', methods=['POST'])
 @login_required
 def generate_report(report_type):
@@ -3682,20 +4203,29 @@ def generate_report(report_type):
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
-    from reportlab.lib.pagesizes import letter, A4
-    from reportlab.lib import colors
-    from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-    from io import BytesIO
-    
-    # Get date range from form
-    from_date = request.form.get('from_date')
-    to_date = request.form.get('to_date')
-    
-    # Create PDF buffer
+
+    try:
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        from io import BytesIO
+    except Exception as import_err:
+        print(f"ERROR loading reportlab: {import_err}")
+        flash('PDF engine is not available on this server.', 'danger')
+        return redirect(url_for('reports'))
+
+    from_date = (request.form.get('from_date') or '').strip()
+    to_date = (request.form.get('to_date') or '').strip()
+
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    if not from_date:
+        from_date = '2000-01-01'
+    if not to_date:
+        to_date = today_str
+
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
     elements = []
@@ -3721,20 +4251,18 @@ def generate_report(report_type):
     )
     
     conn = get_db()
-    
+
     if report_type == 'applications':
         # Application List Report
         status_filter = request.form.get('status_filter', 'all')
-        
-        # Title
+
         elements.append(Paragraph('DCCCO - Loan Application Report', title_style))
         elements.append(Paragraph(f'Period: {from_date} to {to_date}', subtitle_style))
         elements.append(Spacer(1, 0.2*inch))
-        
-        # Query data
+
         if status_filter == 'all':
             apps = conn.execute('''
-                SELECT la.id, la.member_name, la.loan_amount, la.loan_type, la.status, 
+                SELECT la.id, la.member_name, la.loan_amount, la.loan_type, la.status,
                        la.submitted_at, u.name as submitted_by_name
                 FROM loan_applications la
                 LEFT JOIN users u ON la.submitted_by = u.id
@@ -3743,25 +4271,24 @@ def generate_report(report_type):
             ''', (from_date, to_date)).fetchall()
         else:
             apps = conn.execute('''
-                SELECT la.id, la.member_name, la.loan_amount, la.loan_type, la.status, 
+                SELECT la.id, la.member_name, la.loan_amount, la.loan_type, la.status,
                        la.submitted_at, u.name as submitted_by_name
                 FROM loan_applications la
                 LEFT JOIN users u ON la.submitted_by = u.id
                 WHERE DATE(la.submitted_at) BETWEEN ? AND ? AND la.status = ?
                 ORDER BY la.submitted_at DESC
             ''', (from_date, to_date, status_filter)).fetchall()
-        
-        # Create table
+
         data = [['ID', 'Member Name', 'Amount', 'Type', 'Status', 'Submitted By', 'Date']]
-        for app in apps:
+        for app_row in apps:
             data.append([
-                str(app['id']),
-                app['member_name'][:20],
-                f"₱{app['loan_amount']:,.0f}",
-                (app['loan_type'] or 'N/A')[:15],
-                app['status'],
-                (app['submitted_by_name'] or 'N/A')[:15],
-                app['submitted_at'][:10] if app['submitted_at'] else 'N/A'
+                _report_text(app_row['id']),
+                _report_text(app_row['member_name'], 20),
+                _report_money(app_row['loan_amount']),
+                _report_text(app_row['loan_type'], 15),
+                _report_text(app_row['status'], 20),
+                _report_text(app_row['submitted_by_name'], 15),
+                _report_date(app_row['submitted_at']),
             ])
         
         table = Table(data, colWidths=[0.5*inch, 1.5*inch, 1*inch, 1.2*inch, 1*inch, 1.2*inch, 1*inch])
@@ -3813,16 +4340,21 @@ def generate_report(report_type):
         data = [['ID', 'Member Name', 'Amount', 'CI Staff', 'Completed Date', 'Location']]
         for ci in cis:
             location = 'N/A'
-            if ci['ci_latitude'] and ci['ci_longitude']:
-                location = f"{ci['ci_latitude'][:8]}, {ci['ci_longitude'][:8]}"
-            
+            lat = ci['ci_latitude']
+            lon = ci['ci_longitude']
+            if lat and lon:
+                try:
+                    location = f"{str(lat)[:8]}, {str(lon)[:8]}"
+                except Exception:
+                    location = 'N/A'
+
             data.append([
-                str(ci['id']),
-                ci['member_name'][:25],
-                f"₱{ci['loan_amount']:,.0f}",
-                (ci['ci_staff_name'] or 'N/A')[:20],
-                ci['ci_completed_at'][:10] if ci['ci_completed_at'] else 'N/A',
-                location
+                _report_text(ci['id']),
+                _report_text(ci['member_name'], 25),
+                _report_money(ci['loan_amount']),
+                _report_text(ci['ci_staff_name'], 20),
+                _report_date(ci['ci_completed_at']),
+                location,
             ])
         
         table = Table(data, colWidths=[0.5*inch, 1.8*inch, 1*inch, 1.5*inch, 1.2*inch, 1.5*inch])
@@ -3877,12 +4409,12 @@ def generate_report(report_type):
         data = [['ID', 'Name', 'Email', 'Role', 'Applications', 'Joined']]
         for user in users:
             data.append([
-                str(user['id']),
-                user['name'][:20],
-                user['email'][:25],
-                user['role'],
-                str(user['app_count']),
-                user['created_at'][:10] if user['created_at'] else 'N/A'
+                _report_text(user['id']),
+                _report_text(user['name'], 20),
+                _report_text(user['email'], 25),
+                _report_text(user['role'], 20),
+                _report_text(user['app_count']),
+                _report_date(user['created_at']),
             ])
         
         table = Table(data, colWidths=[0.5*inch, 1.5*inch, 2*inch, 1*inch, 1*inch, 1*inch])
@@ -3921,11 +4453,11 @@ def generate_report(report_type):
             data = [['Status', 'Count', 'Total Amount']]
             for row in summary:
                 data.append([
-                    row['status'],
-                    str(row['count']),
-                    f"₱{row['total_amount']:,.2f}" if row['total_amount'] else '₱0.00'
+                    _report_text(row['status']),
+                    _report_text(row['count']),
+                    _report_money(row['total_amount']) if row['total_amount'] else '₱0.00',
                 ])
-                
+
         elif group_by == 'loan_type':
             summary = conn.execute('''
                 SELECT loan_type, COUNT(*) as count, SUM(loan_amount) as total_amount
@@ -3938,27 +4470,38 @@ def generate_report(report_type):
             data = [['Loan Type', 'Count', 'Total Amount']]
             for row in summary:
                 data.append([
-                    row['loan_type'] or 'N/A',
-                    str(row['count']),
-                    f"₱{row['total_amount']:,.2f}" if row['total_amount'] else '₱0.00'
+                    _report_text(row['loan_type']),
+                    _report_text(row['count']),
+                    _report_money(row['total_amount']) if row['total_amount'] else '₱0.00',
                 ])
                 
         else:  # month
-            summary = conn.execute('''
-                SELECT strftime('%Y-%m', submitted_at) as month, 
-                       COUNT(*) as count, SUM(loan_amount) as total_amount
-                FROM loan_applications
-                WHERE DATE(submitted_at) BETWEEN ? AND ?
-                GROUP BY month
-                ORDER BY month DESC
-            ''', (from_date, to_date)).fetchall()
-            
+            if is_postgresql():
+                month_sql = '''
+                    SELECT TO_CHAR(submitted_at, 'YYYY-MM') as month,
+                           COUNT(*) as count, SUM(loan_amount) as total_amount
+                    FROM loan_applications
+                    WHERE DATE(submitted_at) BETWEEN ? AND ?
+                    GROUP BY TO_CHAR(submitted_at, 'YYYY-MM')
+                    ORDER BY month DESC
+                '''
+            else:
+                month_sql = '''
+                    SELECT strftime('%Y-%m', submitted_at) as month,
+                           COUNT(*) as count, SUM(loan_amount) as total_amount
+                    FROM loan_applications
+                    WHERE DATE(submitted_at) BETWEEN ? AND ?
+                    GROUP BY month
+                    ORDER BY month DESC
+                '''
+            summary = conn.execute(month_sql, (from_date, to_date)).fetchall()
+
             data = [['Month', 'Count', 'Total Amount']]
             for row in summary:
                 data.append([
-                    row['month'] or 'N/A',
-                    str(row['count']),
-                    f"₱{row['total_amount']:,.2f}" if row['total_amount'] else '₱0.00'
+                    _report_text(row['month']),
+                    _report_text(row['count']),
+                    _report_money(row['total_amount']) if row['total_amount'] else '₱0.00',
                 ])
         
         table = Table(data, colWidths=[3*inch, 1.5*inch, 2*inch])
@@ -3975,28 +4518,51 @@ def generate_report(report_type):
         ]))
         elements.append(table)
         
-        # Add grand total
         total = conn.execute('''
             SELECT COUNT(*) as count, SUM(loan_amount) as total_amount
             FROM loan_applications
             WHERE DATE(submitted_at) BETWEEN ? AND ?
         ''', (from_date, to_date)).fetchone()
-        
+
         elements.append(Spacer(1, 0.3*inch))
-        elements.append(Paragraph(f'<b>Grand Total:</b> {total["count"]} applications, ₱{total["total_amount"]:,.2f}', styles['Normal']))
-    
-    conn.close()
-    
-    # Build PDF
-    doc.build(elements)
+        total_count = total['count'] if total else 0
+        total_amount_val = total['total_amount'] if total else 0
+        elements.append(
+            Paragraph(
+                f'<b>Grand Total:</b> {total_count} applications, {_report_money(total_amount_val)}',
+                styles['Normal'],
+            )
+        )
+
+    else:
+        conn.close()
+        flash(f'Unknown report type: {report_type}', 'warning')
+        return redirect(url_for('reports'))
+
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+    if not elements:
+        flash('No data available for the selected range.', 'info')
+        return redirect(url_for('reports'))
+
+    try:
+        doc.build(elements)
+    except Exception as build_err:
+        print(f"ERROR building report PDF: {build_err}")
+        import traceback
+        traceback.print_exc()
+        flash('Could not build the report. Please try a different date range.', 'danger')
+        return redirect(url_for('reports'))
+
     buffer.seek(0)
-    
-    # Return PDF
     return send_file(
         buffer,
         mimetype='application/pdf',
         as_attachment=True,
-        download_name=f'DCCCO_{report_type}_{from_date}_to_{to_date}.pdf'
+        download_name=f'DCCCO_{report_type}_{from_date}_to_{to_date}.pdf',
     )
 
 # PASSWORD CHANGE & RESET ROUTES

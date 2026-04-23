@@ -71,13 +71,79 @@
         </div>
     </div>
 
-    {% if not checklist_data %}
+    {% if not checklist_data and not lps_photos and not ci_photos %}
     <div class="alert alert-warning">
         <i class="bi bi-exclamation-triangle"></i> <strong>No CI Checklist Data Available</strong>
-        <p class="mb-0">The CI staff has not yet completed the checklist for this application.</p>
+        <p class="mb-0">The CI staff has not yet uploaded photos or completed the checklist for this application.</p>
     </div>
     {% else %}
-    
+
+    <!-- PAGE 0: APPLICATION REFERENCE PHOTOS (from LPS) -->
+    {% if lps_photos %}
+    <div class="card print-page">
+        <div class="card-header bg-info text-white text-center">
+            <h4>APPLICATION REFERENCE PHOTOS</h4>
+            <small>Loan application form submitted by LPS</small>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% for photo in lps_photos %}
+                <div class="col-md-6 text-center">
+                    {% if photo.is_image %}
+                        <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank">
+                            <img src="{{ url_for('serve_upload', filename=photo.filename) }}"
+                                 alt="{{ photo.file_name }}"
+                                 style="max-width: 100%; max-height: 520px; border: 1px solid #d0d7de; border-radius: 6px; box-shadow: 0 2px 6px rgba(15,23,42,0.08);">
+                        </a>
+                        <div class="text-muted small mt-2">{{ photo.file_name }}</div>
+                    {% else %}
+                        <a class="btn btn-outline-primary" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank">
+                            <i class="bi bi-file-earmark"></i> {{ photo.file_name }}
+                        </a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if ci_photos %}
+    <div class="card print-page">
+        <div class="card-header bg-secondary text-white text-center">
+            <h4>CI/BI FIELD PHOTOS</h4>
+            <small>Uploaded by the CI/BI during checklist processing</small>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% for photo in ci_photos %}
+                <div class="col-md-6 text-center">
+                    {% if photo.is_image %}
+                        <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank">
+                            <img src="{{ url_for('serve_upload', filename=photo.filename) }}"
+                                 alt="{{ photo.file_name }}"
+                                 style="max-width: 100%; max-height: 520px; border: 1px solid #d0d7de; border-radius: 6px;">
+                        </a>
+                        <div class="text-muted small mt-2">{{ photo.file_name }}</div>
+                    {% else %}
+                        <a class="btn btn-outline-primary" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank">
+                            <i class="bi bi-file-earmark"></i> {{ photo.file_name }}
+                        </a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not checklist_data %}
+    <div class="alert alert-info no-print">
+        <i class="bi bi-info-circle"></i>
+        The CI/BI attached reference photos but did not fill the full checklist form. Only the photos and signature page will print.
+    </div>
+    {% endif %}
+
     <!-- PAGE 1: PERSONAL DATA -->
     <div class="card print-page">
         <div class="card-header bg-primary text-white text-center">

@@ -7,6 +7,9 @@
         <a href="{{ url_for('index') }}" class="btn btn-secondary">
             <i class="bi bi-arrow-left"></i> Back
         </a>
+        <button id="markAllReadBtn" class="btn btn-outline-primary" type="button">
+            <i class="bi bi-check2-all"></i> Mark all as read
+        </button>
         <div class="user-menu-container">
             <button class="btn btn-outline-secondary user-menu-btn" type="button">
                 <i class="bi bi-three-dots-vertical"></i>
@@ -36,7 +39,7 @@
         {% if notifications %}
         <div class="notification-list">
             {% for notif in notifications %}
-            <a href="{{ notif.link or '#' }}" class="notification-item">
+            <a href="{{ notif.link or '#' }}" class="notification-item" data-notif-id="{{ notif.id }}">
                 <div class="notification-icon">
                     <i class="bi bi-info-circle"></i>
                 </div>
@@ -125,5 +128,45 @@
     border-radius: 3px;
 }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('markAllReadBtn');
+    if (btn) {
+        btn.addEventListener('click', function() {
+            btn.disabled = true;
+            fetch('/api/notifications/mark_all_read', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' }
+            }).then(function(r){ return r.json(); })
+              .then(function(){
+                  document.querySelectorAll('.notification-item').forEach(function(el){
+                      el.style.opacity = '0.6';
+                  });
+                  var badge = document.querySelector('.navbar .notification-badge, .notification-bell .badge, #notificationBadge');
+                  if (badge) badge.textContent = '0';
+              })
+              .catch(function(){})
+              .finally(function(){ btn.disabled = false; });
+        });
+    }
+    // When a user clicks an item, mark that single notification as read (non-blocking).
+    document.querySelectorAll('.notification-item').forEach(function(a){
+        a.addEventListener('click', function(){
+            var id = a.getAttribute('data-notif-id');
+            if (!id) return;
+            try {
+                fetch('/api/notifications/' + id + '/read', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    keepalive: true,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            } catch (_) {}
+        });
+    });
+});
+</script>
 
 {% endblock %}
