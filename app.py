@@ -283,7 +283,11 @@ def init_db():
     os.makedirs('signatures', exist_ok=True)
 
 # Initialize database on startup
-init_db()
+try:
+    init_db()
+except Exception as e:
+    print(f"⚠️  Database initialization warning: {e}")
+    print("⚠️  Continuing app startup...")
 
 # Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
@@ -796,8 +800,9 @@ def loan_dashboard():
         ORDER BY name ASC
     ''').fetchall()
     
-    unread_count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
-                                (current_user.id,)).fetchone()['count']
+    unread_count_row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
+                                (current_user.id,)).fetchone()
+    unread_count = unread_count_row['count'] if unread_count_row else 0
     conn.close()
     return render_template('loan_dashboard.html', applications=applications, unread_count=unread_count, ci_staff_list=ci_staff_list)
 
@@ -805,8 +810,9 @@ def loan_dashboard():
 @login_required
 def notification_count():
     conn = get_db()
-    count = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
-                        (current_user.id,)).fetchone()['count']
+    count_row = conn.execute('''SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE "New message from%"''', 
+                        (current_user.id,)).fetchone()
+    count = count_row['count'] if count_row else 0
     conn.close()
     return jsonify({'count': count})
 
