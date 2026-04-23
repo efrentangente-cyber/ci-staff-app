@@ -2,6 +2,7 @@
 Database Connection Manager
 Supports both SQLite (local) and PostgreSQL (Render production)
 Automatically detects which to use based on DATABASE_URL environment variable
+Updated: 2026-04-23 - Fixed PostgreSQL compatibility
 """
 
 import os
