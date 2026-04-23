@@ -30,14 +30,60 @@ class DatabaseConnection:
         """Get cursor from underlying connection"""
         return self._conn.cursor()
     
+    def _adapt_query_for_postgresql(self, query):
+        """
+        Adapt SQLite-style SQL for psycopg2:
+        - Convert positional placeholders from ? to %s
+        - Escape literal % so psycopg2 doesn't treat LIKE patterns as placeholders
+        """
+        # First, escape literal % while preserving psycopg2 placeholders.
+        escaped_query_parts = []
+        i = 0
+        while i < len(query):
+            ch = query[i]
+            if ch == '%':
+                next_char = query[i + 1] if i + 1 < len(query) else ''
+                if next_char == '%':
+                    escaped_query_parts.append('%%')
+                    i += 2
+                    continue
+                if next_char in ('s', '('):
+                    escaped_query_parts.append('%')
+                else:
+                    escaped_query_parts.append('%%')
+            else:
+                escaped_query_parts.append(ch)
+            i += 1
+        escaped_query = ''.join(escaped_query_parts)
+
+        # Then convert ? placeholders only when outside quoted strings.
+        adapted_parts = []
+        in_single_quote = False
+        in_double_quote = False
+
+        for ch in escaped_query:
+            if ch == "'" and not in_double_quote:
+                in_single_quote = not in_single_quote
+                adapted_parts.append(ch)
+                continue
+            if ch == '"' and not in_single_quote:
+                in_double_quote = not in_double_quote
+                adapted_parts.append(ch)
+                continue
+            if ch == '?' and not in_single_quote and not in_double_quote:
+                adapted_parts.append('%s')
+            else:
+                adapted_parts.append(ch)
+
+        return ''.join(adapted_parts)
+
     def execute(self, query, params=None):
         """Execute query with automatic placeholder conversion"""
-        # Convert SQLite placeholders (?) to PostgreSQL placeholders (%s)
-        if self._db_type == 'postgresql' and '?' in query:
-            query = query.replace('?', '%s')
+        if self._db_type == 'postgresql':
+            query = self._adapt_query_for_postgresql(query)
         
         cursor = self._conn.cursor()
-        if params:
+        if params is not None:
             cursor.execute(query, params)
         else:
             cursor.execute(query)
