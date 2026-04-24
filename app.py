@@ -1594,6 +1594,20 @@ def add_security_headers(response):
         response.headers['Expires'] = '0'
     return response
 
+
+@app.teardown_request
+def close_db_connection_on_request_end(exc):
+    """Always return request-scoped DB connections to the pool."""
+    try:
+        db_conn = getattr(g, '_db_conn', None)
+        if db_conn is not None:
+            try:
+                db_conn.close()
+            finally:
+                g._db_conn = None
+    except Exception as close_err:
+        app.logger.debug('teardown DB close skipped: %s', close_err)
+
 # Helper functions for role-based access control
 def is_admin():
     """Check if current user is super admin"""

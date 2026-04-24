@@ -8,6 +8,15 @@ Updated: 2026-04-23 - Fixed PostgreSQL compatibility
 import os
 import sqlite3
 import threading
+import time
+
+try:
+    from flask import g, has_request_context
+except Exception:
+    g = None
+
+    def has_request_context():
+        return False
 
 # Try to import PostgreSQL driver (only needed for production)
 try:
@@ -28,6 +37,7 @@ class DatabaseConnection:
         self._conn = conn
         self._db_type = db_type
         self._release_callback = release_callback
+        self._closed = False
     
     def cursor(self):
         """Get cursor from underlying connection"""
@@ -82,6 +92,8 @@ class DatabaseConnection:
 
     def execute(self, query, params=None):
         """Execute query with automatic placeholder conversion"""
+        if self._closed:
+            raise RuntimeError("Database connection already closed")
         if self._db_type == 'postgresql':
             query = self._adapt_query_for_postgresql(query)
         
@@ -94,6 +106,8 @@ class DatabaseConnection:
     
     def executescript(self, script):
         """Execute SQL script (SQLite only)"""
+        if self._closed:
+            raise RuntimeError("Database connection already closed")
         if self._db_type == 'sqlite':
             return self._conn.executescript(script)
         else:
@@ -112,9 +126,20 @@ class DatabaseConnection:
     
     def close(self):
         """Close connection"""
-        if self._release_callback:
-            return self._release_callback(self._conn)
-        return self._conn.close()
+        if self._closed:
+            return
+        try:
+            # Ensure transactions do not remain open before returning to pool.
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+            if self._release_callback:
+                self._release_callback(self._conn)
+            else:
+                self._conn.close()
+        finally:
+            self._closed = True
     
     def __enter__(self):
         return self
@@ -137,6 +162,12 @@ def get_db():
         rows = cursor.fetchall()
         conn.close()
     """
+    # Reuse one connection per request context to avoid pool exhaustion.
+    if has_request_context() and g is not None:
+        existing = getattr(g, '_db_conn', None)
+        if existing is not None:
+            return existing
+
     database_url = os.getenv('DATABASE_URL')
     
     # Use PostgreSQL if DATABASE_URL is set (Render production)
@@ -149,8 +180,22 @@ def get_db():
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
         
         try:
-            conn = _get_postgresql_pool(database_url).getconn()
-            return DatabaseConnection(conn, 'postgresql', release_callback=_release_postgresql_connection)
+            pg_pool = _get_postgresql_pool(database_url)
+            conn = None
+            last_error = None
+            for _ in range(3):
+                try:
+                    conn = pg_pool.getconn()
+                    break
+                except Exception as pool_err:
+                    last_error = pool_err
+                    time.sleep(0.05)
+            if conn is None and last_error is not None:
+                raise last_error
+            db_conn = DatabaseConnection(conn, 'postgresql', release_callback=_release_postgresql_connection)
+            if has_request_context() and g is not None:
+                g._db_conn = db_conn
+            return db_conn
         except Exception as e:
             print(f"❌ PostgreSQL connection failed: {e}")
             print(f"   DATABASE_URL: {database_url[:50]}...")
@@ -173,7 +218,10 @@ def get_db():
             c.close()
         except Exception:
             pass
-        return DatabaseConnection(conn, 'sqlite')
+        db_conn = DatabaseConnection(conn, 'sqlite')
+        if has_request_context() and g is not None:
+            g._db_conn = db_conn
+        return db_conn
 
 def get_database_type():
     """
