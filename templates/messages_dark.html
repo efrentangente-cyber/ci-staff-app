@@ -977,6 +977,17 @@ function updateOnlineIndicator(userId, isOnline) {
 
 // Track pending message IDs to avoid duplicates (no longer needed, kept for safety)
 const pendingMessages = new Set();
+const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+function jsonPostOptions(payload) {
+    const headers = {'Content-Type': 'application/json'};
+    if (csrfToken) headers['X-CSRFToken'] = csrfToken;
+    return {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers,
+        body: payload ? JSON.stringify(payload) : undefined
+    };
+}
 
 socket.on('new_direct_message', function(data) {
     const isMine = parseInt(data.sender_id) === {{ current_user.id }};
@@ -990,7 +1001,7 @@ socket.on('new_direct_message', function(data) {
         addMessageToChat(data.message, data.sender_name, data.timestamp, isMine, data.message_id, false);
         if (!isMine) {
             // Mark as read since we're viewing it
-            fetch(`/api/mark_messages_read/${data.sender_id}`, { method: 'POST' }).catch(() => {});
+            fetch(`/api/mark_messages_read/${data.sender_id}`, jsonPostOptions()).catch(() => {});
         }
     } else if (!isMine) {
         // Update conversation list preview for incoming message from someone else
@@ -1155,11 +1166,7 @@ function sendMessage() {
     }
 
     // 4. Fire-and-forget to server
-    fetch('/api/send_direct_message', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ receiver_id: currentChatUserId, message: message })
-    }).then(r => r.json())
+    fetch('/api/send_direct_message', jsonPostOptions({ receiver_id: currentChatUserId, message: message })).then(r => r.json())
       .then(data => {
           if (data.success && data.message_id) {
               const tempEl = document.querySelector(`[data-message-id="${tempId}"]`);
@@ -1260,11 +1267,7 @@ function editDirectMessage(messageId, currentText) {
         if (editBtn) editBtn.setAttribute('onclick', `editDirectMessage(${messageId}, '${newText.replace(/'/g, "\\'")}')`);
     }
 
-    fetch('/api/edit_direct_message', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({message_id: messageId, new_text: newText})
-    }).catch(() => {});
+    fetch('/api/edit_direct_message', jsonPostOptions({message_id: messageId, new_text: newText})).catch(() => {});
 }
 
 function deleteDirectMessage(messageId) {
@@ -1274,11 +1277,7 @@ function deleteDirectMessage(messageId) {
     const el = document.querySelector(`[data-message-id="${messageId}"]`);
     if (el) el.remove();
 
-    fetch('/api/delete_direct_message', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({message_id: messageId})
-    }).catch(() => {});
+    fetch('/api/delete_direct_message', jsonPostOptions({message_id: messageId})).catch(() => {});
 }
 
 // Realtime edit/delete from other user
@@ -1399,8 +1398,11 @@ function handleImageSelect(event) {
     container.insertAdjacentHTML('beforeend', loadingHtml);
     container.scrollTop = container.scrollHeight;
     
+    const imageHeaders = csrfToken ? {'X-CSRFToken': csrfToken} : {};
     fetch('/api/send_image_message', {
         method: 'POST',
+        credentials: 'same-origin',
+        headers: imageHeaders,
         body: formData
     })
     .then(r => r.json())
@@ -1513,8 +1515,11 @@ async function sendVoiceMessage(audioBlob) {
     formData.append('receiver_id', currentChatUserId);
     
     try {
+        const voiceHeaders = csrfToken ? {'X-CSRFToken': csrfToken} : {};
         const response = await fetch('/api/send_voice_message', {
             method: 'POST',
+            credentials: 'same-origin',
+            headers: voiceHeaders,
             body: formData
         });
         

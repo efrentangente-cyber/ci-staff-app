@@ -529,6 +529,7 @@ loadLoanTypes();
 {% block scripts %}
 <script>
 const appId = {{ application.id }};
+const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 const socket = io({
     transports: ['websocket', 'polling'],
     reconnection: true,
@@ -555,7 +556,8 @@ function sendMessage() {
     
     fetch('/api/send_message', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: Object.assign({'Content-Type': 'application/json'}, csrfToken ? {'X-CSRFToken': csrfToken} : {}),
+        credentials: 'same-origin',
         body: JSON.stringify({application_id: appId, message: message})
     }).then(response => response.json())
       .then(data => {

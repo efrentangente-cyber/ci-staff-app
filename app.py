@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 
 from flask import Flask, g, has_request_context, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, disconnect
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -53,14 +53,17 @@ def now_ph():
 
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'replace-this-with-a-secure-random-secret')
+_secret_key = (os.getenv('SECRET_KEY') or '').strip()
+if not _secret_key:
+    raise RuntimeError("SECRET_KEY must be set in environment for secure sessions.")
+app.secret_key = _secret_key
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SIGNATURE_FOLDER'] = 'signatures'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-app.config['WTF_CSRF_ENABLED'] = False  # Disabled for now - enable after testing
+app.config['WTF_CSRF_ENABLED'] = os.getenv('WTF_CSRF_ENABLED', 'True').lower() == 'true'
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
-app.config['WTF_CSRF_CHECK_DEFAULT'] = False  # Disabled for now
+app.config['WTF_CSRF_CHECK_DEFAULT'] = os.getenv('WTF_CSRF_CHECK_DEFAULT', 'True').lower() == 'true'
 app.config['REMEMBER_COOKIE_DURATION'] = __import__('datetime').timedelta(days=30)
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=2)  # Session expires after 2 hours of inactivity
 app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
@@ -235,9 +238,15 @@ def _loan_types_schema_info(conn):
             return {'columns': cols, 'name_key': candidate}
     return {'columns': cols, 'name_key': 'name'}
 
+_socketio_origins_raw = (os.getenv('SOCKETIO_ALLOWED_ORIGINS') or '').strip()
+if _socketio_origins_raw:
+    _socketio_origins = [o.strip() for o in _socketio_origins_raw.split(',') if o.strip()]
+else:
+    _socketio_origins = None
+
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",  # Allow all origins - authentication handles security
+    cors_allowed_origins=_socketio_origins,
     async_mode='threading',   # Use threading for instant emit
     ping_timeout=60,
     ping_interval=10,  # Faster ping (was 25) for quicker detection
@@ -1329,6 +1338,26 @@ def is_loan_officer():
 def is_admin_or_loan_officer():
     """Check if current user is admin or loan officer"""
     return current_user.is_authenticated and current_user.role in ['admin', 'loan_officer']
+
+def _user_can_access_application(user_id, role, app_id):
+    """Role-aware authorization for a single loan application record."""
+    if role in ['admin', 'loan_officer']:
+        return True
+    conn = get_db()
+    try:
+        row = conn.execute(
+            'SELECT submitted_by, assigned_ci_staff FROM loan_applications WHERE id=?',
+            (app_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return False
+    if role == 'loan_staff':
+        return row['submitted_by'] == user_id
+    if role == 'ci_staff':
+        return row['assigned_ci_staff'] == user_id
+    return False
 
 def require_admin():
     """Decorator to require admin role"""
@@ -3652,6 +3681,9 @@ def download_document(doc_id):
     if not doc:
         flash('Document not found', 'danger')
         return redirect(url_for('index'))
+    if not _user_can_access_application(current_user.id, current_user.role, doc['loan_application_id']):
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
     
     # Validate file path is within upload folder (prevent path traversal)
     file_path = doc['file_path']
@@ -3732,6 +3764,8 @@ def send_message():
             app_id = int(app_id)
         except (TypeError, ValueError):
             return jsonify({'error': 'Invalid application id'}), 400
+        if not _user_can_access_application(current_user.id, current_user.role, app_id):
+            return jsonify({'error': 'Unauthorized'}), 403
 
         conn = get_db()
         try:
@@ -3792,6 +3826,8 @@ def send_message_with_attachment():
             app_id = int(app_id_raw)
         except (TypeError, ValueError):
             return jsonify({'success': False, 'error': 'Invalid application id'}), 400
+        if not _user_can_access_application(current_user.id, current_user.role, app_id):
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
         file_path = None
         file_name = None
@@ -3909,6 +3945,9 @@ def download_message_file(msg_id):
     if not msg or not msg['file_path']:
         flash('File not found', 'danger')
         return redirect(url_for('index'))
+    if not _user_can_access_application(current_user.id, current_user.role, msg['loan_application_id']):
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
     
     # Validate file path (prevent path traversal)
     file_path = msg['file_path']
@@ -3934,6 +3973,8 @@ def download_message_file(msg_id):
 @app.route('/api/get_messages/<int:app_id>')
 @login_required
 def get_messages_api(app_id):
+    if not _user_can_access_application(current_user.id, current_user.role, app_id):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     conn = get_db()
     messages = conn.execute('''
         SELECT m.*, u.name as sender_name 
@@ -3952,26 +3993,28 @@ def get_messages_api(app_id):
 # SocketIO events
 @socketio.on('connect')
 def handle_connect(auth=None):
-    if current_user.is_authenticated:
-        join_room(str(current_user.id))
-        # Mark user as online
-        online_users[current_user.id] = {
-            'name': current_user.name,
-            'role': current_user.role,
-            'last_seen': now_ph().isoformat()
-        }
-        # Update database
-        conn = get_db()
-        conn.execute('UPDATE users SET last_seen=?, is_online=1 WHERE id=?', 
-                    (now_ph().isoformat(), current_user.id))
-        conn.commit()
-        conn.close()
-        # Broadcast to all users that this user is online
-        socketio.emit('user_online', {
-            'user_id': current_user.id,
-            'name': current_user.name,
-            'role': current_user.role
-        }, to=None, include_self=True)
+    if not current_user.is_authenticated:
+        disconnect()
+        return
+    join_room(str(current_user.id))
+    # Mark user as online
+    online_users[current_user.id] = {
+        'name': current_user.name,
+        'role': current_user.role,
+        'last_seen': now_ph().isoformat()
+    }
+    # Update database
+    conn = get_db()
+    conn.execute('UPDATE users SET last_seen=?, is_online=1 WHERE id=?', 
+                (now_ph().isoformat(), current_user.id))
+    conn.commit()
+    conn.close()
+    # Broadcast to all users that this user is online
+    socketio.emit('user_online', {
+        'user_id': current_user.id,
+        'name': current_user.name,
+        'role': current_user.role
+    }, to=None, include_self=True)
 
 @socketio.on('disconnect')
 def handle_disconnect(reason=None):
@@ -3992,15 +4035,40 @@ def handle_disconnect(reason=None):
 
 @socketio.on('join_application')
 def handle_join_application(data):
+    if not current_user.is_authenticated:
+        return
+    if not isinstance(data, dict):
+        return
     app_id = data.get('application_id')
-    if app_id:
+    try:
+        app_id = int(app_id)
+    except (TypeError, ValueError):
+        return
+    if _user_can_access_application(current_user.id, current_user.role, app_id):
         join_room(f'app_{app_id}')
 
 @socketio.on('join')
 def handle_join(data):
-    room = data.get('room')
-    if room:
+    if not current_user.is_authenticated:
+        return
+    if not isinstance(data, dict):
+        return
+    room = str(data.get('room') or '').strip()
+    if not room:
+        return
+    if room == str(current_user.id):
         join_room(room)
+        return
+    if room == 'admin_tracking' and current_user.role in ['admin', 'loan_officer']:
+        join_room(room)
+        return
+    if room.startswith('app_'):
+        try:
+            app_id = int(room.split('_', 1)[1])
+        except (TypeError, ValueError):
+            return
+        if _user_can_access_application(current_user.id, current_user.role, app_id):
+            join_room(room)
 
 @socketio.on('join_tracking')
 def handle_join_tracking(data):
@@ -4037,6 +4105,8 @@ def ci_applications():
 @app.route('/api/ci_application/<int:id>')
 @login_required
 def ci_application_api(id):
+    if not _user_can_access_application(current_user.id, current_user.role, id):
+        return jsonify({'error': 'Unauthorized'}), 403
     conn = get_db()
     app = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
     documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=?', (id,)).fetchall()
