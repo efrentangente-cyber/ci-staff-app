@@ -140,6 +140,14 @@ class DatabaseConnection:
                 self._conn.close()
         finally:
             self._closed = True
+            # If this wrapper is request-scoped, detach it immediately so
+            # later get_db() calls in the same request can create a fresh one.
+            try:
+                if has_request_context() and g is not None:
+                    if getattr(g, '_db_conn', None) is self:
+                        g._db_conn = None
+            except Exception:
+                pass
     
     def __enter__(self):
         return self
@@ -166,7 +174,14 @@ def get_db():
     if has_request_context() and g is not None:
         existing = getattr(g, '_db_conn', None)
         if existing is not None:
-            return existing
+            # Do not reuse a closed wrapper within the same request.
+            if getattr(existing, '_closed', False):
+                try:
+                    g._db_conn = None
+                except Exception:
+                    pass
+            else:
+                return existing
 
     database_url = os.getenv('DATABASE_URL')
     
