@@ -48,6 +48,12 @@ class ExcelSpreadsheet {
             <button type="button" class="btn btn-sm btn-outline-primary" onclick="excelSheet.addColumn()" title="Add column to the right of the selection">
                 <i class="bi bi-plus"></i> Add column
             </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="excelSheet.deleteRows()" title="Delete selected row(s)">
+                <i class="bi bi-dash"></i> Delete row
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="excelSheet.deleteColumns()" title="Delete selected column(s)">
+                <i class="bi bi-dash"></i> Delete column
+            </button>
             <div class="toolbar-divider"></div>
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.alignText('left')" title="Align Left">
                 <i class="bi bi-text-left"></i>
@@ -417,6 +423,16 @@ class ExcelSpreadsheet {
                 return;
             }
 
+            const colHeader = e.target.closest ? e.target.closest('.excel-col-header') : null;
+            if (colHeader && !e.target.classList.contains('col-resize-handle')) {
+                e.preventDefault();
+                const col = parseInt(colHeader.dataset.col, 10);
+                if (!Number.isNaN(col)) {
+                    this.selectColumn(col);
+                }
+                return;
+            }
+
             const input = resolveInputFromTarget(e.target);
             if (input) {
                 this.isSelecting = true;
@@ -566,6 +582,50 @@ class ExcelSpreadsheet {
         const cellInfo = document.getElementById('cell-info');
         if (cellInfo) {
             cellInfo.textContent = `Row: ${row + 1}`;
+        }
+    }
+
+    // Select a whole column when the column letter is clicked.
+    selectColumn(col) {
+        this.container.querySelectorAll('.cell-input').forEach((cell) => {
+            cell.classList.remove('selected', 'range-selected');
+        });
+        this.clearSelectionChrome();
+
+        this.selectedRange = [];
+        for (let row = 0; row < this.rows; row++) {
+            const cellRef = this.getCellReference(row, col);
+            const input = this.container.querySelector(`.cell-input[data-cell="${cellRef}"]`);
+            if (!input) continue;
+
+            input.classList.add('range-selected');
+            this.selectedRange.push(cellRef);
+
+            const td = input.closest('td');
+            if (td) {
+                td.classList.add('excel-cell--range');
+            }
+        }
+
+        const firstInput = this.container.querySelector(`.cell-input[data-cell="${this.getCellReference(0, col)}"]`);
+        if (firstInput) {
+            this.selectedCell = firstInput;
+            const firstTd = firstInput.closest('td');
+            if (firstTd) {
+                firstTd.classList.add('excel-cell--active');
+            }
+        }
+
+        const lastRef = this.getCellReference(this.rows - 1, col);
+        const lastInput = this.container.querySelector(`.cell-input[data-cell="${lastRef}"]`);
+        const lastTd = lastInput ? lastInput.closest('td') : null;
+        if (lastTd) {
+            lastTd.classList.add('excel-cell--handle');
+        }
+
+        const cellInfo = document.getElementById('cell-info');
+        if (cellInfo) {
+            cellInfo.textContent = `Column: ${this.getColumnName(col)}`;
         }
     }
 
@@ -1699,6 +1759,165 @@ class ExcelSpreadsheet {
 
         const match = String(this.selectedCell.dataset.cell || '').match(/([A-Z]+)\d+/);
         return match ? this.columnToIndex(match[1]) : 0;
+    }
+
+    getSelectedRowIndexes() {
+        const rows = this.selectedRange
+            .map((ref) => {
+                const match = String(ref).match(/[A-Z]+(\d+)/);
+                return match ? parseInt(match[1], 10) - 1 : NaN;
+            })
+            .filter((row) => !Number.isNaN(row));
+
+        if (rows.length === 0) {
+            rows.push(this.getSelectedRowIndex());
+        }
+
+        return [...new Set(rows)].sort((a, b) => a - b);
+    }
+
+    getSelectedColIndexes() {
+        const cols = this.selectedRange
+            .map((ref) => {
+                const match = String(ref).match(/([A-Z]+)\d+/);
+                return match ? this.columnToIndex(match[1]) : NaN;
+            })
+            .filter((col) => !Number.isNaN(col));
+
+        if (cols.length === 0) {
+            cols.push(this.getSelectedColIndex());
+        }
+
+        return [...new Set(cols)].sort((a, b) => a - b);
+    }
+
+    deleteRows() {
+        const rowsToDelete = this.getSelectedRowIndexes()
+            .filter((row) => row >= 0 && row < this.rows);
+        if (rowsToDelete.length === 0) return;
+        if (rowsToDelete.length >= this.rows) {
+            this.showNotification('At least one row must remain.', '#f59e0b');
+            return;
+        }
+        if (!confirm(`Delete ${rowsToDelete.length} selected row(s)?`)) return;
+
+        const deleted = new Set(rowsToDelete);
+        const newCells = {};
+        Object.keys(this.cells).forEach((cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) {
+                newCells[cellRef] = this.cells[cellRef];
+                return;
+            }
+            const row0 = parseInt(match[2], 10) - 1;
+            if (deleted.has(row0)) return;
+
+            const shift = rowsToDelete.filter((row) => row < row0).length;
+            const newRef = match[1] + (row0 - shift + 1);
+            newCells[newRef] = this.cells[cellRef];
+        });
+        this.cells = newCells;
+
+        const newMerged = {};
+        Object.keys(this.mergedCells).forEach((cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) {
+                newMerged[cellRef] = this.mergedCells[cellRef];
+                return;
+            }
+            const row0 = parseInt(match[2], 10) - 1;
+            if (deleted.has(row0)) return;
+
+            const shift = rowsToDelete.filter((row) => row < row0).length;
+            const newRef = match[1] + (row0 - shift + 1);
+            newMerged[newRef] = this.mergedCells[cellRef];
+        });
+        this.mergedCells = newMerged;
+
+        this.rows -= rowsToDelete.length;
+        const focusRow = Math.min(rowsToDelete[0], this.rows - 1);
+        const focusCol = this.getSelectedColIndex();
+        this.render();
+        this.recalculateAll();
+        this.saveData();
+        this.focusCell(focusRow, focusCol);
+    }
+
+    deleteColumns() {
+        const colsToDelete = this.getSelectedColIndexes()
+            .filter((col) => col >= 0 && col < this.cols);
+        if (colsToDelete.length === 0) return;
+        if (colsToDelete.length >= this.cols) {
+            this.showNotification('At least one column must remain.', '#f59e0b');
+            return;
+        }
+        if (!confirm(`Delete ${colsToDelete.length} selected column(s)?`)) return;
+
+        const deleted = new Set(colsToDelete);
+        const newCells = {};
+        Object.keys(this.cells).forEach((cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) {
+                newCells[cellRef] = this.cells[cellRef];
+                return;
+            }
+            const col0 = this.columnToIndex(match[1]);
+            if (deleted.has(col0)) return;
+
+            const shift = colsToDelete.filter((col) => col < col0).length;
+            const newRef = this.indexToColumn(col0 - shift) + match[2];
+            newCells[newRef] = this.cells[cellRef];
+        });
+        this.cells = newCells;
+
+        const newMerged = {};
+        Object.keys(this.mergedCells).forEach((cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) {
+                newMerged[cellRef] = this.mergedCells[cellRef];
+                return;
+            }
+            const col0 = this.columnToIndex(match[1]);
+            if (deleted.has(col0)) return;
+
+            const shift = colsToDelete.filter((col) => col < col0).length;
+            const newRef = this.indexToColumn(col0 - shift) + match[2];
+            newMerged[newRef] = this.mergedCells[cellRef];
+        });
+        this.mergedCells = newMerged;
+
+        this.cols -= colsToDelete.length;
+        const focusRow = this.getSelectedRowIndex();
+        const focusCol = Math.min(colsToDelete[0], this.cols - 1);
+        this.render();
+        this.recalculateAll();
+        this.saveData();
+        this.focusCell(focusRow, focusCol);
+    }
+
+    focusCell(row, col) {
+        const safeRow = Math.max(0, Math.min(row, this.rows - 1));
+        const safeCol = Math.max(0, Math.min(col, this.cols - 1));
+        const ref = this.getCellReference(safeRow, safeCol);
+        requestAnimationFrame(() => {
+            const input = this.container.querySelector(`.cell-input[data-cell="${ref}"]`);
+            if (!input) return;
+            this.selectCell(input);
+            try {
+                input.focus({ preventScroll: true });
+            } catch (e) {
+                input.focus();
+            }
+        });
+    }
+
+    showNotification(message, color) {
+        const notification = document.createElement('div');
+        notification.className = 'excel-notification';
+        notification.textContent = message;
+        notification.style.cssText = `position: fixed; top: 80px; right: 20px; background: ${color || '#495057'}; color: #fff; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);`;
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 2000);
     }
 
     // Add column — inserts a new column to the *right* of the selected column (like Excel)

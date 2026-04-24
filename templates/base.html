@@ -286,12 +286,12 @@
         
         body.dark-mode .sidebar-nav a:hover,
         body.dark-mode .sidebar-nav a.active {
-            background: rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.16);
             color: #ffffff;
         }
         
         body.dark-mode .sidebar-nav a.active {
-            background: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.22);
             font-weight: 600;
         }
         
@@ -373,7 +373,7 @@
         }
         
         .sidebar-nav {
-            padding: 20px 0;
+            padding: 18px 12px;
             flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
@@ -399,26 +399,35 @@
         .sidebar-nav a {
             display: flex;
             align-items: center;
-            padding: 15px 25px;
+            gap: 12px;
+            margin: 4px 0;
+            padding: 12px 14px;
             color: white;
             text-decoration: none;
-            transition: all 0.3s;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1.2;
+            transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
         }
         
         .sidebar-nav a:hover, .sidebar-nav a.active {
-            background: rgba(255,255,255,0.1);
-            border-left: 4px solid var(--accent-yellow);
-            padding-left: 21px;
+            background: rgba(255,255,255,0.14);
+            transform: translateX(2px);
         }
         
         .sidebar-nav a.active {
-            background: rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.22);
             font-weight: 600;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
         }
         
         .sidebar-nav i {
-            margin-right: 15px;
-            font-size: 18px;
+            width: 20px;
+            min-width: 20px;
+            margin-right: 0;
+            font-size: 16px;
+            text-align: center;
         }
         
         .main-content {
@@ -916,28 +925,6 @@
             box-shadow: 0 0 0 0.2rem rgba(30, 58, 95, 0.35);
         }
 
-        .page-action-loader {
-            position: fixed;
-            inset: 0;
-            z-index: 9998;
-            display: none;
-            align-items: flex-start;
-            justify-content: center;
-            pointer-events: none;
-        }
-        .page-action-loader.show {
-            display: flex;
-        }
-        .page-action-loader .loader-pill {
-            margin-top: 18px;
-            background: rgba(30, 58, 95, 0.95);
-            color: #fff;
-            padding: 10px 16px;
-            border-radius: 999px;
-            box-shadow: 0 10px 24px rgba(0,0,0,0.18);
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
         .sweet-toast {
             position: fixed;
             top: 20px;
@@ -1019,12 +1006,6 @@
         }
     </script>
     
-    <div id="pageActionLoader" class="page-action-loader" aria-live="polite" aria-hidden="true">
-        <div class="loader-pill">
-            <span class="spinner-border spinner-border-sm me-2"></span>Loading...
-        </div>
-    </div>
-
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -1503,7 +1484,7 @@
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424"></script>
     
     <!-- Session Security Script -->
-    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260424"></script>
+    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260425-close-logout"></script>
     
     <!-- Autocomplete CSS and JS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='autocomplete.css') }}">
@@ -1566,42 +1547,6 @@
             });
         }
 
-        const pageLoader = document.getElementById('pageActionLoader');
-        const showPageLoader = () => {
-            if (!pageLoader) return;
-            pageLoader.classList.add('show');
-            pageLoader.setAttribute('aria-hidden', 'false');
-        };
-
-        document.addEventListener('click', function(e) {
-            const link = e.target.closest('a[href]');
-            if (!link) return;
-            const href = link.getAttribute('href') || '';
-            if (
-                !href ||
-                href.startsWith('#') ||
-                href.startsWith('javascript:') ||
-                link.target === '_blank' ||
-                link.hasAttribute('download') ||
-                e.ctrlKey || e.metaKey || e.shiftKey || e.altKey
-            ) {
-                return;
-            }
-            try {
-                const nextUrl = new URL(link.href, window.location.href);
-                if (nextUrl.origin === window.location.origin && nextUrl.pathname !== window.location.pathname) {
-                    setTimeout(showPageLoader, 80);
-                }
-            } catch (err) {}
-        }, {capture: true});
-
-        document.addEventListener('submit', function(e) {
-            if (e.target && e.target.matches('form')) {
-                setTimeout(function() {
-                    if (!e.defaultPrevented) showPageLoader();
-                }, 80);
-            }
-        }, {capture: true});
     });
     </script>
     

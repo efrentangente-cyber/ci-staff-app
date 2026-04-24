@@ -1090,15 +1090,24 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
     if send_body_for_log.lstrip().upper().startswith('TEST'):
         return False, 'Message cannot start with TEST (ignored by provider)'
 
-    url = 'https://api.semaphore.co/api/v4/messages'
-    sender = (os.getenv('SEMAPHORE_SENDERNAME') or '').strip()
+    url = 'https://semaphore.co/api/v4/messages'
+    configured_sender = (
+        os.getenv('SEMAPHORE_SENDERNAME')
+        or os.getenv('SEMAPHORE_SENDER_NAME')
+        or os.getenv('SMS_SENDER_NAME')
+        or ''
+    ).strip()
+    dashboard_sender = (os.getenv('SEMAPHORE_DASHBOARD_SENDER') or 'DCCCO').strip()
+    sender_candidates = []
+    for candidate in (configured_sender, dashboard_sender, ''):
+        if candidate not in sender_candidates:
+            sender_candidates.append(candidate)
+
     payload = {
         'apikey': api_key,
         'number': phone_09,
         'message': send_body_for_log,
     }
-    if sender:
-        payload['sendername'] = sender
 
     def _extract_semaphore_error(response, data, text):
         if isinstance(data, dict):
@@ -1152,19 +1161,25 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
             print(f"✓ Semaphore accepted: {row.get('message_id', row)} status={row.get('status')}")
             return True, None
 
-        ok, err = _attempt(payload, f"sender={sender}" if sender else "default sender")
-        if ok:
-            return True, None
+        last_err = None
+        for sender in sender_candidates:
+            attempt_payload = dict(payload)
+            if sender:
+                attempt_payload['sendername'] = sender
 
-        # If Render has an old/unapproved SEMAPHORE_SENDERNAME, retry exactly like
-        # Semaphore's dashboard/default sender so an active API key can still send.
-        if sender and _looks_like_sender_rejection(err):
-            fallback_payload = dict(payload)
-            fallback_payload.pop('sendername', None)
-            print("[SMS] Retrying Semaphore with default sendername.")
-            return _attempt(fallback_payload, "default sender")
+            ok, err = _attempt(
+                attempt_payload,
+                f"sender={sender}" if sender else "default sender",
+            )
+            if ok:
+                return True, None
 
-        return False, err
+            last_err = err
+            if not _looks_like_sender_rejection(err):
+                break
+            print("[SMS] Retrying Semaphore with next sender option.")
+
+        return False, last_err
     except requests.RequestException as e:
         err = str(e)
         print(f"✗ Semaphore request error: {err}")
@@ -1922,7 +1937,7 @@ def login():
         flash('Invalid credentials', 'danger')
     return render_template('login.html')
 
-@app.route('/logout')
+@app.route('/logout', methods=['GET', 'POST'])
 def logout():
     """
     Always allow logout without raising server errors.
@@ -1981,6 +1996,8 @@ def logout():
 
         # Clear any remaining session keys to avoid stale auth state.
         session.clear()
+        if request.method == 'POST':
+            return ('', 204)
         flash('Logged out.', 'info')
         return redirect(url_for('login'))
     except Exception as e:
@@ -1989,6 +2006,8 @@ def logout():
             session.clear()
         except Exception:
             pass
+        if request.method == 'POST':
+            return ('', 204)
         return redirect(url_for('login'))
 
 # LOAN STAFF ROUTES

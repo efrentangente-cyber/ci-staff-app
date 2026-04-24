@@ -581,64 +581,108 @@ function syncExcelToComputation() {
     
     try {
         const cells = window.excelSheet.cells;
-        
-        // Extract key financial data from Excel spreadsheet
-        // Look for common patterns in the templates
-        
-        // Try to find Total/Gross Sales or Total Income
+
+        const parseMoney = (value) => {
+            if (value === null || value === undefined || value === '') return 0;
+            const cleaned = String(value).replace(/[^\d.-]/g, '');
+            const parsed = parseFloat(cleaned);
+            return Number.isFinite(parsed) ? parsed : 0;
+        };
+
+        const columnToIndex = (colName) => {
+            let index = 0;
+            for (let i = 0; i < colName.length; i++) {
+                index = index * 26 + (colName.charCodeAt(i) - 64);
+            }
+            return index - 1;
+        };
+
+        const indexToColumn = (index) => {
+            let name = '';
+            let n = index;
+            while (n >= 0) {
+                name = String.fromCharCode((n % 26) + 65) + name;
+                n = Math.floor(n / 26) - 1;
+            }
+            return name;
+        };
+
+        const cellNumber = (cell) => {
+            if (!cell) return 0;
+            return parseMoney(
+                cell.display !== undefined && cell.display !== null
+                    ? cell.display
+                    : cell.value
+            );
+        };
+
+        const findAmountOnSameRow = (cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) return 0;
+            const startCol = columnToIndex(match[1]);
+            const row = match[2];
+
+            // Read the first computed/numeric amount to the right of the label.
+            for (let col = startCol + 1; col < (window.excelSheet.cols || 15); col++) {
+                const amount = cellNumber(cells[indexToColumn(col) + row]);
+                if (amount !== 0) return amount;
+            }
+            return 0;
+        };
+
+        const setAutoSyncedValue = (name, amount) => {
+            if (!amount || amount <= 0) return false;
+            let updated = false;
+            document.querySelectorAll(`[name="${name}"]`).forEach((input) => {
+                const current = parseMoney(input.value);
+                const previousSync = parseMoney(input.dataset.cashflowSyncedAmount);
+                const canUpdate = current === 0 || (previousSync > 0 && current === previousSync);
+
+                if (canUpdate) {
+                    input.value = amount.toFixed(2);
+                    input.dataset.cashflowSyncedAmount = amount.toFixed(2);
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    updated = true;
+                }
+            });
+            return updated;
+        };
+
         let totalIncome = 0;
-        let netIncome = 0;
-        
-        // Search for cells containing income-related values
+        let businessIncome = 0;
+
         Object.keys(cells).forEach(cellRef => {
             const cell = cells[cellRef];
             if (!cell) return;
             
             const value = cell.value ? cell.value.toString().toUpperCase() : '';
-            const displayValue = parseFloat(cell.display) || 0;
             
-            // Look for "GROSS PROFIT", "NET INCOME", "GROSS SALES"
-            if (value.includes('GROSS PROFIT') || value.includes('NET MONTHLY INCOME') || value.includes('GROSS SALES')) {
-                // Get the value from the next column (usually D column)
-                const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (match) {
-                    const row = match[2];
-                    const nextCol = 'D'; // Most templates use column D for amounts
-                    const valueCell = cells[nextCol + row];
-                    if (valueCell && valueCell.display) {
-                        netIncome = Math.max(netIncome, parseFloat(valueCell.display) || 0);
-                    }
-                }
+            // Prefer net result from cash flow; fall back to gross sales/income.
+            if (
+                value.includes('GROSS PROFIT') ||
+                value.includes('NET MONTHLY INCOME') ||
+                value.includes('NET INCOME') ||
+                value.includes('GROSS SALES')
+            ) {
+                businessIncome = Math.max(businessIncome, findAmountOnSameRow(cellRef));
             }
             
-            // Look for "TOTAL SALES" or "TOTAL MONTHLY INCOME"
-            if (value.includes('TOTAL SALES') || value.includes('TOTAL MONTHLY INCOME')) {
-                const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (match) {
-                    const row = match[2];
-                    const nextCol = 'D';
-                    const valueCell = cells[nextCol + row] || cells['C' + row];
-                    if (valueCell && valueCell.display) {
-                        totalIncome = Math.max(totalIncome, parseFloat(valueCell.display) || 0);
-                    }
-                }
+            if (
+                value.includes('TOTAL SALES') ||
+                value.includes('TOTAL MONTHLY INCOME')
+            ) {
+                totalIncome = Math.max(totalIncome, findAmountOnSameRow(cellRef));
             }
         });
-        
-        // Populate the computation page with extracted data
-        if (netIncome > 0) {
-            // Set as business income (from Cash Flow Statement)
-            const businessIncomeInput = document.querySelector('[name="income_business"]');
-            if (businessIncomeInput && !businessIncomeInput.value) {
-                businessIncomeInput.value = netIncome.toFixed(2);
-                
-                // Show notification
-                showSyncNotification(netIncome);
-            }
+
+        const amountToSync = businessIncome || totalIncome;
+        if (setAutoSyncedValue('income_business', amountToSync)) {
+            showSyncNotification(amountToSync);
         }
         
         // Trigger all computations
         updateAllComputations();
+        saveCurrentPageData();
         
     } catch (e) {
         console.error('Error syncing Excel to Computation:', e);
