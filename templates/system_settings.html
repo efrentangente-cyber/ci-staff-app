@@ -1,151 +1,241 @@
 {% extends "base.html" %}
 {% block title %}System Settings{% endblock %}
 {% block content %}
-<div class="container-fluid">
-    <h2><i class="bi bi-gear"></i> System Configuration</h2>
-    <p class="text-muted">Manage system-wide settings and configurations</p>
-    
+<div class="container-fluid py-2 system-settings-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h4 class="mb-1"><i class="bi bi-gear"></i> System Configuration</h4>
+            <small class="text-muted">Clean admin controls, recent activity logs, and quick actions.</small>
+        </div>
+    </div>
+
     {% if current_user.role != 'admin' %}
     <div class="alert alert-danger">
         <i class="bi bi-exclamation-triangle"></i> Only super admins can access system settings.
     </div>
     {% else %}
-    
-    <div class="row g-4">
-        <!-- System Settings Card -->
-        <div class="col-md-8">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-sliders"></i> System Settings</h5>
+    <div class="row g-3">
+        <div class="col-lg-3">
+            <div class="card shadow-sm sticky-lg-top nav-card">
+                <div class="card-body p-2">
+                    <div class="list-group list-group-flush small-nav">
+                        <a href="#settings-section" class="list-group-item list-group-item-action active">
+                            <i class="bi bi-sliders me-2"></i>System Settings
+                        </a>
+                        <a href="#logs-section" class="list-group-item list-group-item-action">
+                            <i class="bi bi-clock-history me-2"></i>Recent Logs
+                        </a>
+                        <a href="#quick-section" class="list-group-item list-group-item-action">
+                            <i class="bi bi-lightning me-2"></i>Quick Actions
+                        </a>
+                        <a href="#status-section" class="list-group-item list-group-item-action">
+                            <i class="bi bi-list-check me-2"></i>Status Guide
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-9">
+            <section id="settings-section" class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <strong><i class="bi bi-sliders me-1"></i> System Settings</strong>
                 </div>
                 <div class="card-body">
                     <form method="POST" action="{{ url_for('update_system_settings') }}">
-                        <div class="table-responsive table-scroll-5">
-                        <table class="table table-hover">
-                            <thead>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="table-responsive table-scroll-compact">
+                            <table class="table table-sm table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 220px;">Setting</th>
+                                        <th style="width: 280px;">Value</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for setting in settings %}
+                                    <tr>
+                                        <td><strong>{{ setting.setting_key }}</strong></td>
+                                        <td>
+                                            <input
+                                                type="text"
+                                                name="setting_{{ setting.id }}"
+                                                class="form-control form-control-sm"
+                                                value="{{ setting.setting_value }}"
+                                            >
+                                        </td>
+                                        <td><small class="text-muted">{{ setting.description }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-2">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-save"></i> Save Settings
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <section id="logs-section" class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <strong><i class="bi bi-journal-text me-1"></i> System Recent Activities</strong>
+                </div>
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('system_settings') }}" class="row g-2 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm mb-1">Role</label>
+                            <select name="log_role" class="form-select form-select-sm">
+                                <option value="">All roles</option>
+                                {% for r in role_options %}
+                                <option value="{{ r.role }}" {% if log_filters.role == r.role %}selected{% endif %}>{{ r.role }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm mb-1">Full Name</label>
+                            <select name="log_name" class="form-select form-select-sm">
+                                <option value="">All names</option>
+                                {% for n in name_options %}
+                                <option value="{{ n.full_name }}" {% if log_filters.name == n.full_name %}selected{% endif %}>{{ n.full_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-1">Action</label>
+                            <select name="log_action" class="form-select form-select-sm">
+                                <option value="">All actions</option>
+                                {% for a in action_options %}
+                                <option value="{{ a.action }}" {% if log_filters.action == a.action %}selected{% endif %}>{{ a.action }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-1">From Date</label>
+                            <input type="date" name="log_from" class="form-control form-control-sm" value="{{ log_filters.from }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label form-label-sm mb-1">To Date</label>
+                            <input type="date" name="log_to" class="form-control form-control-sm" value="{{ log_filters.to }}">
+                        </div>
+                        <div class="col-12 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-funnel"></i> Apply Filters
+                            </button>
+                            <a href="{{ url_for('system_settings') }}#logs-section" class="btn btn-outline-secondary btn-sm">Clear Filters</a>
+                        </div>
+                    </form>
+
+                    <div class="table-responsive table-scroll-compact">
+                        <table class="table table-sm table-striped align-middle">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>Setting</th>
-                                    <th>Value</th>
-                                    <th>Description</th>
+                                    <th style="width: 150px;">Role</th>
+                                    <th>Full Name</th>
+                                    <th style="width: 140px;">Action</th>
+                                    <th style="width: 180px;">Timestamp</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for setting in settings %}
-                                <tr>
-                                    <td><strong>{{ setting.setting_key }}</strong></td>
-                                    <td>
-                                        <input type="text" 
-                                               name="setting_{{ setting.id }}" 
-                                               class="form-control form-control-sm" 
-                                               value="{{ setting.setting_value }}"
-                                               style="max-width: 300px;">
-                                    </td>
-                                    <td><small class="text-muted">{{ setting.description }}</small></td>
-                                </tr>
-                                {% endfor %}
+                                {% if recent_logs %}
+                                    {% for log in recent_logs %}
+                                    <tr>
+                                        <td><strong>{{ log.role or 'System' }}</strong></td>
+                                        <td>{{ log.full_name or 'System' }}</td>
+                                        <td>
+                                            {% if (log.action or '').upper() == 'LOG IN' %}
+                                            <span class="badge bg-success-subtle text-success border">LOG IN</span>
+                                            {% elif (log.action or '').upper() == 'LOG OUT' %}
+                                            <span class="badge bg-secondary-subtle text-secondary border">LOG OUT</span>
+                                            {% else %}
+                                            <span class="badge bg-info-subtle text-info border">{{ log.action }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if log.created_at %}
+                                                {% if log.created_at.__class__.__name__ == 'datetime' %}
+                                                    {{ log.created_at.strftime('%b %d, %Y %I:%M %p') }}
+                                                {% else %}
+                                                    {{ log.created_at }}
+                                                {% endif %}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">No activity logs found for selected filters.</td>
+                                    </tr>
+                                {% endif %}
                             </tbody>
                         </table>
-                        </div>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-save"></i> Save Settings
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Quick Actions Card -->
-        <div class="col-md-4">
-            <div class="card shadow-sm mb-3">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        <a href="{{ url_for('manage_loan_types') }}" class="btn btn-outline-primary">
-                            <i class="bi bi-tags"></i> Manage Loan Types
-                        </a>
-                        <a href="{{ url_for('manage_users') }}" class="btn btn-outline-info">
-                            <i class="bi bi-people"></i> Manage Users
-                        </a>
-                        <a href="{{ url_for('reports') }}" class="btn btn-outline-warning">
-                            <i class="bi bi-file-earmark-bar-graph"></i> Generate Reports
-                        </a>
-                        <a href="{{ url_for('ci_tracking') }}" class="btn btn-outline-success">
-                            <i class="bi bi-geo-alt"></i> CI Tracking
-                        </a>
                     </div>
                 </div>
-            </div>
-            
-            <!-- System Info Card -->
-            <div class="card shadow-sm">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> System Info</h5>
-                </div>
-                <div class="card-body">
-                    <p><strong>Total Users:</strong> {{ stats.total_users }}</p>
-                    <p><strong>Total Applications:</strong> {{ stats.total_applications }}</p>
-                    <p><strong>Pending CI:</strong> {{ stats.pending_ci }}</p>
-                    <p><strong>Approved Loans:</strong> {{ stats.approved_loans }}</p>
-                    <p><strong>Total Loan Amount:</strong> ₱{{ '{:,.2f}'.format(stats.total_loan_amount) }}</p>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Application Status Management -->
-    <div class="row mt-4">
-        <div class="col-md-12">
-            <div class="card shadow-sm">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="bi bi-list-check"></i> Application Status Management</h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted">Current application statuses in the system:</p>
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6>Submitted</h6>
-                                    <p class="text-muted mb-0">Initial submission</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6>Assigned to CI</h6>
-                                    <p class="text-muted mb-0">Awaiting investigation</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6>CI Completed</h6>
-                                    <p class="text-muted mb-0">Awaiting admin decision</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6>Approved/Rejected</h6>
-                                    <p class="text-muted mb-0">Final decision</p>
-                                </div>
-                            </div>
+            </section>
+
+            <section id="quick-section" class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header"><strong><i class="bi bi-lightning"></i> Quick Actions</strong></div>
+                        <div class="card-body d-grid gap-2">
+                            <a href="{{ url_for('manage_loan_types') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-tags"></i> Manage Loan Types</a>
+                            <a href="{{ url_for('manage_users') }}" class="btn btn-outline-info btn-sm"><i class="bi bi-people"></i> Manage Users</a>
+                            <a href="{{ url_for('reports') }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-file-earmark-bar-graph"></i> Reports</a>
+                            <a href="{{ url_for('ci_tracking') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-geo-alt"></i> CI Tracking</a>
                         </div>
                     </div>
                 </div>
-            </div>
+                <div class="col-md-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header"><strong><i class="bi bi-info-circle"></i> System Info</strong></div>
+                        <div class="card-body small">
+                            <div class="d-flex justify-content-between border-bottom py-1"><span>Total Users</span><strong>{{ stats.total_users }}</strong></div>
+                            <div class="d-flex justify-content-between border-bottom py-1"><span>Total Applications</span><strong>{{ stats.total_applications }}</strong></div>
+                            <div class="d-flex justify-content-between border-bottom py-1"><span>Pending CI</span><strong>{{ stats.pending_ci }}</strong></div>
+                            <div class="d-flex justify-content-between border-bottom py-1"><span>Approved Loans</span><strong>{{ stats.approved_loans }}</strong></div>
+                            <div class="d-flex justify-content-between pt-1"><span>Total Loan Amount</span><strong>₱{{ '{:,.2f}'.format(stats.total_loan_amount) }}</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="status-section" class="card shadow-sm">
+                <div class="card-header"><strong><i class="bi bi-list-check"></i> Application Status Guide</strong></div>
+                <div class="card-body">
+                    <div class="row g-2 text-center">
+                        <div class="col-md-3"><div class="border rounded p-2 bg-light"><strong>Submitted</strong><div class="text-muted small">Initial submission</div></div></div>
+                        <div class="col-md-3"><div class="border rounded p-2 bg-light"><strong>Assigned to CI</strong><div class="text-muted small">Awaiting investigation</div></div></div>
+                        <div class="col-md-3"><div class="border rounded p-2 bg-light"><strong>CI Completed</strong><div class="text-muted small">Awaiting admin decision</div></div></div>
+                        <div class="col-md-3"><div class="border rounded p-2 bg-light"><strong>Approved/Rejected</strong><div class="text-muted small">Final decision</div></div></div>
+                    </div>
+                </div>
+            </section>
         </div>
     </div>
-    
     {% endif %}
+
 <style>
-.table-scroll-5 {
-    max-height: 320px;
+.system-settings-page .nav-card {
+    top: 0.75rem;
+}
+.system-settings-page .small-nav .list-group-item {
+    border: 0;
+    border-radius: .5rem;
+    margin-bottom: .25rem;
+    font-size: .92rem;
+    font-weight: 500;
+    padding: .55rem .7rem;
+}
+.system-settings-page .small-nav .list-group-item.active {
+    background: var(--primary-blue);
+}
+.table-scroll-compact {
+    max-height: 360px;
     overflow-y: auto;
 }
 </style>

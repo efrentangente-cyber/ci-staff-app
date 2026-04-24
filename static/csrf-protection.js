@@ -21,28 +21,37 @@
         
         return null;
     }
-    
-    // Store CSRF token
-    const csrfToken = getCSRFToken();
+
+    function setHeader(headers, key, value) {
+        if (!value) return headers;
+        if (!headers) headers = {};
+        if (headers instanceof Headers) {
+            headers.set(key, value);
+            return headers;
+        }
+        headers[key] = value;
+        return headers;
+    }
+
+    function isSameOriginUrl(url) {
+        if (!url) return true;
+        if (typeof url !== 'string') return true;
+        return !url.startsWith('http') || url.startsWith(window.location.origin);
+    }
     
     // Add CSRF token to all fetch requests
     const originalFetch = window.fetch;
     window.fetch = function(url, options = {}) {
         // Only add CSRF token to same-origin requests
-        const isSameOrigin = !url.startsWith('http') || url.startsWith(window.location.origin);
-        
+        const isSameOrigin = isSameOriginUrl(url);
+        const csrfToken = getCSRFToken(); // Always read latest token (session may rotate)
+
         if (isSameOrigin && csrfToken) {
             // Add CSRF token to POST, PUT, DELETE, PATCH requests
             const method = (options.method || 'GET').toUpperCase();
             if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-                options.headers = options.headers || {};
-                
-                // If headers is a Headers object, use set method
-                if (options.headers instanceof Headers) {
-                    options.headers.set('X-CSRFToken', csrfToken);
-                } else {
-                    options.headers['X-CSRFToken'] = csrfToken;
-                }
+                options.headers = setHeader(options.headers, 'X-CSRFToken', csrfToken);
+                options.headers = setHeader(options.headers, 'X-Requested-With', 'XMLHttpRequest');
             }
         }
         
@@ -60,11 +69,13 @@
     };
     
     XMLHttpRequest.prototype.send = function(...args) {
-        const isSameOrigin = !this._url.startsWith('http') || this._url.startsWith(window.location.origin);
+        const isSameOrigin = isSameOriginUrl(this._url);
         const method = (this._method || 'GET').toUpperCase();
+        const csrfToken = getCSRFToken(); // Always read latest token
         
         if (isSameOrigin && csrfToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
             this.setRequestHeader('X-CSRFToken', csrfToken);
+            this.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
         }
         
         return originalSend.apply(this, args);
@@ -79,19 +90,40 @@
             
             // Only add to POST, PUT, DELETE forms
             if (['POST', 'PUT', 'DELETE'].includes(method)) {
+                const latestToken = getCSRFToken();
                 // Check if form already has CSRF token
-                const existingToken = form.querySelector('input[name="csrf_token"]');
-                
-                if (!existingToken && csrfToken) {
+                let existingToken = form.querySelector('input[name="csrf_token"]');
+
+                if (!existingToken && latestToken) {
                     // Create hidden input for CSRF token
                     const input = document.createElement('input');
                     input.type = 'hidden';
                     input.name = 'csrf_token';
-                    input.value = csrfToken;
+                    input.value = latestToken;
                     form.appendChild(input);
+                } else if (existingToken && latestToken) {
+                    existingToken.value = latestToken;
                 }
             }
         });
+
+        // Always refresh CSRF input right before submit.
+        document.addEventListener('submit', function(event) {
+            const form = event.target;
+            if (!form || form.tagName !== 'FORM') return;
+            const method = (form.method || 'GET').toUpperCase();
+            if (!['POST', 'PUT', 'DELETE'].includes(method)) return;
+            const latestToken = getCSRFToken();
+            if (!latestToken) return;
+            let tokenInput = form.querySelector('input[name="csrf_token"]');
+            if (!tokenInput) {
+                tokenInput = document.createElement('input');
+                tokenInput.type = 'hidden';
+                tokenInput.name = 'csrf_token';
+                form.appendChild(tokenInput);
+            }
+            tokenInput.value = latestToken;
+        }, true);
     });
     
     // Expose function to get CSRF token for manual use

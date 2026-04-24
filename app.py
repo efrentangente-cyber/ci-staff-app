@@ -5,7 +5,7 @@ eventlet.monkey_patch()
 from flask import Flask, g, has_request_context, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_socketio import SocketIO, emit, join_room, disconnect
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash, check_password_hash
@@ -91,6 +91,28 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm',
 
 # Initialize CSRF Protection
 csrf = CSRFProtect(app)
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    """Gracefully handle CSRF mismatches for both AJAX and full-page requests."""
+    try:
+        msg = 'Security token mismatch. Please refresh the page and try again.'
+        is_ajax = (
+            request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+            or (request.accept_mimetypes and request.accept_mimetypes.best == 'application/json')
+            or request.path.startswith('/api/')
+            or request.is_json
+        )
+        if is_ajax:
+            return jsonify({'success': False, 'error': 'csrf_mismatch', 'message': msg}), 400
+        flash(msg, 'warning')
+        ref = request.referrer
+        if ref:
+            return redirect(ref)
+        return redirect(url_for('index'))
+    except Exception:
+        return jsonify({'success': False, 'error': 'csrf_mismatch'}), 400
 
 # Import secure routing module
 from secure_routes import SecureRouter, require_token
@@ -776,6 +798,76 @@ def _persist_sms_sent_log(
         app.logger.exception("sms_sent_log insert failed: %s", e)
 
 
+def ensure_system_activity_log_table():
+    """Create system activity log table used by System Settings -> Recent Logs."""
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+        if db_type == 'postgresql':
+            conn.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS system_activity_log (
+                    id SERIAL PRIMARY KEY,
+                    role TEXT,
+                    full_name TEXT,
+                    action TEXT NOT NULL,
+                    actor_user_id INTEGER,
+                    metadata TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                '''
+            )
+        else:
+            conn.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS system_activity_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    role TEXT,
+                    full_name TEXT,
+                    action TEXT NOT NULL,
+                    actor_user_id INTEGER,
+                    metadata TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                '''
+            )
+        conn.commit()
+        conn.close()
+        print("✓ system_activity_log table ensured")
+    except Exception as e:
+        print(f"⚠️  system_activity_log migration warning: {e}")
+
+
+def _log_system_activity(role, full_name, action, actor_user_id=None, metadata=None):
+    """Best-effort insert of an activity row. Never raises."""
+    try:
+        ensure_system_activity_log_table()
+        conn = get_db()
+        metadata_text = None
+        if metadata is not None:
+            try:
+                metadata_text = json.dumps(metadata, default=str, ensure_ascii=False)
+            except Exception:
+                metadata_text = str(metadata)
+        conn.execute(
+            '''
+            INSERT INTO system_activity_log (role, full_name, action, actor_user_id, metadata)
+            VALUES (?, ?, ?, ?, ?)
+            ''',
+            (
+                (role or '').strip() or None,
+                (full_name or '').strip() or None,
+                (action or '').strip() or 'SYSTEM',
+                actor_user_id,
+                metadata_text,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        app.logger.debug("system_activity_log insert skipped: %s", e)
+
+
 # Initialize database on startup
 try:
     init_db()
@@ -788,6 +880,7 @@ ensure_direct_message_columns()
 ensure_users_columns()
 ensure_sms_templates_table()
 ensure_sms_sent_log_table()
+ensure_system_activity_log_table()
 
 # Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
@@ -1723,20 +1816,85 @@ def login():
                        row['permissions'] if 'permissions' in row.keys() else None)
             login_user(user, remember=False)  # Session expires when browser closes
             session.permanent = False  # Ensure session is not permanent
+            _log_system_activity(
+                effective_role.replace('_', ' ').upper() if effective_role else 'SYSTEM',
+                row['name'] if 'name' in row.keys() else row['email'],
+                'LOG IN',
+                actor_user_id=row['id'],
+            )
             flash('Logged in successfully.', 'success')
             return redirect(url_for('index'))
         flash('Invalid credentials', 'danger')
     return render_template('login.html')
 
 @app.route('/logout')
-@login_required
 def logout():
-    # Clear AI chat history from session
-    if 'ai_chat_history' in session:
+    """
+    Always allow logout without raising server errors.
+    This route must succeed even when session/user state is partially broken.
+    """
+    user_id = session.get('_user_id')
+    actor_name = None
+    actor_role = None
+    try:
+        if user_id is not None:
+            try:
+                conn = get_db()
+                try:
+                    try:
+                        user_row = conn.execute(
+                            'SELECT name, role FROM users WHERE id=? LIMIT 1',
+                            (user_id,),
+                        ).fetchone()
+                        if user_row:
+                            actor_name = user_row['name'] if 'name' in user_row.keys() else None
+                            actor_role = user_row['role'] if 'role' in user_row.keys() else None
+                    except Exception:
+                        pass
+                    conn.execute(
+                        'UPDATE users SET last_seen=?, is_online=0 WHERE id=?',
+                        (now_ph().isoformat(), user_id),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+            except Exception as online_err:
+                app.logger.debug('logout online/offline update skipped: %s', online_err)
+
+        # Fallback identity if DB lookup was unavailable.
+        if not actor_name:
+            actor_name = getattr(current_user, 'name', None) or 'System User'
+        if not actor_role:
+            actor_role = getattr(current_user, 'role', None) or 'system'
+
+        # Store logout event before clearing session.
+        _log_system_activity(
+            str(actor_role).replace('_', ' ').upper(),
+            str(actor_name),
+            'LOG OUT',
+            actor_user_id=int(user_id) if user_id is not None and str(user_id).isdigit() else None,
+        )
+
+        # Clear AI chat history from session if present.
         session.pop('ai_chat_history', None)
-    logout_user()
-    flash('Logged out.', 'info')
-    return redirect(url_for('login'))
+
+        # Best effort Flask-Login logout.
+        try:
+            logout_user()
+        except Exception as logout_err:
+            app.logger.debug('logout_user failed, forcing session clear: %s', logout_err)
+
+        # Clear any remaining session keys to avoid stale auth state.
+        session.clear()
+        flash('Logged out.', 'info')
+        return redirect(url_for('login'))
+    except Exception as e:
+        app.logger.exception('logout route failed: %s', e)
+        try:
+            session.clear()
+        except Exception:
+            pass
+        return redirect(url_for('login'))
 
 # LOAN STAFF ROUTES
 @app.route('/loan/dashboard')
@@ -4892,6 +5050,7 @@ def system_settings():
         flash('Unauthorized - Admin access required', 'danger')
         return redirect(url_for('index'))
     
+    ensure_system_activity_log_table()
     conn = get_db()
     
     # Get all system settings
@@ -4911,10 +5070,82 @@ def system_settings():
         'approved_loans': row4['count'] if row4 else 0,
         'total_loan_amount': row5['total'] if row5 else 0
     }
+
+    # Recent activity logs with filters (role, name, action, date range)
+    log_role = (request.args.get('log_role') or '').strip()
+    log_name = (request.args.get('log_name') or '').strip()
+    log_action = (request.args.get('log_action') or '').strip()
+    log_from = (request.args.get('log_from') or '').strip()
+    log_to = (request.args.get('log_to') or '').strip()
+
+    def _parse_date_start(s):
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, '%Y-%m-%d')
+        except Exception:
+            return None
+
+    def _parse_date_end_exclusive(s):
+        start = _parse_date_start(s)
+        if not start:
+            return None
+        return start + timedelta(days=1)
+
+    where = []
+    params = []
+    if log_role:
+        where.append('role = ?')
+        params.append(log_role)
+    if log_name:
+        where.append('full_name = ?')
+        params.append(log_name)
+    if log_action:
+        where.append('action = ?')
+        params.append(log_action)
+    dt_from = _parse_date_start(log_from)
+    if dt_from:
+        where.append('created_at >= ?')
+        params.append(dt_from.strftime('%Y-%m-%d %H:%M:%S'))
+    dt_to = _parse_date_end_exclusive(log_to)
+    if dt_to:
+        where.append('created_at < ?')
+        params.append(dt_to.strftime('%Y-%m-%d %H:%M:%S'))
+
+    sql_logs = 'SELECT id, role, full_name, action, created_at FROM system_activity_log'
+    if where:
+        sql_logs += ' WHERE ' + ' AND '.join(where)
+    sql_logs += ' ORDER BY created_at DESC LIMIT 250'
+    recent_logs = conn.execute(sql_logs, tuple(params)).fetchall()
+
+    role_options = conn.execute(
+        "SELECT DISTINCT role FROM system_activity_log WHERE COALESCE(TRIM(role), '') <> '' ORDER BY role"
+    ).fetchall()
+    name_options = conn.execute(
+        "SELECT DISTINCT full_name FROM system_activity_log WHERE COALESCE(TRIM(full_name), '') <> '' ORDER BY full_name LIMIT 250"
+    ).fetchall()
+    action_options = conn.execute(
+        "SELECT DISTINCT action FROM system_activity_log WHERE COALESCE(TRIM(action), '') <> '' ORDER BY action"
+    ).fetchall()
     
     conn.close()
     
-    return render_template('system_settings.html', settings=settings, stats=stats)
+    return render_template(
+        'system_settings.html',
+        settings=settings,
+        stats=stats,
+        recent_logs=recent_logs,
+        role_options=role_options,
+        name_options=name_options,
+        action_options=action_options,
+        log_filters={
+            'role': log_role,
+            'name': log_name,
+            'action': log_action,
+            'from': log_from,
+            'to': log_to,
+        },
+    )
 
 @app.route('/update_system_settings', methods=['POST'])
 @login_required
@@ -4945,6 +5176,13 @@ def update_system_settings():
     
     conn.commit()
     conn.close()
+
+    _log_system_activity(
+        current_user.role.replace('_', ' ').upper() if hasattr(current_user, 'role') else 'SYSTEM',
+        getattr(current_user, 'name', None) or getattr(current_user, 'email', None) or 'System Admin',
+        'UPDATE SETTINGS',
+        actor_user_id=current_user.id if hasattr(current_user, 'id') else None,
+    )
     
     flash('System settings updated successfully!', 'success')
     return redirect(url_for('system_settings'))
