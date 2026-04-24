@@ -190,6 +190,8 @@ class ExcelSpreadsheet {
                 input.type = 'text';
                 input.className = 'cell-input';
                 input.dataset.cell = cellRef;
+                input.dataset.row = row;
+                input.dataset.col = col;
                 input.placeholder = ''; // All cells are editable
 
                 // Load saved value - DISPLAY ONLY (not formula)
@@ -405,6 +407,16 @@ class ExcelSpreadsheet {
         };
 
         this.container.addEventListener('pointerdown', (e) => {
+            const rowHeader = e.target.closest ? e.target.closest('.excel-row-header') : null;
+            if (rowHeader && !e.target.classList.contains('row-resize-handle')) {
+                e.preventDefault();
+                const row = parseInt(rowHeader.dataset.row, 10);
+                if (!Number.isNaN(row)) {
+                    this.selectRow(row);
+                }
+                return;
+            }
+
             const input = resolveInputFromTarget(e.target);
             if (input) {
                 this.isSelecting = true;
@@ -506,6 +518,54 @@ class ExcelSpreadsheet {
         const cellInfo = document.getElementById('cell-info');
         if (cellInfo) {
             cellInfo.textContent = `Cell: ${cellRef}`;
+        }
+    }
+
+    // Select a whole row when the row number is clicked.
+    selectRow(row) {
+        this.container.querySelectorAll('.cell-input').forEach((cell) => {
+            cell.classList.remove('selected', 'range-selected');
+        });
+        this.clearSelectionChrome();
+
+        this.selectedRange = [];
+        for (let col = 0; col < this.cols; col++) {
+            const cellRef = this.getCellReference(row, col);
+            const input = this.container.querySelector(`.cell-input[data-cell="${cellRef}"]`);
+            if (!input) continue;
+
+            input.classList.add('range-selected');
+            this.selectedRange.push(cellRef);
+
+            const td = input.closest('td');
+            if (td) {
+                td.classList.add('excel-cell--range');
+            }
+
+            if (!this.selectedCell) {
+                this.selectedCell = input;
+            }
+        }
+
+        const firstInput = this.container.querySelector(`.cell-input[data-cell="${this.getCellReference(row, 0)}"]`);
+        if (firstInput) {
+            this.selectedCell = firstInput;
+            const firstTd = firstInput.closest('td');
+            if (firstTd) {
+                firstTd.classList.add('excel-cell--active');
+            }
+        }
+
+        const lastRef = this.getCellReference(row, this.cols - 1);
+        const lastInput = this.container.querySelector(`.cell-input[data-cell="${lastRef}"]`);
+        const lastTd = lastInput ? lastInput.closest('td') : null;
+        if (lastTd) {
+            lastTd.classList.add('excel-cell--handle');
+        }
+
+        const cellInfo = document.getElementById('cell-info');
+        if (cellInfo) {
+            cellInfo.textContent = `Row: ${row + 1}`;
         }
     }
 
@@ -1555,12 +1615,17 @@ class ExcelSpreadsheet {
     // Add row — inserts a new row directly *below* the selected row (like Excel).
     // If no cell is selected, inserts below the first row (not at the bottom).
     addRow() {
-        const selectedRow0 = this.selectedCell
-            ? parseInt(this.selectedCell.dataset.row, 10)
-            : 0;
-        const selCol = this.selectedCell
-            ? parseInt(this.selectedCell.dataset.col, 10)
-            : 0;
+        const selectedRows = this.selectedRange
+            .map((ref) => {
+                const match = String(ref).match(/[A-Z]+(\d+)/);
+                return match ? parseInt(match[1], 10) - 1 : NaN;
+            })
+            .filter((row) => !Number.isNaN(row));
+
+        const selectedRow0 = selectedRows.length > 0
+            ? Math.max(...selectedRows)
+            : this.getSelectedRowIndex();
+        const selCol = this.getSelectedColIndex();
         // 1-based index of the row to insert *after* (insert below this row in the grid)
         const Rsel = selectedRow0 + 1;
 
@@ -1618,11 +1683,27 @@ class ExcelSpreadsheet {
         });
     }
 
+    getSelectedRowIndex() {
+        if (!this.selectedCell) return 0;
+        const datasetRow = parseInt(this.selectedCell.dataset.row, 10);
+        if (!Number.isNaN(datasetRow)) return datasetRow;
+
+        const match = String(this.selectedCell.dataset.cell || '').match(/[A-Z]+(\d+)/);
+        return match ? Math.max(0, parseInt(match[1], 10) - 1) : 0;
+    }
+
+    getSelectedColIndex() {
+        if (!this.selectedCell) return 0;
+        const datasetCol = parseInt(this.selectedCell.dataset.col, 10);
+        if (!Number.isNaN(datasetCol)) return datasetCol;
+
+        const match = String(this.selectedCell.dataset.cell || '').match(/([A-Z]+)\d+/);
+        return match ? this.columnToIndex(match[1]) : 0;
+    }
+
     // Add column — inserts a new column to the *right* of the selected column (like Excel)
     addColumn() {
-        const sc = this.selectedCell
-            ? parseInt(this.selectedCell.dataset.col, 10)
-            : 0;
+        const sc = this.getSelectedColIndex();
 
         const newCells = {};
         Object.keys(this.cells).forEach((cellRef) => {

@@ -76,6 +76,7 @@
             </div>
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data" id="editForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Member Name *</label>
@@ -168,14 +169,33 @@
                 {% if documents %}
                 <ul class="list-group">
                     {% for doc in documents %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span>
-                            <i class="bi bi-file-earmark"></i> {{ doc.file_name }}
-                            <small class="text-muted">({{ doc.uploaded_at|fmt_datetime('%Y-%m-%d %H:%M') }})</small>
+                    {% set doc_path = (doc.file_path or '') %}
+                    {% set doc_filename = doc_path.replace('\\', '/').split('/')[-1] %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center gap-3">
+                        <span class="d-flex align-items-center gap-2 flex-grow-1 min-width-0">
+                            {% if doc_filename and doc_filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+                            <img src="{{ url_for('serve_upload', filename=doc_filename) }}" alt="{{ doc.file_name }}" style="width: 46px; height: 46px; object-fit: cover; border-radius: 8px;">
+                            {% else %}
+                            <i class="bi bi-file-earmark"></i>
+                            {% endif %}
+                            <span class="text-truncate">
+                                {{ doc.file_name }}
+                                <small class="text-muted d-block">({{ doc.uploaded_at|fmt_datetime('%Y-%m-%d %H:%M') }})</small>
+                            </span>
                         </span>
-                        <a href="{{ url_for('download_document', doc_id=doc.id) }}" class="btn btn-sm btn-primary">
-                            <i class="bi bi-download"></i> Download
-                        </a>
+                        <div class="d-flex gap-2 flex-shrink-0">
+                            <a href="{{ url_for('download_document', doc_id=doc.id) }}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-download"></i> Download
+                            </a>
+                            {% if can_edit and (doc.uploaded_by is none or doc.uploaded_by == current_user.id) %}
+                            <form method="POST" action="{{ url_for('delete_lps_document', app_id=application.id, doc_id=doc.id) }}" class="m-0 delete-document-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" data-document-name="{{ doc.file_name }}">
+                                    <i class="bi bi-trash"></i> Remove
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
                     </li>
                     {% endfor %}
                 </ul>
@@ -450,6 +470,21 @@ document.querySelector('#editForm')?.addEventListener('submit', function(e) {
     }
 });
 
+document.querySelectorAll('.delete-document-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        const button = form.querySelector('button[type="submit"]');
+        const name = button?.getAttribute('data-document-name') || 'this file';
+        if (!confirm(`Remove ${name}? This will also remove it from the CI/BI view.`)) {
+            e.preventDefault();
+            return;
+        }
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Removing...';
+        }
+    });
+});
+
 // Load loan types from database
 let allLoanTypes = [];
 
@@ -530,7 +565,7 @@ loadLoanTypes();
 <script>
 const appId = {{ application.id }};
 const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-const socket = io({
+const socket = window.__dcccoSocket || io({
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionDelay: 1000,

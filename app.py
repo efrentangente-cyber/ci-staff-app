@@ -41,8 +41,9 @@ else:
     print("   For Render deployment, set DATABASE_URL in dashboard!")
 print("="*80 + "\n")
 
-if (os.getenv('SEMAPHORE_API_KEY') or os.getenv('SMS_API_KEY') or '').strip():
-    print("✓ SEMAPHORE_API_KEY is set — outbound SMS will use Semaphore (Philippines).")
+_startup_semaphore_key = (os.getenv('SEMAPHORE_API_KEY') or os.getenv('SMS_API_KEY') or '').strip()
+if _startup_semaphore_key:
+    print(f"✓ SEMAPHORE_API_KEY is set — outbound SMS will use Semaphore (key ends with ...{_startup_semaphore_key[-6:]}).")
 else:
     print("ℹ️  SEMAPHORE_API_KEY is not set — set it in the environment (or .env) to send SMS via your Semaphore credits; otherwise TextBelt free tier is used as fallback.\n")
 
@@ -715,8 +716,14 @@ def ensure_sms_templates_table():
         print(f"⚠️  sms_templates migration warning: {e}")
 
 
+_sms_sent_log_table_ready = False
+
+
 def ensure_sms_sent_log_table():
     """Store outgoing SMS for audit, search, and support."""
+    global _sms_sent_log_table_ready
+    if _sms_sent_log_table_ready:
+        return
     try:
         conn = get_db()
         db_type = get_database_type()
@@ -754,6 +761,7 @@ def ensure_sms_sent_log_table():
             ''')
         conn.commit()
         conn.close()
+        _sms_sent_log_table_ready = True
         print("✓ sms_sent_log table ensured")
     except Exception as e:
         print(f"⚠️  sms_sent_log migration warning: {e}")
@@ -800,8 +808,14 @@ def _persist_sms_sent_log(
         app.logger.exception("sms_sent_log insert failed: %s", e)
 
 
+_system_activity_log_table_ready = False
+
+
 def ensure_system_activity_log_table():
     """Create system activity log table used by System Settings -> Recent Logs."""
+    global _system_activity_log_table_ready
+    if _system_activity_log_table_ready:
+        return
     try:
         conn = get_db()
         db_type = get_database_type()
@@ -835,6 +849,7 @@ def ensure_system_activity_log_table():
             )
         conn.commit()
         conn.close()
+        _system_activity_log_table_ready = True
         print("✓ system_activity_log table ensured")
     except Exception as e:
         print(f"⚠️  system_activity_log migration warning: {e}")
@@ -1076,50 +1091,80 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
         return False, 'Message cannot start with TEST (ignored by provider)'
 
     url = 'https://api.semaphore.co/api/v4/messages'
-    sender = (os.getenv('SEMAPHORE_SENDERNAME') or 'SEMAPHORE').strip() or 'SEMAPHORE'
+    sender = (os.getenv('SEMAPHORE_SENDERNAME') or '').strip()
     payload = {
         'apikey': api_key,
         'number': phone_09,
         'message': send_body_for_log,
-        'sendername': sender,
     }
+    if sender:
+        payload['sendername'] = sender
+
+    def _extract_semaphore_error(response, data, text):
+        if isinstance(data, dict):
+            return data.get('message') or data.get('error') or str(data)[:500]
+        return text[:500] or f'HTTP {response.status_code}'
+
+    def _looks_like_sender_rejection(err):
+        low = (err or '').lower()
+        return (
+            'sender' in low
+            or 'not yet been approved for sending messages' in low
+            or 'not yet approved for sending sms' in low
+            or 'complete your account profile' in low
+        )
+
     try:
-        print(f"[SMS] Semaphore → {phone_09} (sender={sender})")
-        response = requests.post(url, data=payload, timeout=30)
-        text = (response.text or '').strip()
-        try:
-            data = response.json()
-        except Exception:
-            err = f'HTTP {response.status_code}: {text[:500]}'
-            print(f"✗ Semaphore non-JSON: {err}")
-            return False, err
+        timeout = float(os.getenv('SEMAPHORE_TIMEOUT_SECONDS', '10'))
 
-        if response.status_code >= 400:
-            if isinstance(data, dict):
-                err = data.get('message') or data.get('error') or str(data)[:500]
-            else:
-                err = text[:500] or f'HTTP {response.status_code}'
-            print(f"✗ Semaphore HTTP {response.status_code}: {err}")
-            return False, str(err)
+        def _attempt(send_payload, label):
+            print(f"[SMS] Semaphore → {phone_09} ({label})")
+            response = requests.post(url, data=send_payload, timeout=timeout)
+            text = (response.text or '').strip()
+            try:
+                data = response.json()
+            except Exception:
+                err = f'HTTP {response.status_code}: {text[:500]}'
+                print(f"✗ Semaphore non-JSON: {err}")
+                return False, err
 
-        # Success payload is usually a one-element list
-        if isinstance(data, list) and len(data) == 0:
-            return False, 'Empty response from Semaphore'
-        if isinstance(data, dict) and 'message_id' not in data:
-            err = data.get('message') or data.get('error')
-            if err:
+            if response.status_code >= 400:
+                err = _extract_semaphore_error(response, data, text)
+                print(f"✗ Semaphore HTTP {response.status_code}: {err}")
+                return False, str(err)
+
+            # Success payload is usually a one-element list
+            if isinstance(data, list) and len(data) == 0:
+                return False, 'Empty response from Semaphore'
+            if isinstance(data, dict) and 'message_id' not in data:
+                err = data.get('message') or data.get('error')
+                if err:
+                    return False, str(err)[:500]
+            row = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
+            if not row:
+                return False, 'Unexpected Semaphore response'
+            st = (row.get('status') or '').strip().lower() if row else ''
+            if st == 'failed':
+                err = row.get('message') or 'Semaphore status Failed'
+                print(f"✗ Semaphore failed: {row}")
                 return False, str(err)[:500]
-        row = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
-        if not row:
-            return False, 'Unexpected Semaphore response'
-        st = (row.get('status') or '').strip().lower() if row else ''
-        if st == 'failed':
-            err = row.get('message') or 'Semaphore status Failed'
-            print(f"✗ Semaphore failed: {row}")
-            return False, str(err)[:500]
 
-        print(f"✓ Semaphore accepted: {row.get('message_id', row)} status={row.get('status')}")
-        return True, None
+            print(f"✓ Semaphore accepted: {row.get('message_id', row)} status={row.get('status')}")
+            return True, None
+
+        ok, err = _attempt(payload, f"sender={sender}" if sender else "default sender")
+        if ok:
+            return True, None
+
+        # If Render has an old/unapproved SEMAPHORE_SENDERNAME, retry exactly like
+        # Semaphore's dashboard/default sender so an active API key can still send.
+        if sender and _looks_like_sender_rejection(err):
+            fallback_payload = dict(payload)
+            fallback_payload.pop('sendername', None)
+            print("[SMS] Retrying Semaphore with default sendername.")
+            return _attempt(fallback_payload, "default sender")
+
+        return False, err
     except requests.RequestException as e:
         err = str(e)
         print(f"✗ Semaphore request error: {err}")
@@ -1131,7 +1176,8 @@ def _send_sms_textbelt(phone, send_body, log_phone):
     url = 'https://textbelt.com/text'
     payload = {'phone': phone, 'message': send_body, 'key': (os.getenv('TEXTBELT_API_KEY') or 'textbelt')}
     try:
-        response = requests.post(url, data=payload, timeout=8)
+        timeout = float(os.getenv('TEXTBELT_TIMEOUT_SECONDS', '5'))
+        response = requests.post(url, data=payload, timeout=timeout)
         result = response.json()
     except (requests.RequestException, ValueError) as e:
         return False, str(e)
@@ -4176,6 +4222,88 @@ def download_document(doc_id):
     except:
         flash('File not found on server', 'danger')
         return redirect(url_for('index'))
+
+
+@app.route('/loan/application/<int:app_id>/document/<int:doc_id>/delete', methods=['POST'])
+@login_required
+def delete_lps_document(app_id, doc_id):
+    """Allow LPS to remove their own uploaded document while app is editable."""
+    if current_user.role != 'loan_staff':
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+
+    conn = get_db()
+    try:
+        app_data = conn.execute(
+            'SELECT id, submitted_by, status FROM loan_applications WHERE id=? AND submitted_by=?',
+            (app_id, current_user.id),
+        ).fetchone()
+        if not app_data:
+            flash('Application not found or you do not have permission to edit it', 'danger')
+            conn.close()
+            return redirect(url_for('loan_dashboard'))
+
+        if app_data['status'] not in ['submitted', 'assigned_to_ci']:
+            flash('Cannot remove photos after CI/Admin processing has started', 'warning')
+            conn.close()
+            return redirect(url_for('loan_application', id=app_id))
+
+        doc = conn.execute(
+            'SELECT * FROM documents WHERE id=? AND loan_application_id=?',
+            (doc_id, app_id),
+        ).fetchone()
+        if not doc:
+            flash('Document not found', 'warning')
+            conn.close()
+            return redirect(url_for('loan_application', id=app_id))
+
+        uploaded_by = doc['uploaded_by'] if 'uploaded_by' in doc.keys() else None
+        if uploaded_by is not None and int(uploaded_by) != int(current_user.id):
+            flash('You can only remove files uploaded by your account', 'danger')
+            conn.close()
+            return redirect(url_for('loan_application', id=app_id))
+
+        file_path = doc['file_path']
+        if not file_path:
+            conn.execute('DELETE FROM documents WHERE id=? AND loan_application_id=?', (doc_id, app_id))
+            conn.commit()
+            conn.close()
+            flash('Photo/document removed successfully.', 'success')
+            return redirect(url_for('loan_application', id=app_id))
+
+        upload_folder = os.path.abspath(app.config['UPLOAD_FOLDER'])
+        requested_path = os.path.abspath(file_path)
+        if not _is_path_within_directory(upload_folder, requested_path):
+            flash('Invalid file path', 'danger')
+            conn.close()
+            return redirect(url_for('loan_application', id=app_id))
+
+        conn.execute('DELETE FROM documents WHERE id=? AND loan_application_id=?', (doc_id, app_id))
+        conn.commit()
+        conn.close()
+
+        try:
+            if os.path.isfile(requested_path):
+                os.remove(requested_path)
+        except Exception as remove_err:
+            app.logger.debug('LPS document file delete skipped: %s', remove_err)
+
+        socketio.emit('application_updated', {
+            'id': app_id,
+            'submitted_by': int(current_user.id),
+            'documents_updated': True,
+        })
+        flash('Photo/document removed successfully.', 'success')
+        return redirect(url_for('loan_application', id=app_id))
+    except Exception as e:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        app.logger.exception('delete_lps_document failed: %s', e)
+        flash('Could not remove the selected photo/document. Please try again.', 'danger')
+        return redirect(url_for('loan_application', id=app_id))
 
 @app.route('/signatures/<path:filename>')
 @login_required

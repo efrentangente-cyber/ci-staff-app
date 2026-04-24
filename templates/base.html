@@ -32,6 +32,8 @@
     <meta name="apple-mobile-web-app-title" content="CI/BI">
     <meta name="theme-color" content="#007bff">
     <link rel="manifest" href="/static/manifest.json">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdn.socket.io">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='datatable.css') }}">
@@ -913,6 +915,97 @@
         .btn:focus-visible {
             box-shadow: 0 0 0 0.2rem rgba(30, 58, 95, 0.35);
         }
+
+        .page-action-loader {
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .page-action-loader.show {
+            display: flex;
+        }
+        .page-action-loader .loader-pill {
+            margin-top: 18px;
+            background: rgba(30, 58, 95, 0.95);
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 999px;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .sweet-toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-10px);
+            z-index: 9999;
+            width: min(92vw, 430px);
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 14px 16px;
+            border-radius: 14px;
+            background: #fff;
+            color: #1f2937;
+            box-shadow: 0 16px 40px rgba(15,23,42,0.18);
+            border: 1px solid rgba(229,231,235,0.9);
+            opacity: 0;
+            animation: sweetToastIn 180ms ease-out forwards;
+        }
+        .sweet-toast.hide {
+            animation: sweetToastOut 160ms ease-in forwards;
+        }
+        .sweet-toast-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 34px;
+            color: #fff;
+            font-size: 1.1rem;
+        }
+        .sweet-toast-success .sweet-toast-icon { background: #10b981; }
+        .sweet-toast-danger .sweet-toast-icon,
+        .sweet-toast-error .sweet-toast-icon { background: #ef4444; }
+        .sweet-toast-warning .sweet-toast-icon { background: #f59e0b; }
+        .sweet-toast-info .sweet-toast-icon { background: #3b82f6; }
+        .sweet-toast-title {
+            font-weight: 700;
+            margin-bottom: 2px;
+            color: #111827;
+        }
+        .sweet-toast-message {
+            font-size: 0.92rem;
+            color: #4b5563;
+            line-height: 1.35;
+        }
+        .sweet-toast-close {
+            border: 0;
+            background: transparent;
+            color: #9ca3af;
+            font-size: 1.1rem;
+            margin-left: auto;
+            line-height: 1;
+        }
+        body.dark-mode .sweet-toast {
+            background: #1f2937;
+            border-color: #374151;
+        }
+        body.dark-mode .sweet-toast-title { color: #f9fafb; }
+        body.dark-mode .sweet-toast-message { color: #d1d5db; }
+        @keyframes sweetToastIn {
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        @keyframes sweetToastOut {
+            to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+        }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
@@ -926,13 +1019,27 @@
         }
     </script>
     
+    <div id="pageActionLoader" class="page-action-loader" aria-live="polite" aria-hidden="true">
+        <div class="loader-pill">
+            <span class="spinner-border spinner-border-sm me-2"></span>Loading...
+        </div>
+    </div>
+
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
             {% set alert_cat = 'danger' if category == 'error' else (category or 'info') %}
-            <div class="alert alert-{{ alert_cat }} alert-dismissible fade show auto-dismiss-alert" data-alert-cat="{{ alert_cat }}" role="alert" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; max-width: min(90vw, 420px); min-width: 280px; pointer-events: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss message"></button>
+            <div class="sweet-toast sweet-toast-{{ alert_cat }} auto-dismiss-alert" data-alert-cat="{{ alert_cat }}" role="status">
+                <span class="sweet-toast-icon">
+                    <i class="bi {% if alert_cat == 'success' %}bi-check-lg{% elif alert_cat == 'warning' %}bi-exclamation-triangle{% elif alert_cat == 'danger' %}bi-x-lg{% else %}bi-info-lg{% endif %}"></i>
+                </span>
+                <div>
+                    <div class="sweet-toast-title">
+                        {% if alert_cat == 'success' %}Success{% elif alert_cat == 'warning' %}Please Check{% elif alert_cat == 'danger' %}Action Needed{% else %}Notice{% endif %}
+                    </div>
+                    <div class="sweet-toast-message">{{ message }}</div>
+                </div>
+                <button type="button" class="sweet-toast-close" aria-label="Dismiss message">&times;</button>
             </div>
             {% endfor %}
         {% endif %}
@@ -944,12 +1051,12 @@
             alerts.forEach(function(alert) {
                 const cat = (alert.getAttribute('data-alert-cat') || '').toLowerCase();
                 const ms = (cat === 'danger' || cat === 'warning') ? 10000 : (cat === 'info' ? 5000 : 4000);
-                setTimeout(function() {
-                    try {
-                        const bsAlert = new bootstrap.Alert(alert);
-                        bsAlert.close();
-                    } catch (e) {}
-                }, ms);
+                function closeToast() {
+                    alert.classList.add('hide');
+                    setTimeout(function() { alert.remove(); }, 180);
+                }
+                alert.querySelector('.sweet-toast-close')?.addEventListener('click', closeToast);
+                setTimeout(closeToast, ms);
             });
         });
     </script>
@@ -1217,9 +1324,16 @@
     <!-- PWA Service Worker Registration -->
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/static/service-worker.js')
-                .then(reg => console.log('Service Worker registered'))
-                .catch(err => console.log('Service Worker registration failed'));
+            const registerServiceWorker = () => {
+                navigator.serviceWorker.register('/static/service-worker.js')
+                    .then(reg => console.log('Service Worker registered'))
+                    .catch(err => console.log('Service Worker registration failed'));
+            };
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(registerServiceWorker, {timeout: 3000});
+            } else {
+                window.addEventListener('load', () => setTimeout(registerServiceWorker, 800));
+            }
         }
         
         // PWA Install Prompt
@@ -1451,6 +1565,43 @@
                 });
             });
         }
+
+        const pageLoader = document.getElementById('pageActionLoader');
+        const showPageLoader = () => {
+            if (!pageLoader) return;
+            pageLoader.classList.add('show');
+            pageLoader.setAttribute('aria-hidden', 'false');
+        };
+
+        document.addEventListener('click', function(e) {
+            const link = e.target.closest('a[href]');
+            if (!link) return;
+            const href = link.getAttribute('href') || '';
+            if (
+                !href ||
+                href.startsWith('#') ||
+                href.startsWith('javascript:') ||
+                link.target === '_blank' ||
+                link.hasAttribute('download') ||
+                e.ctrlKey || e.metaKey || e.shiftKey || e.altKey
+            ) {
+                return;
+            }
+            try {
+                const nextUrl = new URL(link.href, window.location.href);
+                if (nextUrl.origin === window.location.origin && nextUrl.pathname !== window.location.pathname) {
+                    setTimeout(showPageLoader, 80);
+                }
+            } catch (err) {}
+        }, {capture: true});
+
+        document.addEventListener('submit', function(e) {
+            if (e.target && e.target.matches('form')) {
+                setTimeout(function() {
+                    if (!e.defaultPrevented) showPageLoader();
+                }, 80);
+            }
+        }, {capture: true});
     });
     </script>
     

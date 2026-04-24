@@ -4,7 +4,7 @@
 
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}?v=20260425-row-insert">
 
 <!-- Include Offline Indicator -->
 {% include 'offline_indicator.html' %}
@@ -1261,7 +1261,7 @@ nav[style*="position: fixed"][style*="bottom"],
 </div>
 
 <script src="{{ url_for('static', filename='ci-voice.js') }}"></script>
-<script src="{{ url_for('static', filename='excel-spreadsheet.js') }}"></script>
+<script src="{{ url_for('static', filename='excel-spreadsheet.js') }}?v=20260425-row-insert"></script>
 <script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}"></script>
 <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
