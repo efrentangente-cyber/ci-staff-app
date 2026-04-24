@@ -53,6 +53,7 @@
 <div class="card position-relative">
     <div class="card-body">
         <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div id="memberPrefillBanner" class="alert alert-info py-2 small mb-3" style="display: none;" role="status">
                 <span id="memberPrefillBannerText">Details from a previous application were filled in below. You can change any field before submitting.</span>
                 <button type="button" class="btn-close float-end" aria-label="Dismiss" id="memberPrefillBannerDismiss"></button>
@@ -116,9 +117,9 @@
                     <option value="1" selected>Auto-assign to available CI/BI</option>
                     <optgroup label="Or assign to specific CI/BI:">
                         {% for ci in ci_staff_list %}
-                        <option value="ci_{{ ci.id }}">
+                        <option value="ci_{{ ci.id }}" {% if ci.is_approved == 0 %}disabled{% endif %}>
                             {{ ci.name }} ({{ ci.email }})
-                            {% if ci.is_approved == 0 %} - Pending Approval{% endif %}
+                            {% if ci.is_approved == 0 %} - Pending Approval (Unavailable){% endif %}
                         </option>
                         {% endfor %}
                     </optgroup>

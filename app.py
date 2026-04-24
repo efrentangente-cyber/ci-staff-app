@@ -1814,8 +1814,16 @@ def submit_application():
             # Assign to CI staff
             if needs_ci:
                 if specific_ci_id:
-                    # Assign to specific CI staff
-                    ci_staff_id = specific_ci_id
+                    # Assign to specific approved CI staff when explicitly selected.
+                    selected_ci = conn.execute(
+                        '''
+                        SELECT id FROM users
+                        WHERE id = ? AND role = 'ci_staff' AND is_approved = 1
+                        LIMIT 1
+                        ''',
+                        (specific_ci_id,),
+                    ).fetchone()
+                    ci_staff_id = selected_ci['id'] if selected_ci else None
                 else:
                     # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route
                     ci_staff_id = None
@@ -1846,13 +1854,16 @@ def submit_application():
                         
                         # Find CI staff assigned to this route (check if route is in their comma-separated list)
                         if matched_route:
-                            ci_staff = conn.execute('''
-                                SELECT id, assigned_route FROM users 
-                                WHERE role='ci_staff' AND is_approved=1 
-                                AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
-                                LIMIT 1
-                            ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
-                            ci_staff_id = ci_staff['id'] if ci_staff else None
+                            try:
+                                ci_staff = conn.execute('''
+                                    SELECT id, assigned_route FROM users 
+                                    WHERE role='ci_staff' AND is_approved=1 
+                                    AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
+                                    LIMIT 1
+                                ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
+                                ci_staff_id = ci_staff['id'] if ci_staff else None
+                            except Exception as route_assign_error:
+                                print(f"Route-based CI assignment lookup failed, using fallback: {route_assign_error}")
                     # Fallback to workload-based if no route match
                     if not ci_staff_id:
                         ci_staff = conn.execute('''
