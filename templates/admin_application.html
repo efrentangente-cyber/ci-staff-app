@@ -72,15 +72,18 @@
                 {% if documents %}
                 <div class="row g-3">
                     {% for doc in documents %}
+                    {% set doc_path = (doc.file_path or '') %}
+                    {% set doc_filename = doc_path.replace('\\', '/').split('/')[-1] %}
+                    {% set doc_display_name = doc.file_name or doc_filename or 'document' %}
                     <div class="col-md-4">
                         <div class="card h-100">
-                            {% if doc.file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+                            {% if doc_filename and doc_filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
                             <!-- Image Preview -->
-                            <img src="{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}" 
+                            <img src="{{ url_for('serve_upload', filename=doc_filename) }}" 
                                  class="card-img-top" 
                                  style="height: 200px; object-fit: cover; cursor: pointer;"
-                                 onclick="openLightbox('{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}', '{{ doc.file_name }}')"
-                                 alt="{{ doc.file_name }}"
+                                 onclick="openLightbox('{{ url_for('serve_upload', filename=doc_filename) }}', '{{ doc_display_name }}')"
+                                 alt="{{ doc_display_name }}"
                                  onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/file-icon.png') }}'; this.style.objectFit='contain'; this.style.padding='20px';">
                             {% else %}
                             <!-- File Icon for non-images -->
@@ -89,14 +92,14 @@
                             </div>
                             {% endif %}
                             <div class="card-body">
-                                <h6 class="card-title text-truncate" title="{{ doc.file_name }}">{{ doc.file_name }}</h6>
+                                <h6 class="card-title text-truncate" title="{{ doc_display_name }}">{{ doc_display_name }}</h6>
                                 <p class="card-text small text-muted">
                                     <i class="bi bi-calendar"></i> {{ doc.uploaded_at }}<br>
                                     <i class="bi bi-person"></i> Uploaded by LPS
                                 </p>
-                                <a href="{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}" 
+                                <a href="{{ url_for('download_document', doc_id=doc.id) }}" 
                                    class="btn btn-sm btn-primary w-100" 
-                                   download="{{ doc.file_name }}"
+                                   download="{{ doc_display_name }}"
                                    target="_blank">
                                     <i class="bi bi-download"></i> Download
                                 </a>

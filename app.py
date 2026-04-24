@@ -971,6 +971,22 @@ def _send_sms_textbelt(phone, send_body, log_phone):
     return False, str(result.get('error', 'Unknown error'))
 
 
+def _can_fallback_to_textbelt(semaphore_error):
+    """
+    Decide whether a Semaphore failure should try TextBelt fallback.
+    Do not fallback for obvious input/content validation errors.
+    """
+    err = (semaphore_error or '').strip().lower()
+    if not err:
+        return False
+    blocked_markers = (
+        'message cannot start with test',
+        'could not parse philippine mobile number',
+        'invalid or empty phone number',
+    )
+    return not any(marker in err for marker in blocked_markers)
+
+
 def send_sms(phone_number, message, **log_ctx):
     """
     Send SMS: Semaphore (Philippines) when SEMAPHORE_API_KEY is set, else TextBelt fallback.
@@ -1024,6 +1040,17 @@ def send_sms(phone_number, message, **log_ctx):
                 if ok:
                     _log('success', None, send_body, phone)
                     return True, None
+
+                if _can_fallback_to_textbelt(err):
+                    print(f"[SMS] Semaphore failed, trying TextBelt fallback. reason={err}")
+                    tb_ok, tb_err = _send_sms_textbelt(phone, send_body, phone)
+                    if tb_ok:
+                        _log('success', f"Semaphore failed then TextBelt sent: {err}", send_body, phone)
+                        return True, None
+                    combined_err = f"Semaphore: {err}; TextBelt: {tb_err}"
+                    _log('failed', combined_err, send_body, phone)
+                    return False, combined_err
+
                 _log('failed', err, send_body, phone)
                 return False, err
             if use_sem and not ph09:
@@ -6282,7 +6309,7 @@ def send_sms_and_update_status(app_id):
         msg = f'Application {action} and saved.'
         if _contact and message:
             msg = f'Application {action}. ' + (
-                'SMS was sent to the member via Semaphore.'
+                'SMS was sent to the member.'
                 if sms_sent
                 else (sms_error or 'SMS was not sent.')
             )

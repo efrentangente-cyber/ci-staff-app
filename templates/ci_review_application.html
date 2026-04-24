@@ -84,15 +84,18 @@
                     {% if documents %}
                     <div class="row g-3">
                         {% for doc in documents %}
+                        {% set doc_path = (doc.file_path or '') %}
+                        {% set doc_filename = doc_path.replace('\\', '/').split('/')[-1] %}
+                        {% set doc_display_name = doc.file_name or doc_filename or 'document' %}
                         <div class="col-md-4 col-sm-6">
                             <div class="card h-100">
-                                {% if doc.file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+                                {% if doc_filename and doc_filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
                                 <!-- Image Preview -->
-                                <img src="{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}" 
+                                <img src="{{ url_for('serve_upload', filename=doc_filename) }}" 
                                      class="card-img-top" 
                                      style="height: 200px; object-fit: cover; cursor: pointer;"
-                                     onclick="openImageModal('{{ url_for('serve_upload', filename=doc.file_path.split('/')[-1].split('\\')[-1]) }}', '{{ doc.file_name }}')"
-                                     alt="{{ doc.file_name }}">
+                                     onclick="openImageModal('{{ url_for('serve_upload', filename=doc_filename) }}', '{{ doc_display_name }}')"
+                                     alt="{{ doc_display_name }}">
                                 {% else %}
                                 <!-- PDF/Document Icon -->
                                 <div class="card-img-top d-flex align-items-center justify-content-center bg-light" style="height: 200px;">
@@ -100,8 +103,8 @@
                                 </div>
                                 {% endif %}
                                 <div class="card-body p-2">
-                                    <p class="card-text small mb-1 text-truncate" title="{{ doc.file_name }}">
-                                        <i class="bi bi-file-earmark"></i> {{ doc.file_name }}
+                                    <p class="card-text small mb-1 text-truncate" title="{{ doc_display_name }}">
+                                        <i class="bi bi-file-earmark"></i> {{ doc_display_name }}
                                     </p>
                                     <small class="text-muted">{{ doc.uploaded_at|fmt_datetime('%Y-%m-%d %H:%M') }}</small>
                                     <div class="mt-2">
