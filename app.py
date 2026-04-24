@@ -1851,271 +1851,277 @@ def update_ci_staff_assignment(app_id):
 @app.route('/loan/submit', methods=['GET','POST'])
 @login_required
 def submit_application():
-    if current_user.role != 'loan_staff':
-        flash('Unauthorized', 'danger')
-        return redirect(url_for('index'))
-    
-    if request.method == 'POST':
-        try:
-            member_name = (request.form.get('member_name') or '').strip()
-            member_contact = (request.form.get('member_contact') or '').strip()
-            member_address = (request.form.get('member_address') or '').strip()
-            loan_amount = (request.form.get('loan_amount') or '').strip()
-            # Support both the visible typeahead field and hidden selected value.
-            loan_type = (request.form.get('loan_type_hidden') or request.form.get('loan_type') or '').strip()
-            lps_remarks = request.form.get('lps_remarks', '').strip()
-            needs_ci_value = request.form.get('needs_ci', '1')
+    try:
+        user_role = getattr(current_user, 'role', None)
+        if user_role != 'loan_staff':
+            flash('Unauthorized', 'danger')
+            return redirect(url_for('index'))
 
-            if not member_name or not loan_amount or not loan_type:
-                flash('Please fill in member name, loan amount, and loan type.', 'danger')
-                return redirect(url_for('submit_application'))
-
+        if request.method == 'POST':
             try:
-                amount_value = float(loan_amount)
-                if amount_value <= 0:
-                    raise ValueError('Loan amount must be greater than zero')
-            except Exception:
-                flash('Loan amount is invalid. Please enter a valid number.', 'danger')
-                return redirect(url_for('submit_application'))
-            
-            conn = get_db()
-            
-            # Check if specific CI staff was selected
-            specific_ci_id = None
-            if needs_ci_value.startswith('ci_'):
-                ci_id_raw = needs_ci_value.replace('ci_', '').strip()
-                if not ci_id_raw.isdigit():
-                    raise ValueError('Invalid CI staff selection')
-                specific_ci_id = int(ci_id_raw)
-                needs_ci = 1
-            else:
+                member_name = (request.form.get('member_name') or '').strip()
+                member_contact = (request.form.get('member_contact') or '').strip()
+                member_address = (request.form.get('member_address') or '').strip()
+                loan_amount = (request.form.get('loan_amount') or '').strip()
+                # Support both the visible typeahead field and hidden selected value.
+                loan_type = (request.form.get('loan_type_hidden') or request.form.get('loan_type') or '').strip()
+                lps_remarks = request.form.get('lps_remarks', '').strip()
+                needs_ci_value = request.form.get('needs_ci', '1')
+
+                if not member_name or not loan_amount or not loan_type:
+                    flash('Please fill in member name, loan amount, and loan type.', 'danger')
+                    return redirect(url_for('submit_application'))
+
                 try:
-                    needs_ci = int(needs_ci_value)
+                    amount_value = float(loan_amount)
+                    if amount_value <= 0:
+                        raise ValueError('Loan amount must be greater than zero')
                 except Exception:
+                    flash('Loan amount is invalid. Please enter a valid number.', 'danger')
+                    return redirect(url_for('submit_application'))
+
+                conn = get_db()
+
+                # Check if specific CI staff was selected
+                specific_ci_id = None
+                if needs_ci_value.startswith('ci_'):
+                    ci_id_raw = needs_ci_value.replace('ci_', '').strip()
+                    if not ci_id_raw.isdigit():
+                        raise ValueError('Invalid CI staff selection')
+                    specific_ci_id = int(ci_id_raw)
                     needs_ci = 1
-                needs_ci = 1 if needs_ci not in (0, 1) else needs_ci
-        except Exception as e:
-            print(f"ERROR in form processing: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            flash(f'Error processing form data: {str(e)}', 'danger')
-            return redirect(url_for('submit_application'))
-        try:
-            app_id = _insert_loan_application(
-                conn,
-                member_name,
-                member_contact,
-                member_address,
-                loan_amount,
-                loan_type,
-                lps_remarks,
-                needs_ci,
-                current_user.id,
-            )
-            if not app_id:
-                conn.rollback()
-                conn.close()
-                flash('Could not save the application. Please try again.', 'danger')
-                return redirect(url_for('submit_application'))
-            # Handle file uploads
-            if 'documents' in request.files:
-                files = request.files.getlist('documents')
-                for file in files:
-                    if file and file.filename:
-                        # Validate file extension
-                        if not allowed_file(file.filename):
-                            conn.rollback()
-                            conn.close()
-                            flash('Invalid file type. Allowed: PNG, JPG, JPEG, GIF, PDF, DOC, DOCX', 'danger')
-                            return redirect(url_for('submit_application'))
-                        
-                        filename = sanitize_filename(file.filename)
-                        unique_filename = f"{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
-                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-                        file.save(filepath)
-                        conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
-                                   (app_id, filename, filepath, current_user.id))
-            
-            # Assign to CI staff
-            if needs_ci:
-                if specific_ci_id:
-                    # Assign to specific approved CI staff when explicitly selected.
-                    try:
-                        selected_ci = conn.execute(
-                            '''
-                            SELECT id FROM users
-                            WHERE id = ? AND role = 'ci_staff' AND is_approved = 1
-                            LIMIT 1
-                            ''',
-                            (specific_ci_id,),
-                        ).fetchone()
-                    except Exception:
-                        selected_ci = conn.execute(
-                            '''
-                            SELECT id FROM users
-                            WHERE id = ? AND role = 'ci_staff'
-                            LIMIT 1
-                            ''',
-                            (specific_ci_id,),
-                        ).fetchone()
-                    ci_staff_id = selected_ci['id'] if selected_ci else None
                 else:
-                    # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route
-                    ci_staff_id = None
-                    
-                    # Parse address to find matching route
-                    if member_address:
-                        address_lower = member_address.lower()
-                        
-                        # Define route matching logic
-                        route_matches = {
-                            'route_1_bayawan_kalumboyan': ['kalumboyan', 'kalamtukan', 'malabugas', 'bugay', 'nangka'],
-                            'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
-                            'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
-                            'route_4_bayawan_santa_catalina': ['santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon', 'milagrosa', 'obat', 'talalak'],
-                            'route_5_bayawan_center': ['ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon', 'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba', 'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol'],
-                            'route_6_bayawan_omod': ['omod', 'tamisu']
-                        }
-                        
-                        # Find matching route
-                        matched_route = None
-                        for route_id, keywords in route_matches.items():
-                            for keyword in keywords:
-                                if keyword in address_lower:
-                                    matched_route = route_id
+                    try:
+                        needs_ci = int(needs_ci_value)
+                    except Exception:
+                        needs_ci = 1
+                    needs_ci = 1 if needs_ci not in (0, 1) else needs_ci
+            except Exception as e:
+                print(f"ERROR in form processing: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                flash(f'Error processing form data: {str(e)}', 'danger')
+                return redirect(url_for('submit_application'))
+            try:
+                app_id = _insert_loan_application(
+                    conn,
+                    member_name,
+                    member_contact,
+                    member_address,
+                    loan_amount,
+                    loan_type,
+                    lps_remarks,
+                    needs_ci,
+                    current_user.id,
+                )
+                if not app_id:
+                    conn.rollback()
+                    conn.close()
+                    flash('Could not save the application. Please try again.', 'danger')
+                    return redirect(url_for('submit_application'))
+                # Handle file uploads
+                if 'documents' in request.files:
+                    files = request.files.getlist('documents')
+                    for file in files:
+                        if file and file.filename:
+                            # Validate file extension
+                            if not allowed_file(file.filename):
+                                conn.rollback()
+                                conn.close()
+                                flash('Invalid file type. Allowed: PNG, JPG, JPEG, GIF, PDF, DOC, DOCX', 'danger')
+                                return redirect(url_for('submit_application'))
+
+                            filename = sanitize_filename(file.filename)
+                            unique_filename = f"{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
+                            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+                            file.save(filepath)
+                            conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
+                                       (app_id, filename, filepath, current_user.id))
+
+                # Assign to CI staff
+                if needs_ci:
+                    if specific_ci_id:
+                        # Assign to specific approved CI staff when explicitly selected.
+                        try:
+                            selected_ci = conn.execute(
+                                '''
+                                SELECT id FROM users
+                                WHERE id = ? AND role = 'ci_staff' AND is_approved = 1
+                                LIMIT 1
+                                ''',
+                                (specific_ci_id,),
+                            ).fetchone()
+                        except Exception:
+                            selected_ci = conn.execute(
+                                '''
+                                SELECT id FROM users
+                                WHERE id = ? AND role = 'ci_staff'
+                                LIMIT 1
+                                ''',
+                                (specific_ci_id,),
+                            ).fetchone()
+                        ci_staff_id = selected_ci['id'] if selected_ci else None
+                    else:
+                        # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route
+                        ci_staff_id = None
+
+                        # Parse address to find matching route
+                        if member_address:
+                            address_lower = member_address.lower()
+
+                            # Define route matching logic
+                            route_matches = {
+                                'route_1_bayawan_kalumboyan': ['kalumboyan', 'kalamtukan', 'malabugas', 'bugay', 'nangka'],
+                                'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
+                                'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
+                                'route_4_bayawan_santa_catalina': ['santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon', 'milagrosa', 'obat', 'talalak'],
+                                'route_5_bayawan_center': ['ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon', 'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba', 'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol'],
+                                'route_6_bayawan_omod': ['omod', 'tamisu']
+                            }
+
+                            # Find matching route
+                            matched_route = None
+                            for route_id, keywords in route_matches.items():
+                                for keyword in keywords:
+                                    if keyword in address_lower:
+                                        matched_route = route_id
+                                        break
+                                if matched_route:
                                     break
+
+                            # Find CI staff assigned to this route (check if route is in their comma-separated list)
                             if matched_route:
-                                break
-                        
-                        # Find CI staff assigned to this route (check if route is in their comma-separated list)
-                        if matched_route:
-                            try:
-                                ci_staff = conn.execute('''
-                                    SELECT id, assigned_route FROM users 
-                                    WHERE role='ci_staff' AND is_approved=1 
-                                    AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
-                                    LIMIT 1
-                                ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
-                                ci_staff_id = ci_staff['id'] if ci_staff else None
-                            except Exception as route_assign_error:
-                                print(f"Route-based CI assignment lookup failed, trying legacy query: {route_assign_error}")
                                 try:
                                     ci_staff = conn.execute('''
-                                        SELECT id, assigned_route FROM users 
-                                        WHERE role='ci_staff'
+                                        SELECT id, assigned_route FROM users
+                                        WHERE role='ci_staff' AND is_approved=1
                                         AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
                                         LIMIT 1
                                     ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
                                     ci_staff_id = ci_staff['id'] if ci_staff else None
-                                except Exception as route_assign_error_legacy:
-                                    print(f"Route-based CI legacy lookup also failed: {route_assign_error_legacy}")
-                    # Fallback to workload-based if no route match
-                    if not ci_staff_id:
-                        try:
-                            ci_staff = conn.execute('''
-                                SELECT id FROM users 
-                                WHERE role='ci_staff' AND is_approved=1
-                                ORDER BY current_workload ASC 
-                                LIMIT 1
-                            ''').fetchone()
-                        except Exception:
+                                except Exception as route_assign_error:
+                                    print(f"Route-based CI assignment lookup failed, trying legacy query: {route_assign_error}")
+                                    try:
+                                        ci_staff = conn.execute('''
+                                            SELECT id, assigned_route FROM users
+                                            WHERE role='ci_staff'
+                                            AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
+                                            LIMIT 1
+                                        ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
+                                        ci_staff_id = ci_staff['id'] if ci_staff else None
+                                    except Exception as route_assign_error_legacy:
+                                        print(f"Route-based CI legacy lookup also failed: {route_assign_error_legacy}")
+                        # Fallback to workload-based if no route match
+                        if not ci_staff_id:
                             try:
                                 ci_staff = conn.execute('''
-                                    SELECT id FROM users 
-                                    WHERE role='ci_staff'
-                                    ORDER BY current_workload ASC 
+                                    SELECT id FROM users
+                                    WHERE role='ci_staff' AND is_approved=1
+                                    ORDER BY current_workload ASC
                                     LIMIT 1
                                 ''').fetchone()
                             except Exception:
-                                ci_staff = conn.execute('''
-                                    SELECT id FROM users 
-                                    WHERE role='ci_staff'
-                                    LIMIT 1
-                                ''').fetchone()
-                        ci_staff_id = ci_staff['id'] if ci_staff else None
-                
-                if ci_staff_id:
-                    conn.execute('UPDATE loan_applications SET status=?, assigned_ci_staff=? WHERE id=?',
-                               ('assigned_to_ci', ci_staff_id, app_id))
-                    conn.execute('UPDATE users SET current_workload = current_workload + 1 WHERE id=?',
-                               (ci_staff_id,))
-                    conn.commit()
-                    conn.close()
-                    enqueue_notification(
-                        ci_staff_id,
-                        f'New loan application assigned: {member_name}',
-                        f'/ci/application/{app_id}'
-                    )
+                                try:
+                                    ci_staff = conn.execute('''
+                                        SELECT id FROM users
+                                        WHERE role='ci_staff'
+                                        ORDER BY current_workload ASC
+                                        LIMIT 1
+                                    ''').fetchone()
+                                except Exception:
+                                    ci_staff = conn.execute('''
+                                        SELECT id FROM users
+                                        WHERE role='ci_staff'
+                                        LIMIT 1
+                                    ''').fetchone()
+                            ci_staff_id = ci_staff['id'] if ci_staff else None
+
+                    if ci_staff_id:
+                        conn.execute('UPDATE loan_applications SET status=?, assigned_ci_staff=? WHERE id=?',
+                                   ('assigned_to_ci', ci_staff_id, app_id))
+                        conn.execute('UPDATE users SET current_workload = current_workload + 1 WHERE id=?',
+                                   (ci_staff_id,))
+                        conn.commit()
+                        conn.close()
+                        enqueue_notification(
+                            ci_staff_id,
+                            f'New loan application assigned: {member_name}',
+                            f'/ci/application/{app_id}'
+                        )
+                    else:
+                        conn.commit()
+                        conn.close()
                 else:
+                    # Send directly to loan officer
+                    try:
+                        loan_officer = conn.execute('''
+                            SELECT id
+                            FROM users
+                            WHERE is_approved = 1
+                              AND role IN ('loan_officer', 'admin')
+                            ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id ASC
+                            LIMIT 1
+                        ''').fetchone()
+                    except Exception:
+                        loan_officer = conn.execute('''
+                            SELECT id
+                            FROM users
+                            WHERE role IN ('loan_officer', 'admin')
+                            ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id ASC
+                            LIMIT 1
+                        ''').fetchone()
                     conn.commit()
                     conn.close()
-            else:
-                # Send directly to loan officer
-                try:
-                    loan_officer = conn.execute('''
-                        SELECT id
-                        FROM users
-                        WHERE is_approved = 1
-                          AND role IN ('loan_officer', 'admin')
-                        ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id ASC
-                        LIMIT 1
-                    ''').fetchone()
-                except Exception:
-                    loan_officer = conn.execute('''
-                        SELECT id
-                        FROM users
-                        WHERE role IN ('loan_officer', 'admin')
-                        ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id ASC
-                        LIMIT 1
-                    ''').fetchone()
-                conn.commit()
-                conn.close()
-                if loan_officer:
-                    enqueue_notification(
-                        loan_officer['id'],
-                        f'New loan application submitted: {member_name}',
-                        f'/admin/application/{app_id}'
-                    )
-            
-            flash('Application submitted successfully!', 'success')
-            
-            # Emit WebSocket event for instant dashboard update
-            socketio.emit('new_application', {
-                'id': app_id,
-                'member_name': member_name,
-                'status': 'assigned_to_ci' if needs_ci else 'submitted',
-                'submitted_by': int(current_user.id),
-            })
-            
-            return redirect(url_for('loan_dashboard'))
+                    if loan_officer:
+                        enqueue_notification(
+                            loan_officer['id'],
+                            f'New loan application submitted: {member_name}',
+                            f'/admin/application/{app_id}'
+                        )
+
+                flash('Application submitted successfully!', 'success')
+
+                # Emit WebSocket event for instant dashboard update
+                socketio.emit('new_application', {
+                    'id': app_id,
+                    'member_name': member_name,
+                    'status': 'assigned_to_ci' if needs_ci else 'submitted',
+                    'submitted_by': int(current_user.id),
+                })
+
+                return redirect(url_for('loan_dashboard'))
+            except Exception as e:
+                print(f"ERROR in database operations: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                if 'conn' in locals():
+                    conn.rollback()
+                    conn.close()
+                flash(f'Error submitting application: {str(e)}', 'danger')
+                return redirect(url_for('submit_application'))
+
+        try:
+            conn = get_db()
+            # Get all CI staff with backward-compatible schema handling.
+            ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
+            conn.close()
         except Exception as e:
-            print(f"ERROR in database operations: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            if 'conn' in locals():
-                conn.rollback()
-                conn.close()
-            flash(f'Error submitting application: {str(e)}', 'danger')
-            return redirect(url_for('submit_application'))
-    
-    try:
-        conn = get_db()
-        # Get all CI staff with backward-compatible schema handling.
-        ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
-        conn.close()
-    except Exception as e:
-        print(f"WARNING loading CI staff list for submit page: {e}")
-        ci_staff_list = []
-    try:
-        unread_count = get_unread_notification_count(current_user.id)
-    except Exception as e:
-        print(f"WARNING loading unread notifications for submit page: {e}")
-        unread_count = 0
-    try:
-        return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
-    except Exception as e:
-        app.logger.exception("submit_application GET render failed: %s", e)
-        flash('Submit Application page encountered a temporary issue. Please try again in a moment.', 'warning')
+            print(f"WARNING loading CI staff list for submit page: {e}")
+            ci_staff_list = []
+        try:
+            unread_count = get_unread_notification_count(current_user.id)
+        except Exception as e:
+            print(f"WARNING loading unread notifications for submit page: {e}")
+            unread_count = 0
+        try:
+            return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
+        except Exception as e:
+            app.logger.exception("submit_application GET render failed: %s", e)
+            flash('Submit Application page encountered a temporary issue. Please try again in a moment.', 'warning')
+            return redirect(url_for('loan_dashboard'))
+    except Exception as outer_err:
+        app.logger.exception("submit_application unexpected failure: %s", outer_err)
+        flash('Submit Application is temporarily unavailable. Please refresh and try again.', 'danger')
         return redirect(url_for('loan_dashboard'))
 
 
