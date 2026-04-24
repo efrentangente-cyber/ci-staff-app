@@ -108,9 +108,11 @@ def handle_csrf_error(e):
             return jsonify({'success': False, 'error': 'csrf_mismatch', 'message': msg}), 400
         flash(msg, 'warning')
         ref = request.referrer
-        if ref:
+        current = request.url
+        # Avoid redirect loops when referrer is the same failing URL.
+        if ref and ref != current:
             return redirect(ref)
-        return redirect(url_for('index'))
+        return redirect(url_for('login'))
     except Exception:
         return jsonify({'success': False, 'error': 'csrf_mismatch'}), 400
 
@@ -1580,7 +1582,10 @@ def handle_internal_server_error(e):
         return jsonify({'success': False, 'error': 'server_error'}), 500
     flash('Temporary server issue detected. Please try again.', 'warning')
     try:
-        return redirect(url_for('index'))
+        # Never redirect in circles on auth/root endpoints.
+        if request.path in ('/', '/login', '/logout'):
+            return render_template('login.html'), 500
+        return redirect(url_for('login'))
     except Exception:
         return 'Temporary server issue. Please reload.', 500
 
