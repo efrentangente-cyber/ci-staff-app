@@ -357,36 +357,29 @@
                     const cols = data.cols || 15;
                     const cells = data.cells || {};
                     const mergedCells = data.mergedCells || {};
+                    const usedRange = getUsedRange(cells, mergedCells, rows, cols);
+                    const startRow = usedRange.startRow;
+                    const endRow = usedRange.endRow;
+                    const startCol = usedRange.startCol;
+                    const endCol = usedRange.endCol;
                     
                     let html = '<div class="excel-container-view">';
                     html += '<table class="excel-table-view">';
                     
                     // Header row
                     html += '<thead><tr><th class="excel-corner"></th>';
-                    for (let col = 0; col < cols; col++) {
+                    for (let col = startCol; col <= endCol; col++) {
                         html += `<th class="excel-col-header">${getColumnName(col)}</th>`;
                     }
                     html += '</tr></thead>';
                     
                     // Body rows
                     html += '<tbody>';
-                    for (let row = 0; row < rows; row++) {
-                        // Skip empty rows (rows with no data)
-                        let hasData = false;
-                        for (let col = 0; col < cols; col++) {
-                            const cellRef = getCellReference(row, col);
-                            if (cells[cellRef] && (cells[cellRef].value || cells[cellRef].display)) {
-                                hasData = true;
-                                break;
-                            }
-                        }
-                        
-                        if (!hasData && row > 10) continue; // Skip empty rows after row 10
-                        
+                    for (let row = startRow; row <= endRow; row++) {
                         html += '<tr>';
                         html += `<th class="excel-row-header">${row + 1}</th>`;
                         
-                        for (let col = 0; col < cols; col++) {
+                        for (let col = startCol; col <= endCol; col++) {
                             const cellRef = getCellReference(row, col);
                             
                             // Check if cell is hidden by merge
@@ -443,6 +436,55 @@
                         }
                     }
                     return false;
+                }
+
+                function getUsedRange(cells, mergedCells, maxRows, maxCols) {
+                    let minRow = maxRows - 1;
+                    let maxRow = 0;
+                    let minCol = maxCols - 1;
+                    let maxCol = 0;
+                    let found = false;
+
+                    for (const [cellRef, cell] of Object.entries(cells || {})) {
+                        const content = String((cell && (cell.display || cell.value || '')) || '').trim();
+                        if (!content) continue;
+                        const row = parseInt(cellRef.match(/\d+/)[0], 10) - 1;
+                        const col = getColumnIndex(cellRef.match(/[A-Z]+/)[0]);
+                        minRow = Math.min(minRow, row);
+                        maxRow = Math.max(maxRow, row);
+                        minCol = Math.min(minCol, col);
+                        maxCol = Math.max(maxCol, col);
+                        found = true;
+                    }
+
+                    for (const [cellRef, merge] of Object.entries(mergedCells || {})) {
+                        const row = parseInt(cellRef.match(/\d+/)[0], 10) - 1;
+                        const col = getColumnIndex(cellRef.match(/[A-Z]+/)[0]);
+                        const rowspan = (merge && merge.rowspan) || 1;
+                        const colspan = (merge && merge.colspan) || 1;
+                        minRow = Math.min(minRow, row);
+                        maxRow = Math.max(maxRow, row + rowspan - 1);
+                        minCol = Math.min(minCol, col);
+                        maxCol = Math.max(maxCol, col + colspan - 1);
+                        found = true;
+                    }
+
+                    if (!found) {
+                        return {
+                            startRow: 0,
+                            endRow: Math.min(maxRows - 1, 11),
+                            startCol: 0,
+                            endCol: Math.min(maxCols - 1, 7),
+                        };
+                    }
+
+                    // Small breathing room around used content
+                    return {
+                        startRow: Math.max(0, minRow - 1),
+                        endRow: Math.min(maxRows - 1, maxRow + 1),
+                        startCol: Math.max(0, minCol),
+                        endCol: Math.min(maxCols - 1, maxCol),
+                    };
                 }
                 
                 function getColumnName(index) {
@@ -519,10 +561,23 @@
                 }
                 
                 @media print {
+                    @page {
+                        size: auto;
+                        margin: 12mm;
+                    }
+
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        width: 100% !important;
+                    }
+
                     .excel-container-view {
                         border: none !important;
                         background: #fff !important;
                         overflow: visible !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
                     }
 
                     /* Hide Excel row/column headers when printing */
@@ -537,14 +592,22 @@
                     /* Clean professional print: no grid lines */
                     .excel-table-view td {
                         border: none !important;
-                        font-size: 10px;
-                        padding: 4px 6px;
+                        font-size: 10px !important;
+                        padding: 2px 4px !important;
                         background: transparent !important;
                         color: #000 !important;
+                        min-width: 0 !important;
+                        line-height: 1.25 !important;
+                        white-space: normal !important;
+                        word-break: break-word !important;
+                        overflow-wrap: anywhere !important;
                     }
 
                     .excel-table-view {
                         border: none !important;
+                        width: 100% !important;
+                        table-layout: auto !important;
+                        border-collapse: collapse !important;
                     }
 
                     .excel-cell-view {
@@ -562,6 +625,11 @@
 
                     .excel-cell-view.merged-cell-view {
                         background: transparent !important;
+                    }
+
+                    .excel-table-view tr {
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
                     }
                 }
             </style>

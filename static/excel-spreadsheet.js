@@ -95,7 +95,7 @@ class ExcelSpreadsheet {
         formulaBarDiv.className = 'excel-formula-bar';
         formulaBarDiv.innerHTML = `
             <label class="formula-label">fx</label>
-            <input type="text" id="formula-input" class="formula-input" placeholder="Enter value or formula (e.g., =A1+B1)">
+            <input type="text" id="formula-input" class="formula-input" placeholder="Enter value or formula (e.g., =A1+B1, =SUMIFS(...), =XLOOKUP(...))">
         `;
         this.container.appendChild(formulaBarDiv);
 
@@ -383,6 +383,20 @@ class ExcelSpreadsheet {
         }
         this._excelListenersBound = true;
 
+        const resolveInputFromTarget = (target) => {
+            if (!target) return null;
+            if (target.classList && target.classList.contains('cell-input')) {
+                return target;
+            }
+            if (target.closest) {
+                const td = target.closest('td.excel-cell');
+                if (td) {
+                    return td.querySelector('.cell-input');
+                }
+            }
+            return null;
+        };
+
         const endDragSelect = () => {
             if (this.isSelecting) {
                 this.isSelecting = false;
@@ -391,28 +405,32 @@ class ExcelSpreadsheet {
         };
 
         this.container.addEventListener('pointerdown', (e) => {
-            if (e.target.classList.contains('cell-input')) {
+            const input = resolveInputFromTarget(e.target);
+            if (input) {
                 this.isSelecting = true;
-                this.selectionStart = e.target;
-                this.selectCell(e.target);
+                this.selectionStart = input;
+                this.selectCell(input);
                 this.container.classList.add('is-selecting');
             }
         });
 
         this.container.addEventListener('pointermove', (e) => {
-            if (this.isSelecting && e.target.classList.contains('cell-input')) {
-                this.selectRange(this.selectionStart, e.target);
+            if (!this.isSelecting) return;
+            const input = resolveInputFromTarget(e.target);
+            if (input) {
+                this.selectRange(this.selectionStart, input);
             }
         });
 
         this.container.addEventListener('focusin', (e) => {
-            if (!e.target.classList.contains('cell-input')) {
+            const input = resolveInputFromTarget(e.target);
+            if (!input) {
                 return;
             }
             if (this.isSelecting) {
                 return;
             }
-            this.selectCell(e.target);
+            this.selectCell(input);
         });
 
         document.addEventListener('pointerup', endDragSelect);
@@ -621,7 +639,11 @@ class ExcelSpreadsheet {
         // Match references like A1, $A$1, A$1, $A1.
         const cellRefPattern = /(\$?[A-Z]+)(\$?\d+)/g;
         
-        return formula.replace(cellRefPattern, (match, col, row) => {
+        return formula.replace(cellRefPattern, (match, col, row, offset, whole) => {
+            // Do not replace inside string literals like "A1".
+            if (this._isInsideDoubleQuotes(whole, offset)) {
+                return match;
+            }
             const cleanCol = col.replace(/\$/g, '');
             const cleanRow = row.replace(/\$/g, '');
             const cellRef = cleanCol + cleanRow;
@@ -658,9 +680,108 @@ class ExcelSpreadsheet {
         return isNaN(n) ? '0' : String(n);
     }
 
-    // Evaluate expression (supports basic math and Excel functions)
-    // Supports: +, -, *, /, (), SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, ABS, ROUND, IF, IFERROR
+    isCellReferenceToken(token) {
+        return /^(\$?[A-Z]+)(\$?\d+)$/i.test((token || '').trim());
+    }
+
+    isRangeToken(token) {
+        return /^(\$?[A-Z]+)(\$?\d+):(\$?[A-Z]+)(\$?\d+)$/i.test((token || '').trim());
+    }
+
+    _isInsideDoubleQuotes(text, index) {
+        let inQuotes = false;
+        for (let i = 0; i < index; i++) {
+            if (text[i] === '"') {
+                inQuotes = !inQuotes;
+            }
+        }
+        return inQuotes;
+    }
+
+    splitFunctionArgs(argsString) {
+        const out = [];
+        let current = '';
+        let depth = 0;
+        let inQuotes = false;
+
+        for (let i = 0; i < (argsString || '').length; i++) {
+            const ch = argsString[i];
+            if (ch === '"') {
+                inQuotes = !inQuotes;
+                current += ch;
+                continue;
+            }
+            if (!inQuotes && ch === '(') {
+                depth++;
+                current += ch;
+                continue;
+            }
+            if (!inQuotes && ch === ')') {
+                depth = Math.max(0, depth - 1);
+                current += ch;
+                continue;
+            }
+            if (!inQuotes && depth === 0 && (ch === ',' || ch === ';')) {
+                if (current.trim()) out.push(current.trim());
+                current = '';
+                continue;
+            }
+            current += ch;
+        }
+        if (current.trim()) out.push(current.trim());
+        return out;
+    }
+
+    stripOuterQuotes(text) {
+        const s = String(text || '').trim();
+        if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+            return s.slice(1, -1);
+        }
+        return s;
+    }
+
+    getCellDisplayValue(cellRef) {
+        const cell = this.cells[cellRef];
+        if (!cell) return '';
+        if (cell.display !== undefined && cell.display !== null) return String(cell.display);
+        if (cell.value !== undefined && cell.value !== null) return String(cell.value);
+        return '';
+    }
+
+    toNumber(value) {
+        const n = parseFloat(this.parseLiteralNumber(value));
+        return isNaN(n) ? 0 : n;
+    }
+
+    evaluateArg(token) {
+        const t = String(token || '').trim();
+        if (!t) return '';
+        if (t.toUpperCase() === 'TRUE') return true;
+        if (t.toUpperCase() === 'FALSE') return false;
+        if (this.isCellReferenceToken(t)) {
+            const ref = t.replace(/\$/g, '').toUpperCase();
+            return this.getCellDisplayValue(ref);
+        }
+        if (this.isRangeToken(t)) {
+            const [a, b] = t.split(':');
+            return this.getCellRange(a.replace(/\$/g, '').toUpperCase(), b.replace(/\$/g, '').toUpperCase());
+        }
+        if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+        if (t.startsWith('"') && t.endsWith('"')) return this.stripOuterQuotes(t);
+        if (t.startsWith('=')) {
+            return this.evaluateExpression(t.substring(1));
+        }
+        return t;
+    }
+
+    // Evaluate expression (supports improved Excel-like math and functions)
     evaluateExpression(expression) {
+        expression = String(expression || '').trim();
+        if (!expression) return '';
+
+        // Excel exponent operator
+        expression = expression.replace(/\^/g, '**');
+
         // Handle SUM function
         expression = this.handleSumFunction(expression);
         
@@ -679,11 +800,42 @@ class ExcelSpreadsheet {
         // Handle COUNTA function
         expression = this.handleCountAFunction(expression);
 
+        // Additional statistical/math functions
+        expression = this.handleMedianFunction(expression);
+        expression = this.handleProductFunction(expression);
+        expression = this.handleModFunction(expression);
+        expression = this.handlePowerFunction(expression);
+        expression = this.handleSqrtFunction(expression);
+
+        // Criteria/range functions
+        expression = this.handleSumIfFunction(expression);
+        expression = this.handleCountIfFunction(expression);
+        expression = this.handleSumIfsFunction(expression);
+        expression = this.handleCountIfsFunction(expression);
+
         // Handle ABS function
         expression = this.handleAbsFunction(expression);
 
         // Handle ROUND function
         expression = this.handleRoundFunction(expression);
+
+        // Text functions
+        expression = this.handleLenFunction(expression);
+        expression = this.handleLeftFunction(expression);
+        expression = this.handleRightFunction(expression);
+        expression = this.handleConcatFunction(expression);
+        expression = this.handleUpperFunction(expression);
+        expression = this.handleLowerFunction(expression);
+        expression = this.handleTrimFunction(expression);
+
+        // Date/lookup functions
+        expression = this.handleTodayFunction(expression);
+        expression = this.handleNowFunction(expression);
+        expression = this.handleYearFunction(expression);
+        expression = this.handleMonthFunction(expression);
+        expression = this.handleDayFunction(expression);
+        expression = this.handleVlookupFunction(expression);
+        expression = this.handleXlookupFunction(expression);
 
         // Replace remaining standalone cell references (e.g., A1+B1).
         // Do this AFTER range functions so refs like D6:D7 are preserved for SUM.
@@ -692,14 +844,25 @@ class ExcelSpreadsheet {
         // Handle IF function (basic support)
         expression = this.handleIfFunction(expression);
 
+        // Logical helpers
+        expression = this.handleAndFunction(expression);
+        expression = this.handleOrFunction(expression);
+        expression = this.handleNotFunction(expression);
+
         // Handle IFERROR function
         expression = this.handleIfErrorFunction(expression);
 
         try {
             // Use Function constructor for safe evaluation
             const result = new Function('return ' + expression)();
-            
-            // Check for invalid results
+
+            // Keep text/boolean results as-is (Excel-like behavior)
+            if (typeof result === 'string') {
+                return result;
+            }
+            if (typeof result === 'boolean') {
+                return result ? 'TRUE' : 'FALSE';
+            }
             if (result === null || result === undefined || isNaN(result) || !isFinite(result)) {
                 return '';
             }
@@ -716,7 +879,7 @@ class ExcelSpreadsheet {
         const sumPattern = /SUM\(([^)]+)\)/gi;
         return expression.replace(sumPattern, (match, args) => {
             const values = this.getFunctionArgValues(args);
-            const sum = values.reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
+            const sum = values.reduce((acc, val) => acc + this.toNumber(val), 0);
             return sum;
         });
     }
@@ -726,7 +889,7 @@ class ExcelSpreadsheet {
         const avgPattern = /AVERAGE\(([^)]+)\)/gi;
         return expression.replace(avgPattern, (match, args) => {
             const values = this.getFunctionArgValues(args);
-            const sum = values.reduce((acc, val) => acc + (parseFloat(val) || 0), 0);
+            const sum = values.reduce((acc, val) => acc + this.toNumber(val), 0);
             const avg = values.length ? (sum / values.length) : 0;
             return avg;
         });
@@ -737,7 +900,7 @@ class ExcelSpreadsheet {
         const minPattern = /MIN\(([^)]+)\)/gi;
         return expression.replace(minPattern, (match, args) => {
             const values = this.getFunctionArgValues(args);
-            const numbers = values.map(v => parseFloat(v) || 0).filter(n => !isNaN(n));
+            const numbers = values.map(v => this.toNumber(v)).filter(n => !isNaN(n));
             return numbers.length > 0 ? Math.min(...numbers) : 0;
         });
     }
@@ -747,7 +910,7 @@ class ExcelSpreadsheet {
         const maxPattern = /MAX\(([^)]+)\)/gi;
         return expression.replace(maxPattern, (match, args) => {
             const values = this.getFunctionArgValues(args);
-            const numbers = values.map(v => parseFloat(v) || 0).filter(n => !isNaN(n));
+            const numbers = values.map(v => this.toNumber(v)).filter(n => !isNaN(n));
             return numbers.length > 0 ? Math.max(...numbers) : 0;
         });
     }
@@ -757,7 +920,12 @@ class ExcelSpreadsheet {
         const countPattern = /COUNT\(([^)]+)\)/gi;
         return expression.replace(countPattern, (match, args) => {
             const values = this.getFunctionArgValues(args);
-            const numbers = values.filter(v => v !== '' && !isNaN(parseFloat(v)));
+            const numbers = values.filter((v) => {
+                const raw = String(v ?? '').trim();
+                if (!raw) return false;
+                const compact = raw.replace(/[,\s₱$€£¥]/g, '').replace(/%$/, '');
+                return /^-?\d+(\.\d+)?$/.test(compact);
+            });
             return numbers.length;
         });
     }
@@ -784,37 +952,200 @@ class ExcelSpreadsheet {
     handleRoundFunction(expression) {
         const roundPattern = /ROUND\(([^,]+),([^)]+)\)/gi;
         return expression.replace(roundPattern, (match, numExpr, decExpr) => {
-            const n = parseFloat(numExpr);
-            const d = parseInt(decExpr, 10);
+            const n = this.toNumber(this.evaluateArg(numExpr));
+            const d = parseInt(this.evaluateArg(decExpr), 10);
             if (isNaN(n)) return 0;
             const decimals = isNaN(d) ? 0 : d;
             return Number(n).toFixed(decimals);
         });
     }
 
+    handleMedianFunction(expression) {
+        const pattern = /MEDIAN\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, args) => {
+            const nums = this.getFunctionArgValues(args).map(v => this.toNumber(v)).filter(v => !isNaN(v)).sort((a, b) => a - b);
+            if (!nums.length) return 0;
+            const mid = Math.floor(nums.length / 2);
+            return nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+        });
+    }
+
+    handleProductFunction(expression) {
+        const pattern = /PRODUCT\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, args) => {
+            const nums = this.getFunctionArgValues(args).map(v => this.toNumber(v)).filter(v => !isNaN(v));
+            if (!nums.length) return 0;
+            return nums.reduce((acc, n) => acc * n, 1);
+        });
+    }
+
+    handleModFunction(expression) {
+        const pattern = /MOD\(([^,]+),([^)]+)\)/gi;
+        return expression.replace(pattern, (match, a, b) => {
+            const n1 = this.toNumber(this.evaluateArg(a));
+            const n2 = this.toNumber(this.evaluateArg(b));
+            if (!n2) return 0;
+            return n1 % n2;
+        });
+    }
+
+    handlePowerFunction(expression) {
+        const pattern = /POWER\(([^,]+),([^)]+)\)/gi;
+        return expression.replace(pattern, (match, a, b) => {
+            const base = this.toNumber(this.evaluateArg(a));
+            const exp = this.toNumber(this.evaluateArg(b));
+            return Math.pow(base, exp);
+        });
+    }
+
+    handleSqrtFunction(expression) {
+        const pattern = /SQRT\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, a) => {
+            const n = this.toNumber(this.evaluateArg(a));
+            return n < 0 ? 0 : Math.sqrt(n);
+        });
+    }
+
     // Supports function args like: A1:A10, A1, B2, 100, A1:B2, C5
     getFunctionArgValues(argsString) {
-        const tokens = argsString.split(/[;,]/).map(t => t.trim()).filter(Boolean);
+        const tokens = this.splitFunctionArgs(argsString);
         const values = [];
 
         tokens.forEach((token) => {
             const normalized = token.replace(/\$/g, '').toUpperCase();
             const rangeMatch = normalized.match(/^([A-Z]+\d+):([A-Z]+\d+)$/i);
             const cellMatch = normalized.match(/^([A-Z]+\d+)$/i);
-            const num = parseFloat(token);
 
             if (rangeMatch) {
                 values.push(...this.getCellRange(rangeMatch[1].toUpperCase(), rangeMatch[2].toUpperCase()));
             } else if (cellMatch) {
                 const ref = cellMatch[1].toUpperCase();
                 const cell = this.cells[ref];
-                values.push(cell ? (cell.display || cell.value || '0') : '0');
-            } else if (!isNaN(num)) {
-                values.push(num);
+                values.push(cell ? (cell.display || cell.value || '') : '');
+            } else {
+                values.push(this.evaluateArg(token));
             }
         });
 
         return values;
+    }
+
+    _criteriaMatch(value, criteriaRaw) {
+        const criteria = String(this.stripOuterQuotes(criteriaRaw || '')).trim();
+        const text = String(value === null || value === undefined ? '' : value);
+        const asNum = this.toNumber(value);
+
+        const opMatch = criteria.match(/^(<=|>=|<>|=|<|>)(.*)$/);
+        if (opMatch) {
+            const op = opMatch[1];
+            const rightRaw = opMatch[2].trim();
+            const rightNum = parseFloat(this.parseLiteralNumber(rightRaw));
+            const rightText = rightRaw;
+
+            if (!isNaN(asNum) && !isNaN(rightNum)) {
+                if (op === '<') return asNum < rightNum;
+                if (op === '>') return asNum > rightNum;
+                if (op === '<=') return asNum <= rightNum;
+                if (op === '>=') return asNum >= rightNum;
+                if (op === '=') return asNum === rightNum;
+                if (op === '<>') return asNum !== rightNum;
+            }
+            if (op === '=') return text === rightText;
+            if (op === '<>') return text !== rightText;
+            if (op === '<') return text < rightText;
+            if (op === '>') return text > rightText;
+            if (op === '<=') return text <= rightText;
+            if (op === '>=') return text >= rightText;
+        }
+
+        return text === criteria;
+    }
+
+    handleSumIfFunction(expression) {
+        const pattern = /SUMIF\(([^,]+),([^,]+),([^)]+)\)/gi;
+        return expression.replace(pattern, (match, rangeArg, criteriaArg, sumRangeArg) => {
+            const rangeToken = String(rangeArg || '').trim().replace(/\$/g, '').toUpperCase();
+            const sumToken = String(sumRangeArg || '').trim().replace(/\$/g, '').toUpperCase();
+            if (!this.isRangeToken(rangeToken) || !this.isRangeToken(sumToken)) return 0;
+            const [r1, r2] = rangeToken.split(':');
+            const [s1, s2] = sumToken.split(':');
+            const rangeVals = this.getCellRange(r1, r2);
+            const sumVals = this.getCellRange(s1, s2);
+            const len = Math.min(rangeVals.length, sumVals.length);
+            let total = 0;
+            for (let i = 0; i < len; i++) {
+                if (this._criteriaMatch(rangeVals[i], criteriaArg)) {
+                    total += this.toNumber(sumVals[i]);
+                }
+            }
+            return total;
+        });
+    }
+
+    handleCountIfFunction(expression) {
+        const pattern = /COUNTIF\(([^,]+),([^)]+)\)/gi;
+        return expression.replace(pattern, (match, rangeArg, criteriaArg) => {
+            const rangeToken = String(rangeArg || '').trim().replace(/\$/g, '').toUpperCase();
+            if (!this.isRangeToken(rangeToken)) return 0;
+            const [r1, r2] = rangeToken.split(':');
+            const rangeVals = this.getCellRange(r1, r2);
+            return rangeVals.filter(v => this._criteriaMatch(v, criteriaArg)).length;
+        });
+    }
+
+    handleSumIfsFunction(expression) {
+        const pattern = /SUMIFS\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, args) => {
+            const parts = this.splitFunctionArgs(args);
+            if (parts.length < 3 || parts.length % 2 === 0) return 0;
+            const sumToken = String(parts[0] || '').trim().replace(/\$/g, '').toUpperCase();
+            if (!this.isRangeToken(sumToken)) return 0;
+            const [s1, s2] = sumToken.split(':');
+            const sumVals = this.getCellRange(s1, s2);
+
+            const criteriaSets = [];
+            for (let i = 1; i < parts.length; i += 2) {
+                const rToken = String(parts[i] || '').trim().replace(/\$/g, '').toUpperCase();
+                if (!this.isRangeToken(rToken)) return 0;
+                const [a, b] = rToken.split(':');
+                criteriaSets.push({
+                    values: this.getCellRange(a, b),
+                    criteria: parts[i + 1],
+                });
+            }
+
+            let total = 0;
+            for (let idx = 0; idx < sumVals.length; idx++) {
+                const ok = criteriaSets.every(set => this._criteriaMatch(set.values[idx], set.criteria));
+                if (ok) total += this.toNumber(sumVals[idx]);
+            }
+            return total;
+        });
+    }
+
+    handleCountIfsFunction(expression) {
+        const pattern = /COUNTIFS\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, args) => {
+            const parts = this.splitFunctionArgs(args);
+            if (parts.length < 2 || parts.length % 2 !== 0) return 0;
+            const criteriaSets = [];
+            for (let i = 0; i < parts.length; i += 2) {
+                const rToken = String(parts[i] || '').trim().replace(/\$/g, '').toUpperCase();
+                if (!this.isRangeToken(rToken)) return 0;
+                const [a, b] = rToken.split(':');
+                criteriaSets.push({
+                    values: this.getCellRange(a, b),
+                    criteria: parts[i + 1],
+                });
+            }
+            const len = criteriaSets[0]?.values?.length || 0;
+            let count = 0;
+            for (let idx = 0; idx < len; idx++) {
+                const ok = criteriaSets.every(set => this._criteriaMatch(set.values[idx], set.criteria));
+                if (ok) count++;
+            }
+            return count;
+        });
     }
     
     // Handle IF function - basic support: IF(condition, true_value, false_value)
@@ -824,7 +1155,9 @@ class ExcelSpreadsheet {
         return expression.replace(ifPattern, (match, condition, trueVal, falseVal) => {
             try {
                 // Evaluate condition
-                const condResult = new Function('return ' + condition)();
+                const normalizedCondition = String(condition || '')
+                    .replace(/(^|[^<>!=])=([^=])/g, '$1==$2');
+                const condResult = new Function('return ' + normalizedCondition)();
                 return condResult ? trueVal.trim() : falseVal.trim();
             } catch (e) {
                 return 0;
@@ -845,6 +1178,194 @@ class ExcelSpreadsheet {
             } catch (e) {
                 return fallbackExpr.trim();
             }
+        });
+    }
+
+    handleLenFunction(expression) {
+        const pattern = /LEN\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, arg) => {
+            const value = this.evaluateArg(arg);
+            return String(value ?? '').length;
+        });
+    }
+
+    handleLeftFunction(expression) {
+        const pattern = /LEFT\(([^,]+),([^)]+)\)/gi;
+        return expression.replace(pattern, (match, textArg, nArg) => {
+            const text = String(this.evaluateArg(textArg) ?? '');
+            const n = Math.max(0, parseInt(this.evaluateArg(nArg), 10) || 0);
+            return `"${text.substring(0, n)}"`;
+        });
+    }
+
+    handleRightFunction(expression) {
+        const pattern = /RIGHT\(([^,]+),([^)]+)\)/gi;
+        return expression.replace(pattern, (match, textArg, nArg) => {
+            const text = String(this.evaluateArg(textArg) ?? '');
+            const n = Math.max(0, parseInt(this.evaluateArg(nArg), 10) || 0);
+            return `"${text.substring(Math.max(0, text.length - n))}"`;
+        });
+    }
+
+    handleConcatFunction(expression) {
+        const pattern = /(CONCAT|CONCATENATE)\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, fn, args) => {
+            const parts = this.splitFunctionArgs(args);
+            const text = parts.map(p => this.evaluateArg(p)).map(v => String(v ?? '')).join('');
+            return `"${text.replace(/"/g, '\\"')}"`;
+        });
+    }
+
+    handleUpperFunction(expression) {
+        const pattern = /UPPER\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, arg) => `"${String(this.evaluateArg(arg) ?? '').toUpperCase()}"`);
+    }
+
+    handleLowerFunction(expression) {
+        const pattern = /LOWER\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, arg) => `"${String(this.evaluateArg(arg) ?? '').toLowerCase()}"`);
+    }
+
+    handleTrimFunction(expression) {
+        const pattern = /TRIM\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, arg) => `"${String(this.evaluateArg(arg) ?? '').replace(/\s+/g, ' ').trim()}"`);
+    }
+
+    handleTodayFunction(expression) {
+        const pattern = /TODAY\(\)/gi;
+        return expression.replace(pattern, () => `"${new Date().toISOString().slice(0, 10)}"`);
+    }
+
+    handleNowFunction(expression) {
+        const pattern = /NOW\(\)/gi;
+        return expression.replace(pattern, () => `"${new Date().toISOString()}"`);
+    }
+
+    handleYearFunction(expression) {
+        const pattern = /YEAR\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, arg) => {
+            const d = new Date(String(this.evaluateArg(arg)));
+            return isNaN(d.getTime()) ? 0 : d.getFullYear();
+        });
+    }
+
+    handleMonthFunction(expression) {
+        const pattern = /MONTH\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, arg) => {
+            const d = new Date(String(this.evaluateArg(arg)));
+            return isNaN(d.getTime()) ? 0 : (d.getMonth() + 1);
+        });
+    }
+
+    handleDayFunction(expression) {
+        const pattern = /DAY\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, arg) => {
+            const d = new Date(String(this.evaluateArg(arg)));
+            return isNaN(d.getTime()) ? 0 : d.getDate();
+        });
+    }
+
+    _lookupFromRange(lookupValue, lookupRangeToken, returnRangeToken) {
+        const lk = String(lookupRangeToken || '').trim().replace(/\$/g, '').toUpperCase();
+        const rt = String(returnRangeToken || '').trim().replace(/\$/g, '').toUpperCase();
+        if (!this.isRangeToken(lk) || !this.isRangeToken(rt)) return '';
+        const [l1, l2] = lk.split(':');
+        const [r1, r2] = rt.split(':');
+        const lookupValues = this.getCellRange(l1, l2);
+        const returnValues = this.getCellRange(r1, r2);
+        const key = String(lookupValue ?? '');
+        for (let i = 0; i < lookupValues.length; i++) {
+            if (String(lookupValues[i] ?? '') === key) {
+                return returnValues[i] ?? '';
+            }
+        }
+        return '';
+    }
+
+    handleVlookupFunction(expression) {
+        const pattern = /VLOOKUP\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, args) => {
+            const parts = this.splitFunctionArgs(args);
+            if (parts.length < 3) return '""';
+            const lookupValue = this.evaluateArg(parts[0]);
+            const tableToken = String(parts[1] || '').trim().replace(/\$/g, '').toUpperCase();
+            const columnIndex = parseInt(this.evaluateArg(parts[2]), 10);
+            if (!this.isRangeToken(tableToken) || isNaN(columnIndex) || columnIndex < 1) return '""';
+
+            const [sRef, eRef] = tableToken.split(':');
+            const startCol = this.getColumnIndex(sRef.match(/[A-Z]+/)[0]);
+            const startRow = parseInt(sRef.match(/\d+/)[0], 10) - 1;
+            const endCol = this.getColumnIndex(eRef.match(/[A-Z]+/)[0]);
+            const endRow = parseInt(eRef.match(/\d+/)[0], 10) - 1;
+            const targetCol = startCol + (columnIndex - 1);
+            if (targetCol > endCol) return '""';
+
+            for (let row = startRow; row <= endRow; row++) {
+                const keyRef = this.getCellReference(row, startCol);
+                const keyVal = this.getCellDisplayValue(keyRef);
+                if (String(keyVal ?? '') === String(lookupValue ?? '')) {
+                    const resultRef = this.getCellReference(row, targetCol);
+                    const result = this.getCellDisplayValue(resultRef);
+                    const asNum = parseFloat(this.parseLiteralNumber(result));
+                    return isNaN(asNum) ? `"${String(result ?? '').replace(/"/g, '\\"')}"` : asNum;
+                }
+            }
+            return '""';
+        });
+    }
+
+    handleXlookupFunction(expression) {
+        const pattern = /XLOOKUP\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, args) => {
+            const parts = this.splitFunctionArgs(args);
+            if (parts.length < 3) return '""';
+            const lookupValue = this.evaluateArg(parts[0]);
+            const lookupRange = parts[1];
+            const returnRange = parts[2];
+            const notFound = parts[3] !== undefined ? this.evaluateArg(parts[3]) : '';
+            const result = this._lookupFromRange(lookupValue, lookupRange, returnRange);
+            const finalValue = (result === '' || result === undefined || result === null) ? notFound : result;
+            const asNum = parseFloat(this.parseLiteralNumber(finalValue));
+            return isNaN(asNum)
+                ? `"${String(finalValue ?? '').replace(/"/g, '\\"')}"`
+                : asNum;
+        });
+    }
+
+    handleAndFunction(expression) {
+        const pattern = /AND\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, args) => {
+            const vals = this.splitFunctionArgs(args).map(a => this.evaluateArg(a));
+            const ok = vals.every(v => {
+                if (typeof v === 'boolean') return v;
+                if (typeof v === 'number') return v !== 0;
+                return String(v).trim().toUpperCase() === 'TRUE' || String(v).trim() !== '';
+            });
+            return ok ? 'true' : 'false';
+        });
+    }
+
+    handleOrFunction(expression) {
+        const pattern = /OR\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, args) => {
+            const vals = this.splitFunctionArgs(args).map(a => this.evaluateArg(a));
+            const ok = vals.some(v => {
+                if (typeof v === 'boolean') return v;
+                if (typeof v === 'number') return v !== 0;
+                return String(v).trim().toUpperCase() === 'TRUE';
+            });
+            return ok ? 'true' : 'false';
+        });
+    }
+
+    handleNotFunction(expression) {
+        const pattern = /NOT\(([^)]+)\)/gi;
+        return expression.replace(pattern, (match, arg) => {
+            const v = this.evaluateArg(arg);
+            const boolVal = (typeof v === 'boolean')
+                ? v
+                : (typeof v === 'number' ? v !== 0 : String(v).trim().toUpperCase() === 'TRUE');
+            return (!boolVal) ? 'true' : 'false';
         });
     }
 
@@ -911,21 +1432,42 @@ class ExcelSpreadsheet {
 
         switch (e.key) {
             case 'ArrowUp':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    newRow = 0;
+                    break;
+                }
                 e.preventDefault();
                 newRow = Math.max(0, row - 1);
                 break;
             case 'ArrowDown':
             case 'Enter':
                 e.preventDefault();
-                newRow = Math.min(this.rows - 1, row + 1);
+                if (e.shiftKey) {
+                    newRow = Math.max(0, row - 1);
+                } else if (e.ctrlKey && e.key === 'ArrowDown') {
+                    newRow = this.rows - 1;
+                } else {
+                    newRow = Math.min(this.rows - 1, row + 1);
+                }
                 break;
             case 'ArrowLeft':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    newCol = 0;
+                    break;
+                }
                 if (e.target.selectionStart === 0) {
                     e.preventDefault();
                     newCol = Math.max(0, col - 1);
                 }
                 break;
             case 'ArrowRight':
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    newCol = this.cols - 1;
+                    break;
+                }
                 if (e.target.selectionStart === e.target.value.length) {
                     e.preventDefault();
                     newCol = Math.min(this.cols - 1, col + 1);
@@ -939,6 +1481,22 @@ class ExcelSpreadsheet {
                     newCol = Math.min(this.cols - 1, col + 1);
                 }
                 break;
+            case 'Home':
+                e.preventDefault();
+                newCol = 0;
+                break;
+            case 'End':
+                e.preventDefault();
+                newCol = this.cols - 1;
+                break;
+            case 'F2':
+                // Excel-like: edit selected formula/value in formula bar
+                e.preventDefault();
+                if (this.formulaBar) {
+                    this.formulaBar.focus();
+                    this.formulaBar.select();
+                }
+                return;
         }
 
         if (newRow !== row || newCol !== col) {
