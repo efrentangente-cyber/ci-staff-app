@@ -1526,36 +1526,63 @@ def load_user(user_id):
         uid = int(user_id)
     except (TypeError, ValueError):
         return None
-    if has_request_context():
-        if getattr(g, '_login_user_id', None) == uid and getattr(g, '_login_user_obj', None) is not None:
-            return g._login_user_obj
-    conn = get_db()
-    row = conn.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
-    if row:
-        normalized_role = normalize_role(row['role'])
-        effective_role = normalized_role if normalized_role else row['role']
-        if normalized_role and normalized_role != row['role']:
-            try:
-                conn.execute('UPDATE users SET role=? WHERE id=?', (normalized_role, uid))
-                conn.commit()
-            except Exception as role_update_error:
-                print(f"⚠️  Role normalization warning (user_loader): {role_update_error}")
-        signature_path = row['signature_path'] if 'signature_path' in row.keys() else None
-        backup_email = row['backup_email'] if 'backup_email' in row.keys() else None
-        profile_photo = row['profile_photo'] if 'profile_photo' in row.keys() else None
-        assigned_route = row['assigned_route'] if 'assigned_route' in row.keys() else None
-        permissions = row['permissions'] if 'permissions' in row.keys() else None
-        conn.close()
-        user = User(
-            row['id'], row['email'], row['name'], effective_role, signature_path,
-            backup_email, profile_photo, assigned_route, permissions,
-        )
+    try:
         if has_request_context():
-            g._login_user_id = uid
-            g._login_user_obj = user
-        return user
-    conn.close()
-    return None
+            if getattr(g, '_login_user_id', None) == uid and getattr(g, '_login_user_obj', None) is not None:
+                return g._login_user_obj
+        conn = get_db()
+        try:
+            row = conn.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+            if not row:
+                return None
+            normalized_role = normalize_role(row['role'] if 'role' in row.keys() else None)
+            source_role = row['role'] if 'role' in row.keys() else None
+            effective_role = normalized_role or source_role or 'loan_staff'
+            if normalized_role and normalized_role != source_role:
+                try:
+                    conn.execute('UPDATE users SET role=? WHERE id=?', (normalized_role, uid))
+                    conn.commit()
+                except Exception as role_update_error:
+                    print(f"⚠️  Role normalization warning (user_loader): {role_update_error}")
+            signature_path = row['signature_path'] if 'signature_path' in row.keys() else None
+            backup_email = row['backup_email'] if 'backup_email' in row.keys() else None
+            profile_photo = row['profile_photo'] if 'profile_photo' in row.keys() else None
+            assigned_route = row['assigned_route'] if 'assigned_route' in row.keys() else None
+            permissions = row['permissions'] if 'permissions' in row.keys() else None
+            user = User(
+                row['id'], row['email'], row['name'], effective_role, signature_path,
+                backup_email, profile_photo, assigned_route, permissions,
+            )
+            if has_request_context():
+                g._login_user_id = uid
+                g._login_user_obj = user
+            return user
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    except Exception as load_err:
+        app.logger.exception('load_user failed: %s', load_err)
+        return None
+
+
+@app.errorhandler(500)
+def handle_internal_server_error(e):
+    """Prevent raw 500 pages and guide user back safely."""
+    app.logger.exception('Unhandled server error: %s', e)
+    is_ajax = (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        or request.path.startswith('/api/')
+        or request.is_json
+    )
+    if is_ajax:
+        return jsonify({'success': False, 'error': 'server_error'}), 500
+    flash('Temporary server issue detected. Please try again.', 'warning')
+    try:
+        return redirect(url_for('index'))
+    except Exception:
+        return 'Temporary server issue. Please reload.', 500
 
 # Add security headers to prevent caching of authenticated pages
 @app.after_request
