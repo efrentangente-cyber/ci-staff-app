@@ -2106,8 +2106,17 @@ def submit_application():
     except Exception as e:
         print(f"WARNING loading CI staff list for submit page: {e}")
         ci_staff_list = []
-    unread_count = get_unread_notification_count(current_user.id)
-    return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
+    try:
+        unread_count = get_unread_notification_count(current_user.id)
+    except Exception as e:
+        print(f"WARNING loading unread notifications for submit page: {e}")
+        unread_count = 0
+    try:
+        return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
+    except Exception as e:
+        app.logger.exception("submit_application GET render failed: %s", e)
+        flash('Submit Application page encountered a temporary issue. Please try again in a moment.', 'warning')
+        return redirect(url_for('loan_dashboard'))
 
 
 @app.route('/api/member_application_prefill')
@@ -2211,9 +2220,7 @@ def ci_dashboard():
         WHERE la.assigned_ci_staff = ?
         ORDER BY la.submitted_at ASC
     ''', (current_user.id,)).fetchall()
-    row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
-    unread_count = row['count'] if row else 0
+    unread_count = get_unread_notification_count(current_user.id)
     conn.close()
     return render_template('ci_dashboard.html', applications=applications, unread_count=unread_count)
 
@@ -2324,14 +2331,13 @@ def ci_checklist_wizard(id):
         return redirect(url_for('ci_dashboard'))
 
     # Ensure CI only accesses assigned application.
-    if app_data.get('assigned_ci_staff') != current_user.id:
+    assigned_ci_staff = app_data['assigned_ci_staff'] if 'assigned_ci_staff' in app_data.keys() else None
+    if assigned_ci_staff != current_user.id:
         flash('This application is not assigned to your account.', 'warning')
         conn.close()
         return redirect(url_for('ci_dashboard'))
-    
-    row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
-    unread_count = row['count'] if row else 0
+
+    unread_count = get_unread_notification_count(current_user.id)
     prefill_data = _build_ci_prefill_data(app_data, current_user.name)
 
     conn.close()
@@ -2375,11 +2381,16 @@ def ci_review_application(id):
         return redirect(url_for('ci_dashboard'))
     
     # Get uploaded documents
-    documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC', (id,)).fetchall()
-    
-    row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
-    unread_count = row['count'] if row else 0
+    try:
+        documents = conn.execute(
+            'SELECT * FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC',
+            (id,),
+        ).fetchall()
+    except Exception as doc_err:
+        print(f"WARNING loading CI documents for app {id}: {doc_err}")
+        documents = []
+
+    unread_count = get_unread_notification_count(current_user.id)
     conn.close()
     
     return render_template('ci_review_application.html', 
@@ -2509,7 +2520,12 @@ def submit_ci_checklist(id):
     conn = get_db()
     try:
         app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
-        if not app_data or app_data.get('assigned_ci_staff') != current_user.id:
+        if not app_data:
+            flash('Application not found', 'danger')
+            return redirect(url_for('ci_dashboard'))
+
+        app_data_dict = dict(app_data)
+        if app_data_dict.get('assigned_ci_staff') != current_user.id:
             flash('Application not found', 'danger')
             return redirect(url_for('ci_dashboard'))
 
@@ -2569,28 +2585,32 @@ def submit_ci_checklist(id):
                     (id, filename, filepath, current_user.id)
                 )
 
-        conn.execute('''
-            UPDATE users SET current_workload =
-                CASE WHEN COALESCE(current_workload, 0) < 1 THEN 0 ELSE COALESCE(current_workload, 0) - 1 END
-            WHERE id=?
-        ''', (current_user.id,))
+        try:
+            conn.execute('''
+                UPDATE users SET current_workload =
+                    CASE WHEN COALESCE(current_workload, 0) < 1 THEN 0 ELSE COALESCE(current_workload, 0) - 1 END
+                WHERE id=?
+            ''', (current_user.id,))
+        except Exception as wl_err:
+            # Backward compatibility for schemas that don't have current_workload yet.
+            app.logger.debug('Skipping workload update during CI submit: %s', wl_err)
 
         conn.commit()
 
         try:
-            la = float(app_data.get('loan_amount') or 0)
+            la = float(app_data_dict.get('loan_amount') or 0)
         except (TypeError, ValueError):
             la = 0.0
         try:
             try:
-                _ci_sb = app_data['submitted_by'] if app_data else None
+                _ci_sb = app_data_dict.get('submitted_by')
                 _ci_sb = int(_ci_sb) if _ci_sb is not None else None
             except (KeyError, TypeError, ValueError):
                 _ci_sb = None
             socketio.emit('application_updated', {
                 'id': id,
                 'status': 'ci_completed',
-                'member_name': app_data.get('member_name') or '',
+                'member_name': app_data_dict.get('member_name') or '',
                 'loan_amount': la,
                 'submitted_by': _ci_sb,
                 'timestamp': now_ph().isoformat()
@@ -2598,16 +2618,23 @@ def submit_ci_checklist(id):
         except Exception as sock_err:
             app.logger.debug('socket emit after ci submit: %s', sock_err)
 
-        notifiers = conn.execute('''
-            SELECT id FROM users
-            WHERE is_approved = 1 AND role IN ('loan_officer', 'admin')
-            ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id
-        ''').fetchall() or []
+        try:
+            notifiers = conn.execute('''
+                SELECT id FROM users
+                WHERE is_approved = 1 AND role IN ('loan_officer', 'admin')
+                ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id
+            ''').fetchall() or []
+        except Exception:
+            notifiers = conn.execute('''
+                SELECT id FROM users
+                WHERE role IN ('loan_officer', 'admin')
+                ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id
+            ''').fetchall() or []
         for row in notifiers:
             try:
                 enqueue_notification(
                     int(row['id']),
-                    f'CI interview completed for: {app_data.get("member_name") or "Application"}',
+                    f'CI interview completed for: {app_data_dict.get("member_name") or "Application"}',
                     f'/admin/application/{id}'
                 )
             except Exception:
