@@ -1058,8 +1058,6 @@ def _can_fallback_to_textbelt(semaphore_error):
         'message cannot start with test',
         'could not parse philippine mobile number',
         'invalid or empty phone number',
-        'not yet been approved for sending messages',
-        'complete your account profile',
     )
     return not any(marker in err for marker in blocked_markers)
 
@@ -1068,15 +1066,39 @@ def _friendly_sms_error(raw_error):
     """Normalize provider errors into a concise operator-friendly message."""
     err = (raw_error or '').strip()
     low = err.lower()
+
+    def _dedupe_chunks(text):
+        # Remove duplicate repeated chunks from provider messages.
+        normalized = (text or '').replace('\n', ' ').strip()
+        if not normalized:
+            return ''
+        tokens = [t.strip() for t in re.split(r'[;]+', normalized) if t.strip()]
+        seen = set()
+        out = []
+        for t in tokens:
+            k = t.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(t)
+        collapsed = '; '.join(out)
+        if len(collapsed) <= 500:
+            return collapsed
+        return collapsed[:500]
+
     if not err:
         return 'SMS could not be sent.'
-    if 'not yet been approved for sending messages' in low:
-        return 'Semaphore account is not yet approved for sending SMS. Complete account profile/verification in Semaphore and try again.'
+    if (
+        'not yet been approved for sending messages' in low
+        or 'not yet approved for sending sms' in low
+        or 'complete your account profile' in low
+    ):
+        return 'Semaphore account not approved yet for SMS sending.'
     if 'free sms are disabled for this country' in low:
-        return 'Fallback SMS provider is unavailable for this country. Please use an approved paid SMS provider.'
+        return 'Fallback SMS provider is unavailable for this country.'
     if 'invalid or empty phone number' in low or 'could not parse philippine mobile number' in low:
         return 'Invalid member mobile number format.'
-    return err[:500]
+    return _dedupe_chunks(err)
 
 
 def send_sms(phone_number, message, **log_ctx):
@@ -2800,19 +2822,27 @@ def admin_application(id):
 
             run_background_task(_emit_admin)
             
-            # Send SMS notification to applicant
+            # Send SMS notification to applicant (synchronous / realtime result)
             sms_message = None
+            sms_sent = None
+            sms_error = None
             if app_data['member_contact']:
                 if decision == 'approved':
-                    sms_message = f"Good news! Your loan application for {app_data['member_name']} has been APPROVED. Amount: ₱{app_data['loan_amount']:,.2f}. Please visit DCCCO office for processing. - DCCCO Coop"
+                    try:
+                        _approved_amount = float(app_data['loan_amount'] or 0)
+                    except (TypeError, ValueError, KeyError):
+                        _approved_amount = 0.0
+                    sms_message = (
+                        f"Good news! Your loan application for {app_data['member_name']} has been APPROVED. "
+                        f"Amount: ₱{_approved_amount:,.2f}. Please visit DCCCO office for processing. - DCCCO Coop"
+                    )
                 elif decision == 'disapproved':
                     sms_message = f"We regret to inform you that your loan application for {app_data['member_name']} has been DISAPPROVED. Reason: {admin_notes[:100] if admin_notes else 'See office for details'}. - DCCCO Coop"
                 else:
                     sms_message = None
 
                 if sms_message:
-                    run_background_task(
-                        send_sms,
+                    sms_sent, sms_error = send_sms(
                         app_data['member_contact'],
                         sms_message,
                         loan_application_id=id,
@@ -2829,10 +2859,16 @@ def admin_application(id):
                 f'/loan/application/{id}'
             )
             
-            flash(
-                f'Application {decision}! Notifications are being sent in background.',
-                'success'
-            )
+            if sms_message:
+                if sms_sent:
+                    flash(f'Application {decision}! SMS sent in realtime.', 'success')
+                else:
+                    flash(
+                        f'Application {decision}. SMS failed: {sms_error or "Unknown SMS error"}',
+                        'warning',
+                    )
+            else:
+                flash(f'Application {decision}! Notifications are being sent in background.', 'success')
             return redirect(url_for('admin_dashboard'))
         except Exception as e:
             try:
