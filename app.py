@@ -171,11 +171,16 @@ def get_unread_message_count(user_id):
     if cached is not None:
         return cached
     conn = get_db()
-    row = conn.execute('''
-        SELECT COUNT(*) as count FROM direct_messages
-        WHERE receiver_id = ? AND is_read = 0
-    ''', (user_id,)).fetchone()
-    conn.close()
+    try:
+        row = conn.execute('''
+            SELECT COUNT(*) as count FROM direct_messages
+            WHERE receiver_id = ? AND is_read = 0
+        ''', (user_id,)).fetchone()
+    except Exception:
+        # Backward compatibility when direct_messages table/columns are not fully migrated.
+        row = None
+    finally:
+        conn.close()
     count = row['count'] if row else 0
     _set_cached_count(_message_count_cache, user_id, count)
     return count
@@ -192,12 +197,17 @@ def get_unread_notification_count(user_id):
             (user_id,)
         ).fetchone()
     except Exception:
-        # Backward compatibility for deployments where notifications.message does not exist yet.
-        row = conn.execute(
-            "SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0",
-            (user_id,)
-        ).fetchone()
-    conn.close()
+        try:
+            # Backward compatibility for deployments where notifications.message does not exist yet.
+            row = conn.execute(
+                "SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0",
+                (user_id,)
+            ).fetchone()
+        except Exception:
+            # Last resort: treat as no unread notifications instead of crashing routes.
+            row = None
+    finally:
+        conn.close()
     count = row['count'] if row else 0
     _set_cached_count(_notification_count_cache, user_id, count)
     return count
@@ -221,14 +231,17 @@ def fetch_ci_staff_list(conn, include_pending=True):
                 '''
             ).fetchall()
         except Exception:
-            rows = conn.execute(
-                f'''
-                SELECT id, name, email
-                FROM users
-                {where_role}
-                {order_by}
-                '''
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    f'''
+                    SELECT id, name, email
+                    FROM users
+                    {where_role}
+                    {order_by}
+                    '''
+                ).fetchall()
+            except Exception:
+                return []
             return [
                 {'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1}
                 for r in rows
@@ -244,14 +257,17 @@ def fetch_ci_staff_list(conn, include_pending=True):
             '''
         ).fetchall()
     except Exception:
-        rows = conn.execute(
-            f'''
-            SELECT id, name, email
-            FROM users
-            {where_role}
-            {order_by}
-            '''
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                f'''
+                SELECT id, name, email
+                FROM users
+                {where_role}
+                {order_by}
+                '''
+            ).fetchall()
+        except Exception:
+            return []
         return [{'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1} for r in rows]
 
 
@@ -2059,11 +2075,15 @@ def submit_application():
             flash(f'Error submitting application: {str(e)}', 'danger')
             return redirect(url_for('submit_application'))
     
-    conn = get_db()
-    # Get all CI staff with backward-compatible schema handling.
-    ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
+    try:
+        conn = get_db()
+        # Get all CI staff with backward-compatible schema handling.
+        ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
+        conn.close()
+    except Exception as e:
+        print(f"WARNING loading CI staff list for submit page: {e}")
+        ci_staff_list = []
     unread_count = get_unread_notification_count(current_user.id)
-    conn.close()
     return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
 
 
