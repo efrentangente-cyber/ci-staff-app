@@ -62,6 +62,7 @@
                     <label class="form-label">Member Name *</label>
                     <input type="text" name="member_name" id="member_name" class="form-control" required autocomplete="name">
                     <small class="text-muted">If this member applied before, leaving this field (tab out or click away) can load their saved contact and address.</small>
+                    <div id="existingLoanNotice" class="alert alert-warning py-2 mt-2 mb-0 small" style="display:none;"></div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Contact Number</label>
@@ -86,6 +87,10 @@
                 <input type="hidden" name="loan_type_hidden" id="loanTypeHidden">
                 <div id="loanTypeDropdown" class="list-group position-absolute" style="z-index: 1000; max-height: 300px; overflow-y: auto; display: none; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #dee2e6; border-radius: 0.25rem; margin-top: 2px;"></div>
                 <small class="text-muted">Start typing to filter loan types</small>
+                <div id="existingLoanTypeWrap" class="mt-2" style="display:none;">
+                    <label class="form-label small mb-1 text-muted">Existing loan records for this member (select to sync details)</label>
+                    <select id="existingLoanTypeSelect" class="form-select form-select-sm"></select>
+                </div>
             </div>
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-images"></i> Upload Documents/Photos (Requirements/Papers)</label>
@@ -243,8 +248,18 @@ document.addEventListener('DOMContentLoaded', function() {
 (function setupMemberApplicationPrefill() {
     const prefillUrl = {{ url_for('api_member_application_prefill') | tojson }};
     let lastPrefillName = '';
+    let cachedApps = [];
     const banner = document.getElementById('memberPrefillBanner');
     const bannerDismiss = document.getElementById('memberPrefillBannerDismiss');
+    const existingNotice = document.getElementById('existingLoanNotice');
+    const existingLoanTypeWrap = document.getElementById('existingLoanTypeWrap');
+    const existingLoanTypeSelect = document.getElementById('existingLoanTypeSelect');
+    const loanTypeIn = document.getElementById('loanTypeInput');
+    const loanTypeH = document.getElementById('loanTypeHidden');
+    const loanAmt = document.getElementById('loan_amount');
+    const loanAmtRaw = document.getElementById('loan_amount_raw');
+    const contact = document.getElementById('member_contact');
+    const address = document.getElementById('member_address');
 
     function showPrefillBanner() {
         if (banner) banner.style.display = 'block';
@@ -252,12 +267,70 @@ document.addEventListener('DOMContentLoaded', function() {
     function hidePrefillBanner() {
         if (banner) banner.style.display = 'none';
     }
+    function hideExistingNotice() {
+        if (existingNotice) existingNotice.style.display = 'none';
+    }
+    function syncFromRecord(rec) {
+        if (!rec) return;
+        if (contact && (rec.member_contact || '').trim()) {
+            contact.value = (rec.member_contact || '').trim();
+        }
+        if (address && (rec.member_address || '').trim()) {
+            address.value = (rec.member_address || '').trim();
+        }
+        if (loanTypeIn && (rec.loan_type || '').trim()) {
+            const lt = (rec.loan_type || '').trim();
+            loanTypeIn.value = lt;
+            if (loanTypeH) loanTypeH.value = lt;
+        }
+        if (loanAmt && loanAmtRaw && rec.loan_amount != null && rec.loan_amount !== '') {
+            const n = Number(rec.loan_amount);
+            if (!Number.isNaN(n) && n > 0) {
+                const raw = n % 1 === 0 ? String(Math.round(n)) : String(n);
+                loanAmt.value = raw;
+                loanAmt.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+    }
+    function renderExistingLoanTypeDropdown(apps) {
+        cachedApps = Array.isArray(apps) ? apps : [];
+        if (!existingLoanTypeSelect || !existingLoanTypeWrap) return;
+        if (!cachedApps.length) {
+            existingLoanTypeWrap.style.display = 'none';
+            existingLoanTypeSelect.innerHTML = '';
+            return;
+        }
+        existingLoanTypeSelect.innerHTML = '<option value="">-- Select existing loan type to sync details --</option>';
+        cachedApps.forEach((rec, idx) => {
+            const lt = (rec.loan_type || 'Unknown Type').trim();
+            const status = (rec.status || 'unknown').trim();
+            const amt = rec.loan_amount != null && rec.loan_amount !== ''
+                ? `₱${Number(rec.loan_amount).toLocaleString()}`
+                : 'No amount';
+            const submitted = rec.submitted_at ? String(rec.submitted_at).slice(0, 10) : '';
+            const opt = document.createElement('option');
+            opt.value = String(idx);
+            opt.textContent = submitted
+                ? `${lt} | ${amt} | ${status} | ${submitted}`
+                : `${lt} | ${amt} | ${status}`;
+            existingLoanTypeSelect.appendChild(opt);
+        });
+        existingLoanTypeWrap.style.display = 'block';
+    }
     bannerDismiss?.addEventListener('click', hidePrefillBanner);
+    existingLoanTypeSelect?.addEventListener('change', function() {
+        const idx = Number(this.value);
+        if (Number.isNaN(idx) || idx < 0 || idx >= cachedApps.length) return;
+        syncFromRecord(cachedApps[idx]);
+        showPrefillBanner();
+    });
 
     document.getElementById('member_name')?.addEventListener('input', function() {
         const t = (this.value || '').trim();
         if (t.length < 2) {
             lastPrefillName = '';
+            hideExistingNotice();
+            renderExistingLoanTypeDropdown([]);
         } else if (t !== lastPrefillName) {
             lastPrefillName = '';
         }
@@ -283,15 +356,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             lastPrefillName = name;
             if (!data.found) {
+                hideExistingNotice();
+                renderExistingLoanTypeDropdown([]);
                 return;
             }
             let any = false;
-            const contact = document.getElementById('member_contact');
-            const address = document.getElementById('member_address');
-            const loanTypeIn = document.getElementById('loanTypeInput');
-            const loanTypeH = document.getElementById('loanTypeHidden');
-            const loanAmt = document.getElementById('loan_amount');
-            const loanAmtRaw = document.getElementById('loan_amount_raw');
+            const activeCount = Number(data.active_application_count || 0);
+            if (existingNotice) {
+                existingNotice.textContent = activeCount > 0
+                    ? `Existing active loan application(s) found for this member: ${activeCount}. You can still submit a new one; select an existing loan type below to sync details.`
+                    : 'Previous loan records found for this member. Select one to sync details.';
+                existingNotice.style.display = 'block';
+            }
+            renderExistingLoanTypeDropdown(data.applications || []);
 
             if (contact && !contact.value.trim() && (data.member_contact || '').trim()) {
                 contact.value = (data.member_contact || '').trim();
@@ -844,15 +921,17 @@ function showNotification(type, message) {
 // Voice-to-Text Functionality
 let recognition = null;
 let isListening = false;
+let finalTranscript = '';
+let baseTextBeforeDictation = '';
 
 // Check if browser supports speech recognition
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
     
-    recognition.continuous = false; // Stop after one phrase
-    recognition.interimResults = false; // Only final results
-    recognition.lang = 'en-US'; // English language
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = (navigator.language || 'en-US');
     recognition.maxAlternatives = 1;
     
     const voiceInputBtn = document.getElementById('voiceInputBtn');
@@ -860,6 +939,38 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     const voiceStatus = document.getElementById('voiceStatus');
     const micIcon = document.getElementById('micIcon');
     
+    function updateVoiceButtonUI(listening) {
+        if (!voiceInputBtn || !voiceStatus || !micIcon) return;
+        voiceStatus.style.display = listening ? 'block' : 'none';
+        voiceInputBtn.classList.toggle('btn-danger', listening);
+        voiceInputBtn.classList.toggle('btn-outline-primary', !listening);
+        micIcon.classList.toggle('bi-mic-mute-fill', listening);
+        micIcon.classList.toggle('bi-mic-fill', !listening);
+        voiceInputBtn.title = listening ? 'Stop Listening' : 'Voice Input';
+    }
+
+    function startListening() {
+        if (!remarksTextarea || !recognition) return;
+        baseTextBeforeDictation = remarksTextarea.value.trim();
+        finalTranscript = '';
+        try {
+            recognition.start();
+            isListening = true;
+            updateVoiceButtonUI(true);
+        } catch (error) {
+            console.error('Speech recognition error:', error);
+            showNotification('danger', 'Failed to start voice input');
+        }
+    }
+    
+    function stopListening() {
+        if (recognition && isListening) {
+            try { recognition.stop(); } catch (_) {}
+        }
+        isListening = false;
+        updateVoiceButtonUI(false);
+    }
+
     // Start/stop voice recognition
     voiceInputBtn?.addEventListener('click', function() {
         if (isListening) {
@@ -869,43 +980,22 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         }
     });
     
-    function startListening() {
-        try {
-            recognition.start();
-            isListening = true;
-            voiceStatus.style.display = 'block';
-            voiceInputBtn.classList.remove('btn-outline-primary');
-            voiceInputBtn.classList.add('btn-danger');
-            micIcon.classList.remove('bi-mic-fill');
-            micIcon.classList.add('bi-mic-mute-fill');
-            voiceInputBtn.title = 'Stop Listening';
-        } catch (error) {
-            console.error('Speech recognition error:', error);
-            showNotification('danger', 'Failed to start voice input');
-        }
-    }
-    
-    function stopListening() {
-        recognition.stop();
-        isListening = false;
-        voiceStatus.style.display = 'none';
-        voiceInputBtn.classList.remove('btn-danger');
-        voiceInputBtn.classList.add('btn-outline-primary');
-        micIcon.classList.remove('bi-mic-mute-fill');
-        micIcon.classList.add('bi-mic-fill');
-        voiceInputBtn.title = 'Voice Input';
-    }
-    
     // Handle speech recognition results
     recognition.onresult = function(event) {
-        const transcript = event.results[0][0].transcript;
-        
-        // Append to existing text (add space if there's already text)
-        const currentText = remarksTextarea.value.trim();
-        remarksTextarea.value = currentText ? currentText + ' ' + transcript : transcript;
-        
-        showNotification('success', 'Voice input added!');
-        stopListening();
+        if (!remarksTextarea) return;
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const text = event.results[i][0].transcript || '';
+            if (event.results[i].isFinal) {
+                finalTranscript += text + ' ';
+            } else {
+                interim += text;
+            }
+        }
+        const merged = (finalTranscript + interim).trim();
+        remarksTextarea.value = baseTextBeforeDictation
+            ? `${baseTextBeforeDictation} ${merged}`.trim()
+            : merged;
     };
     
     // Handle errors
@@ -927,7 +1017,11 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     
     // Handle end of recognition
     recognition.onend = function() {
+        if (!isListening) return;
         stopListening();
+        if (finalTranscript.trim()) {
+            showNotification('success', 'Voice input added!');
+        }
     };
     
 } else {

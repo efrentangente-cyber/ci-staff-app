@@ -133,10 +133,10 @@
                     <i class="bi bi-image-fill"></i>
                 </button>
                 <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="handleImageSelect(event)">
-                <button class="icon-btn" id="voiceMsgBtn" onclick="toggleVoiceRecording()" title="Voice message">
+                <button class="icon-btn" id="voiceMsgBtn" onclick="toggleVoiceRecording()" title="Voice to text">
                     <i class="bi bi-mic-fill"></i>
                 </button>
-                <span id="recordingTimer" style="display: none; color: #ef4444; font-weight: bold; margin: 0 8px; font-size: 14px;">0:00</span>
+                <span id="recordingTimer" style="display: none; color: #ef4444; font-weight: bold; margin: 0 8px; font-size: 14px;">Listening…</span>
                 <button class="icon-btn" onclick="toggleEmojiPicker()" title="Emoji">
                     <i class="bi bi-emoji-smile-fill"></i>
                 </button>
@@ -1421,114 +1421,100 @@ function handleImageSelect(event) {
 }
 
 // ============================================
-// VOICE RECORDING FUNCTIONALITY
+// VOICE TO TEXT (DICTATION) FUNCTIONALITY
 // ============================================
-let mediaRecorder;
-let audioChunks = [];
+let dictationRecognition = null;
 let isRecording = false;
-let timerInterval;
-let seconds = 0;
-
-async function toggleVoiceRecording() {
-    if (!currentChatUserId) {
-        alert('Please select a conversation first');
-        return;
-    }
-    
-    if (isRecording) {
-        stopVoiceRecording();
-    } else {
-        startVoiceRecording();
-    }
-}
-
-async function startVoiceRecording() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        
-        mediaRecorder.ondataavailable = (event) => {
-            audioChunks.push(event.data);
-        };
-        
-        mediaRecorder.onstop = async () => {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            await sendVoiceMessage(audioBlob);
-            stream.getTracks().forEach(track => track.stop());
-        };
-        
-        mediaRecorder.start();
-        isRecording = true;
-        updateRecordingUI(true);
-    } catch (error) {
-        alert('Microphone access denied. Please allow microphone access in your browser settings.');
-    }
-}
-
-function stopVoiceRecording() {
-    if (mediaRecorder && isRecording) {
-        mediaRecorder.stop();
-        isRecording = false;
-        updateRecordingUI(false);
-    }
-}
+let dictationFinalText = '';
+let messageBaseText = '';
 
 function updateRecordingUI(recording) {
     const btn = document.getElementById('voiceMsgBtn');
-    const timer = document.getElementById('recordingTimer');
-    
+    const indicator = document.getElementById('recordingTimer');
+    if (!btn || !indicator) return;
     if (recording) {
         btn.innerHTML = '<i class="bi bi-stop-circle-fill"></i>';
         btn.style.background = '#ef4444';
         btn.style.color = 'white';
-        timer.style.display = 'block';
-        startTimer();
+        indicator.textContent = 'Listening…';
+        indicator.style.display = 'inline-block';
     } else {
         btn.innerHTML = '<i class="bi bi-mic-fill"></i>';
         btn.style.background = '';
         btn.style.color = '';
-        timer.style.display = 'none';
-        stopTimer();
+        indicator.style.display = 'none';
     }
 }
 
-function startTimer() {
-    seconds = 0;
-    timerInterval = setInterval(() => {
-        seconds++;
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        document.getElementById('recordingTimer').textContent = 
-            `${mins}:${secs.toString().padStart(2, '0')}`;
-    }, 1000);
+function stopVoiceRecording() {
+    if (dictationRecognition && isRecording) {
+        try { dictationRecognition.stop(); } catch (_) {}
+    }
+    isRecording = false;
+    updateRecordingUI(false);
 }
 
-function stopTimer() {
-    clearInterval(timerInterval);
-    seconds = 0;
-}
+async function startVoiceRecording() {
+    if (!currentChatUserId) {
+        alert('Please select a conversation first');
+        return;
+    }
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        alert('Voice-to-text is not supported in this browser.');
+        return;
+    }
+    const input = document.getElementById('messageInput');
+    if (!input) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    dictationRecognition = new SpeechRecognition();
+    dictationRecognition.continuous = true;
+    dictationRecognition.interimResults = true;
+    dictationRecognition.lang = navigator.language || 'en-US';
+    dictationFinalText = '';
+    messageBaseText = (input.value || '').trim();
 
-async function sendVoiceMessage(audioBlob) {
-    const formData = new FormData();
-    formData.append('voice', audioBlob, 'voice-message.webm');
-    formData.append('receiver_id', currentChatUserId);
-    
-    try {
-        const voiceHeaders = csrfToken ? {'X-CSRFToken': csrfToken} : {};
-        const response = await fetch('/api/send_voice_message', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: voiceHeaders,
-            body: formData
-        });
-        
-        if (response.ok) {
-            location.reload();
+    dictationRecognition.onresult = function(event) {
+        let interimText = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const txt = (event.results[i][0] && event.results[i][0].transcript) || '';
+            if (event.results[i].isFinal) {
+                dictationFinalText += txt + ' ';
+            } else {
+                interimText += txt;
+            }
         }
+        const merged = (dictationFinalText + interimText).trim();
+        input.value = messageBaseText ? `${messageBaseText} ${merged}`.trim() : merged;
+    };
+
+    dictationRecognition.onerror = function(event) {
+        if (event.error === 'not-allowed') {
+            alert('Microphone access denied. Please allow microphone access in your browser settings.');
+        } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
+            alert('Voice-to-text failed: ' + event.error);
+        }
+        stopVoiceRecording();
+    };
+
+    dictationRecognition.onend = function() {
+        stopVoiceRecording();
+    };
+
+    try {
+        dictationRecognition.start();
+        isRecording = true;
+        updateRecordingUI(true);
     } catch (error) {
-        console.error('Error sending voice message:', error);
-        alert('Failed to send voice message');
+        alert('Failed to start voice input. Please try again.');
+        stopVoiceRecording();
+    }
+}
+
+async function toggleVoiceRecording() {
+    if (isRecording) {
+        stopVoiceRecording();
+    } else {
+        startVoiceRecording();
     }
 }
 // Format all conv-time spans on load

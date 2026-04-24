@@ -195,6 +195,7 @@ nav[style*="position: fixed"][style*="bottom"],
         </button>
     </p>
     <form id="ciChecklistForm" method="POST" action="{{ url_for('submit_ci_checklist', id=application.id) }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="checklist_data" id="checklist_data">
         <input type="hidden" name="ci_signature" id="ci_signature" required>
         <input type="hidden" name="ci_latitude" id="ci_latitude">

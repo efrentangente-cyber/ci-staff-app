@@ -32,7 +32,7 @@
     stopIfRunning();
     const rec = new SpeechRecognition();
     lastRecognition = rec;
-    rec.lang = 'en-PH';
+    rec.lang = (navigator.language || 'en-US');
     rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = function (event) {
@@ -84,7 +84,7 @@
     stopIfRunning();
     const rec = new SpeechRecognition();
     lastRecognition = rec;
-    rec.lang = 'en-PH';
+    rec.lang = (navigator.language || 'en-US');
     rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = function (event) {

@@ -7,20 +7,21 @@
 <div class="top-bar">
     <div>
         <h2 class="mb-0">LPS Dashboard</h2>
-        <p class="text-muted small mb-0 mt-1 d-none d-md-block">You only see applications you submitted. Submit and duplicate checks still use the full member list.</p>
     </div>
-    <div class="top-bar-actions">
-        <a href="{{ url_for('submit_application') }}" class="btn btn-warning" aria-label="Start a new loan application">
-            <i class="bi bi-plus-circle" aria-hidden="true"></i> New Application
-        </a>
-        <button type="button" class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode" aria-label="Toggle light and dark theme">
-            <i class="bi bi-moon-fill" id="darkModeIcon" aria-hidden="true"></i>
-        </button>
-        <a href="{{ url_for('notifications') }}" class="btn btn-outline-secondary notification-badge" style="position: relative;" aria-label="Notifications">
-            <i class="bi bi-bell" aria-hidden="true"></i>
-            <span class="badge bg-danger" id="notif-count-topbar" style="position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; {% if not unread_count or unread_count == 0 %}display:none;{% endif %}">{{ unread_count if unread_count else '' }}</span>
-        </a>
-        <div class="user-menu-container">
+    <div class="d-flex align-items-center gap-2 flex-grow-1 justify-content-between ms-md-3">
+        <div class="top-bar-actions">
+            <a href="{{ url_for('submit_application') }}" class="btn btn-warning" aria-label="Start a new loan application">
+                <i class="bi bi-plus-circle" aria-hidden="true"></i> New Application
+            </a>
+            <button type="button" class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode" aria-label="Toggle light and dark theme">
+                <i class="bi bi-moon-fill" id="darkModeIcon" aria-hidden="true"></i>
+            </button>
+            <a href="{{ url_for('notifications') }}" class="btn btn-outline-secondary notification-badge" style="position: relative;" aria-label="Notifications">
+                <i class="bi bi-bell" aria-hidden="true"></i>
+                <span class="badge bg-danger" id="notif-count-topbar" style="position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; {% if not unread_count or unread_count == 0 %}display:none;{% endif %}">{{ unread_count if unread_count else '' }}</span>
+            </a>
+        </div>
+        <div class="user-menu-container ms-auto">
             <button class="btn btn-outline-secondary user-menu-btn" type="button" aria-label="Account and logout menu">
                 <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
             </button>

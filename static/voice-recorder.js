@@ -1,93 +1,84 @@
-/* Voice Message Recorder */
+/* Voice-to-text for chat input */
 
-let mediaRecorder;
-let audioChunks = [];
 let isRecording = false;
+let recognition = null;
+let dictationBase = '';
+let dictationFinal = '';
+
+function updateRecordingUI(recording) {
+    const btn = document.getElementById('voiceBtn');
+    const indicator = document.getElementById('recordingTimer');
+    if (!btn || !indicator) return;
+
+    if (recording) {
+        btn.innerHTML = '<i class="bi bi-stop-circle-fill"></i>';
+        btn.classList.add('recording');
+        indicator.textContent = 'Listening…';
+        indicator.style.display = 'inline-block';
+    } else {
+        btn.innerHTML = '<i class="bi bi-mic-fill"></i>';
+        btn.classList.remove('recording');
+        indicator.style.display = 'none';
+    }
+}
 
 async function startVoiceRecording() {
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        alert('Voice-to-text is not supported in this browser.');
+        return;
+    }
+    const input = document.getElementById('messageInput');
+    if (!input) return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US';
+    dictationBase = (input.value || '').trim();
+    dictationFinal = '';
+
+    recognition.onresult = function (event) {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const t = (event.results[i][0] && event.results[i][0].transcript) || '';
+            if (event.results[i].isFinal) {
+                dictationFinal += t + ' ';
+            } else {
+                interim += t;
+            }
+        }
+        const merged = (dictationFinal + interim).trim();
+        input.value = dictationBase ? `${dictationBase} ${merged}`.trim() : merged;
+    };
+
+    recognition.onerror = function (event) {
+        if (event.error === 'not-allowed') {
+            alert('Microphone access denied. Please allow microphone access.');
+        } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
+            alert('Voice input failed: ' + event.error);
+        }
+        stopVoiceRecording();
+    };
+
+    recognition.onend = function () {
+        stopVoiceRecording();
+    };
+
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        
-        mediaRecorder.ondataavailable = (event) => {
-            audioChunks.push(event.data);
-        };
-        
-        mediaRecorder.onstop = async () => {
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            await sendVoiceMessage(audioBlob);
-            stream.getTracks().forEach(track => track.stop());
-        };
-        
-        mediaRecorder.start();
+        recognition.start();
         isRecording = true;
         updateRecordingUI(true);
-    } catch (error) {
-        alert('Microphone access denied. Please allow microphone access.');
+    } catch (e) {
+        alert('Could not start voice input. Try again.');
+        stopVoiceRecording();
     }
 }
 
 function stopVoiceRecording() {
-    if (mediaRecorder && isRecording) {
-        mediaRecorder.stop();
-        isRecording = false;
-        updateRecordingUI(false);
+    if (recognition && isRecording) {
+        try { recognition.stop(); } catch (_) {}
     }
-}
-
-
-function updateRecordingUI(recording) {
-    const btn = document.getElementById('voiceBtn');
-    const timer = document.getElementById('recordingTimer');
-    
-    if (recording) {
-        btn.innerHTML = '<i class="bi bi-stop-circle-fill"></i>';
-        btn.classList.add('recording');
-        timer.style.display = 'block';
-        startTimer();
-    } else {
-        btn.innerHTML = '<i class="bi bi-mic-fill"></i>';
-        btn.classList.remove('recording');
-        timer.style.display = 'none';
-        stopTimer();
-    }
-}
-
-let timerInterval;
-let seconds = 0;
-
-function startTimer() {
-    seconds = 0;
-    timerInterval = setInterval(() => {
-        seconds++;
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        document.getElementById('recordingTimer').textContent = 
-            `${mins}:${secs.toString().padStart(2, '0')}`;
-    }, 1000);
-}
-
-function stopTimer() {
-    clearInterval(timerInterval);
-    seconds = 0;
-}
-
-async function sendVoiceMessage(audioBlob) {
-    const formData = new FormData();
-    formData.append('voice', audioBlob, 'voice-message.webm');
-    formData.append('receiver_id', OTHER_USER_ID);
-    
-    try {
-        const response = await fetch('/send_voice_message', {
-            method: 'POST',
-            body: formData
-        });
-        
-        if (response.ok) {
-            location.reload();
-        }
-    } catch (error) {
-        console.error('Error sending voice message:', error);
-    }
+    isRecording = false;
+    updateRecordingUI(false);
 }

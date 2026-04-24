@@ -43,10 +43,10 @@
 
     <!-- Message Input -->
     <div class="message-input-area">
-        <button class="btn btn-outline-secondary" id="voiceBtn" onclick="toggleVoiceRecording()" title="Voice Message">
+        <button class="btn btn-outline-secondary" id="voiceBtn" onclick="toggleVoiceRecording()" title="Voice to text">
             <i class="bi bi-mic-fill"></i>
         </button>
-        <span id="recordingTimer" style="display: none; color: red; font-weight: bold; margin: 0 10px;">0:00</span>
+        <span id="recordingTimer" style="display: none; color: red; font-weight: bold; margin: 0 10px;">Listening…</span>
         <input type="text" class="form-control" id="messageInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
         <button class="btn btn-primary" onclick="sendMessage()">
             <i class="bi bi-send-fill"></i>

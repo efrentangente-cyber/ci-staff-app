@@ -1755,18 +1755,6 @@ def submit_application():
             
             conn = get_db()
             
-            # Check for duplicate member name
-            existing = conn.execute('''
-                SELECT id, member_name FROM loan_applications 
-                WHERE LOWER(member_name) = LOWER(?) 
-                AND status NOT IN ('disapproved', 'approved')
-            ''', (member_name,)).fetchone()
-            
-            if existing:
-                conn.close()
-                flash(f'An active application for "{member_name}" already exists (ID: #{existing["id"]}). Please complete or disapprove the existing application first.', 'warning')
-                return redirect(url_for('submit_application'))
-            
             # Check if specific CI staff was selected
             specific_ci_id = None
             if needs_ci_value.startswith('ci_'):
@@ -1978,6 +1966,38 @@ def api_member_application_prefill():
             la_out = float(la) if la is not None and la != '' else None
         except (TypeError, ValueError):
             la_out = None
+        related_rows = conn.execute(
+            '''
+            SELECT loan_type, loan_amount, status, member_contact, member_address, submitted_at
+            FROM loan_applications
+            WHERE LOWER(TRIM(COALESCE(member_name, ''))) = LOWER(TRIM(?))
+            ORDER BY id DESC
+            LIMIT 30
+            ''',
+            (name,),
+        ).fetchall()
+        applications = []
+        active_count = 0
+        for rr in related_rows or []:
+            r = dict(rr)
+            raw_amt = r.get('loan_amount')
+            try:
+                amt = float(raw_amt) if raw_amt is not None and raw_amt != '' else None
+            except (TypeError, ValueError):
+                amt = None
+            status = (r.get('status') or '').strip()
+            if status in ('submitted', 'assigned_to_ci', 'ci_completed', 'deferred'):
+                active_count += 1
+            applications.append(
+                {
+                    'loan_type': (r.get('loan_type') or '').strip(),
+                    'loan_amount': amt,
+                    'status': status,
+                    'member_contact': (r.get('member_contact') or '').strip(),
+                    'member_address': (r.get('member_address') or '').strip(),
+                    'submitted_at': r.get('submitted_at'),
+                }
+            )
         return jsonify(
             {
                 'ok': True,
@@ -1986,6 +2006,8 @@ def api_member_application_prefill():
                 'member_address': (d.get('member_address') or '') or '',
                 'loan_type': (d.get('loan_type') or '') or '',
                 'loan_amount': la_out,
+                'applications': applications,
+                'active_application_count': active_count,
             }
         )
     except Exception as e:
