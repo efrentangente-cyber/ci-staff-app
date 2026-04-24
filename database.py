@@ -90,10 +90,28 @@ class DatabaseConnection:
 
         return ''.join(adapted_parts)
 
+    def _get_live_connection(self):
+        """
+        Return a live DatabaseConnection wrapper.
+        If this wrapper is closed but attached to request context, recreate it.
+        """
+        if not self._closed:
+            return self
+        try:
+            if has_request_context() and g is not None:
+                current = getattr(g, '_db_conn', None)
+                if current is self:
+                    g._db_conn = None
+                    return get_db()
+        except Exception:
+            pass
+        raise RuntimeError("Database connection already closed")
+
     def execute(self, query, params=None):
         """Execute query with automatic placeholder conversion"""
-        if self._closed:
-            raise RuntimeError("Database connection already closed")
+        live_conn = self._get_live_connection()
+        if live_conn is not self:
+            return live_conn.execute(query, params)
         if self._db_type == 'postgresql':
             query = self._adapt_query_for_postgresql(query)
         
@@ -106,8 +124,9 @@ class DatabaseConnection:
     
     def executescript(self, script):
         """Execute SQL script (SQLite only)"""
-        if self._closed:
-            raise RuntimeError("Database connection already closed")
+        live_conn = self._get_live_connection()
+        if live_conn is not self:
+            return live_conn.executescript(script)
         if self._db_type == 'sqlite':
             return self._conn.executescript(script)
         else:
