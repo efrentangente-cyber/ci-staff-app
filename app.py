@@ -1153,6 +1153,9 @@ def _can_fallback_to_textbelt(semaphore_error):
         'message cannot start with test',
         'could not parse philippine mobile number',
         'invalid or empty phone number',
+        'not yet been approved for sending messages',
+        'not yet approved for sending sms',
+        'http 403',
     )
     return not any(marker in err for marker in blocked_markers)
 
