@@ -5,21 +5,24 @@
 {% endblock %}
 {% block content %}
 <div class="top-bar">
-    <h2>LPS Dashboard</h2>
+    <div>
+        <h2 class="mb-0">LPS Dashboard</h2>
+        <p class="text-muted small mb-0 mt-1 d-none d-md-block">Submit new applications and track status in Pending and Processed below.</p>
+    </div>
     <div class="top-bar-actions">
-        <a href="{{ url_for('submit_application') }}" class="btn btn-warning">
-            <i class="bi bi-plus-circle"></i> New Application
+        <a href="{{ url_for('submit_application') }}" class="btn btn-warning" aria-label="Start a new loan application">
+            <i class="bi bi-plus-circle" aria-hidden="true"></i> New Application
         </a>
-        <button class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode">
-            <i class="bi bi-moon-fill" id="darkModeIcon"></i>
+        <button type="button" class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode" aria-label="Toggle light and dark theme">
+            <i class="bi bi-moon-fill" id="darkModeIcon" aria-hidden="true"></i>
         </button>
-        <a href="{{ url_for('notifications') }}" class="btn btn-outline-secondary notification-badge" style="position: relative;">
-            <i class="bi bi-bell"></i>
+        <a href="{{ url_for('notifications') }}" class="btn btn-outline-secondary notification-badge" style="position: relative;" aria-label="Notifications">
+            <i class="bi bi-bell" aria-hidden="true"></i>
             <span class="badge bg-danger" id="notif-count-topbar" style="position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; {% if not unread_count or unread_count == 0 %}display:none;{% endif %}">{{ unread_count if unread_count else '' }}</span>
         </a>
         <div class="user-menu-container">
-            <button class="btn btn-outline-secondary user-menu-btn" type="button">
-                <i class="bi bi-three-dots-vertical"></i>
+            <button class="btn btn-outline-secondary user-menu-btn" type="button" aria-label="Account and logout menu">
+                <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
             </button>
             <div class="user-menu-dropdown">
                 <div class="user-menu-header">
@@ -76,8 +79,8 @@
                 <div class="search-container">
                     <div class="search-input-wrapper" id="searchWrapperPending">
                         <i class="bi bi-search search-icon"></i>
-                        <input type="text" id="searchInputPending" placeholder="Search here" onkeyup="searchApplications('pending')" oninput="toggleClearButton('pending')">
-                        <button class="clear-search" onclick="clearSearch('pending')">
+                        <input type="text" id="searchInputPending" placeholder="Filter table: name, ID, or any column" onkeyup="searchApplications('pending')" oninput="toggleClearButton('pending')">
+                        <button type="button" class="clear-search" aria-label="Clear search" onclick="clearSearch('pending')">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
@@ -149,8 +152,8 @@
                 <div class="search-container">
                     <div class="search-input-wrapper" id="searchWrapperProcessed">
                         <i class="bi bi-search search-icon"></i>
-                        <input type="text" id="searchInputProcessed" placeholder="Search here" onkeyup="searchApplications('processed')" oninput="toggleClearButton('processed')">
-                        <button class="clear-search" onclick="clearSearch('processed')">
+                        <input type="text" id="searchInputProcessed" placeholder="Filter table: name, ID, or any column" onkeyup="searchApplications('processed')" oninput="toggleClearButton('processed')">
+                        <button type="button" class="clear-search" aria-label="Clear search" onclick="clearSearch('processed')">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
@@ -220,21 +223,17 @@
 <script>
 // Search applications - v2.0
 function searchApplications(tableType) {
-    console.log('Search called with:', tableType);
     const searchInput = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
     const searchValue = searchInput ? searchInput.value.toLowerCase().trim() : '';
-    console.log('Search value:', searchValue);
     
     const tbody = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}TableBody`);
     const noResults = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}NoResults`);
     
     if (!tbody) {
-        console.error('tbody not found');
         return;
     }
     
     const rows = tbody.getElementsByTagName('tr');
-    console.log('Total rows:', rows.length);
     let visibleCount = 0;
     
     for (let i = 0; i < rows.length; i++) {
@@ -257,8 +256,6 @@ function searchApplications(tableType) {
             rows[i].style.display = 'none';
         }
     }
-    
-    console.log('Visible count:', visibleCount);
     
     // Show/hide "No results" message
     if (noResults) {

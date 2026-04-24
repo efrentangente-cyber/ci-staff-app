@@ -16,6 +16,23 @@
             box-sizing: border-box;
         }
         
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0.5rem;
+            z-index: 10001;
+            padding: 0.5rem 1rem;
+            background: #1e3a5f;
+            color: #fff !important;
+            font-weight: 600;
+            border-radius: 6px;
+            text-decoration: none;
+        }
+        .skip-link:focus {
+            left: 0.5rem;
+            outline: 3px solid #fbbf24;
+        }
+        
         body {
             background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
             min-height: 100vh;
@@ -312,14 +329,16 @@
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#main-content">Skip to sign in</a>
     <!-- Flash Messages -->
-    <div class="flash-messages">
+    <div class="flash-messages" role="status" aria-live="polite">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show auto-dismiss-alert" role="alert">
+                {% set alert_cat = 'danger' if category == 'error' else (category or 'info') %}
+                <div class="alert alert-{{ alert_cat }} alert-dismissible fade show auto-dismiss-login" data-login-alert-cat="{{ alert_cat }}" role="alert">
                     {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">&times;</button>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss message">&times;</button>
                 </div>
                 {% endfor %}
             {% endif %}
@@ -328,30 +347,31 @@
     
     <div class="login-wrapper">
         <!-- Logo Section -->
-        <div class="logo-section" id="logoSection">
+        <div class="logo-section" id="logoSection" tabindex="0" role="button" aria-label="Show sign-in form (or hover with the mouse)">
             <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="DCCCO Logo">
             <h3>Electronic Loan Screening and<br>Credit Interview for<br>DCCCO Bayawan Branch</h3>
-        
+            <p style="font-size: 13px; max-width: 22rem; margin: 0.75rem auto 0; line-height: 1.4; color: rgba(255,255,255,0.88);">Hover here to open the form, or press Enter when this area is focused (use Tab to reach it).</p>
         </div>
         
         <!-- Login Form Section -->
         <div class="login-form-section" id="loginFormSection">
             <div class="login-card">
                 <div class="card-header">
-                    <h4><i class="bi bi-shield-lock"></i> Staff Login</h4>
+                    <h4 id="main-content" tabindex="-1"><i class="bi bi-shield-lock" aria-hidden="true"></i> Staff Login</h4>
                 </div>
                 <div class="card-body">
-                    <form method="POST">
+                    <form method="POST" aria-describedby="login-help">
+                        <p id="login-help" class="text-muted small mb-3" style="font-size: 0.9rem;">Use the email and password provided by your administrator. Contact IT if you cannot sign in.</p>
                         <div class="mb-3">
-                            <label class="form-label"><i class="bi bi-envelope"></i> Email</label>
-                            <input type="email" name="email" class="form-control" placeholder="Enter your email" required>
+                            <label class="form-label" for="login-email"><i class="bi bi-envelope" aria-hidden="true"></i> Email</label>
+                            <input type="email" name="email" id="login-email" class="form-control" placeholder="name@example.com" autocomplete="username" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label"><i class="bi bi-lock"></i> Password</label>
-                            <input type="password" name="password" class="form-control" placeholder="Enter your password" required>
+                            <label class="form-label" for="login-password"><i class="bi bi-lock" aria-hidden="true"></i> Password</label>
+                            <input type="password" name="password" id="login-password" class="form-control" placeholder="Your password" autocomplete="current-password" required>
                         </div>
                         <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-box-arrow-in-right"></i> Login
+                            <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> Login
                         </button>
                     </form>
                     <div class="signup-link">
@@ -426,14 +446,26 @@
             if (!isFormFocused) hideLogin();
         });
         
-        // Auto-dismiss alerts after 3 seconds
+        // Keyboard: open login when logo area is focused (Enter/Space)
+        logoSection.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                logoSection.classList.add('slide-left');
+                loginFormSection.classList.add('show');
+                const email = document.getElementById('login-email');
+                if (email) email.focus();
+            }
+        });
+        
         document.addEventListener('DOMContentLoaded', function() {
-            const alerts = document.querySelectorAll('.auto-dismiss-alert');
+            const alerts = document.querySelectorAll('.auto-dismiss-login');
             alerts.forEach(function(alert) {
+                const cat = (alert.getAttribute('data-login-alert-cat') || '').toLowerCase();
+                const ms = (cat === 'danger' || cat === 'warning') ? 12000 : 5000;
                 setTimeout(function() {
                     alert.style.opacity = '0';
-                    setTimeout(() => alert.remove(), 300);
-                }, 3000);
+                    setTimeout(function() { alert.remove(); }, 300);
+                }, ms);
             });
         });
     </script>

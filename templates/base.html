@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{% block title %}Loan Management System{% endblock %}</title>
+    <title>{% block title %}DCCCO Loan &amp; CI Portal{% endblock %}</title>
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" type="image/png" href="/static/favicon.png?v=3">
@@ -25,7 +25,7 @@
 {% endmacro %}
     <link rel="shortcut icon" type="image/png" href="/static/favicon.png?v=3">
     <link rel="apple-touch-icon" href="/static/favicon.png?v=3">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -35,6 +35,9 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='datatable.css') }}">
+    {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='ci-field.css') }}?v=1">
+    {% endif %}
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         :root {
@@ -426,7 +429,9 @@
         .top-bar {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 12px;
             margin-bottom: 20px;
             background: white;
             padding: 15px 20px;
@@ -882,10 +887,37 @@
             background: #e5e7eb;
             margin: 4px 0;
         }
+        
+        /* Skip link — keyboard / screen-reader users */
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0.5rem;
+            z-index: 10000;
+            padding: 0.5rem 1rem;
+            background: var(--primary-blue, #1e3a5f);
+            color: #fff !important;
+            font-weight: 600;
+            border-radius: 6px;
+            text-decoration: none;
+        }
+        .skip-link:focus {
+            left: 0.5rem;
+            outline: 3px solid var(--accent-yellow, #fbbf24);
+        }
+        
+        :focus-visible {
+            outline: 2px solid var(--primary-blue, #1e3a5f);
+            outline-offset: 2px;
+        }
+        .btn:focus-visible {
+            box-shadow: 0 0 0 0.2rem rgba(30, 58, 95, 0.35);
+        }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
-<body{% if current_user.is_authenticated %} class="authenticated"{% endif %}>
+<body class="{% if current_user.is_authenticated %}authenticated {% endif %}{% if current_user.is_authenticated and current_user.role == 'ci_staff' %}ci-field-user {% endif %}{% block body_class %}{% endblock %}">
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     <!-- Apply dark mode immediately on body load -->
     <script>
         if (document.documentElement.classList.contains('dark-mode-loading')) {
@@ -897,23 +929,27 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-            <div class="alert alert-{{ category }} alert-dismissible fade show auto-dismiss-alert" role="alert" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; max-width: 400px; min-width: 300px;">
+            {% set alert_cat = 'danger' if category == 'error' else (category or 'info') %}
+            <div class="alert alert-{{ alert_cat }} alert-dismissible fade show auto-dismiss-alert" data-alert-cat="{{ alert_cat }}" role="alert" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; max-width: min(90vw, 420px); min-width: 280px; pointer-events: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
                 {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss message"></button>
             </div>
             {% endfor %}
         {% endif %}
     {% endwith %}
     
     <script>
-        // Auto-dismiss alerts after 3 seconds
         document.addEventListener('DOMContentLoaded', function() {
             const alerts = document.querySelectorAll('.auto-dismiss-alert');
             alerts.forEach(function(alert) {
+                const cat = (alert.getAttribute('data-alert-cat') || '').toLowerCase();
+                const ms = (cat === 'danger' || cat === 'warning') ? 10000 : (cat === 'info' ? 5000 : 4000);
                 setTimeout(function() {
-                    const bsAlert = new bootstrap.Alert(alert);
-                    bsAlert.close();
-                }, 3000);
+                    try {
+                        const bsAlert = new bootstrap.Alert(alert);
+                        bsAlert.close();
+                    } catch (e) {}
+                }, ms);
             });
         });
     </script>
@@ -933,7 +969,7 @@
                 <div class="sidebar-user">{{ current_user.name }}</div>
                 <div class="sidebar-email">{{ current_user.role.replace('_', ' ').title() }}</div>
             </div>
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" aria-label="Main navigation">
                 <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
                     <i class="bi bi-house-door"></i> Home
                 </a>
@@ -992,7 +1028,7 @@
         </div>
         
         <!-- Bottom Navigation (Mobile Portrait) -->
-        <nav class="bottom-nav">
+        <nav class="bottom-nav" aria-label="Mobile quick navigation">
             <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
                 <i class="bi bi-house-door-fill"></i>
                 <span>Home</span>
@@ -1022,10 +1058,10 @@
         </nav>
         
         <!-- Main Content -->
-        <div class="main-content">
+        <div class="main-content" id="main-content" role="main" tabindex="-1">
     {% else %}
     <!-- Login page without sidebar -->
-    <div class="container mt-4">
+    <div class="container mt-4" id="main-content" role="main" tabindex="-1">
     {% endif %}
             {% block content %}{% endblock %}
     {% if current_user.is_authenticated %}
@@ -1293,38 +1329,31 @@
     
     // User menu dropdown functionality - handles multiple dropdowns
     function initUserMenuDropdowns() {
-        console.log('Initializing dropdown menus');
-        
-        // Find all user menu containers
         const menuContainers = document.querySelectorAll('.user-menu-container');
-        console.log('Found', menuContainers.length, 'menu containers');
         
-        menuContainers.forEach(function(container, index) {
+        menuContainers.forEach(function(container) {
             const menuButton = container.querySelector('.user-menu-btn');
             const menuDropdown = container.querySelector('.user-menu-dropdown');
             
-            console.log('Container', index, '- Button:', menuButton, 'Dropdown:', menuDropdown);
-            
             if (menuButton && menuDropdown) {
-                // Remove any existing listeners to prevent duplicates
                 const newButton = menuButton.cloneNode(true);
                 menuButton.parentNode.replaceChild(newButton, menuButton);
                 
                 newButton.addEventListener('click', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('Button clicked!');
                     
-                    // Close all other dropdowns
-                    document.querySelectorAll('.user-menu-dropdown').forEach(function(dropdown) {
-                        if (dropdown !== menuDropdown) {
-                            dropdown.classList.remove('show');
+                    document.querySelectorAll('.user-menu-container').forEach(function(c) {
+                        const d = c.querySelector('.user-menu-dropdown');
+                        const b = c.querySelector('.user-menu-btn');
+                        if (d && d !== menuDropdown) {
+                            d.classList.remove('show');
+                            if (b) b.setAttribute('aria-expanded', 'false');
                         }
                     });
                     
-                    // Toggle this dropdown
                     menuDropdown.classList.toggle('show');
-                    console.log('Dropdown toggled, show class:', menuDropdown.classList.contains('show'));
+                    newButton.setAttribute('aria-expanded', menuDropdown.classList.contains('show'));
                 });
             }
         });
@@ -1335,7 +1364,16 @@
                 document.querySelectorAll('.user-menu-dropdown').forEach(function(dropdown) {
                     dropdown.classList.remove('show');
                 });
+                document.querySelectorAll('.user-menu-btn').forEach(function(btn) {
+                    btn.setAttribute('aria-expanded', 'false');
+                });
             }
+        });
+        
+        document.querySelectorAll('.user-menu-btn').forEach(function(btn) {
+            if (!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', 'Open account menu');
+            btn.setAttribute('aria-haspopup', 'true');
+            if (btn.getAttribute('aria-expanded') == null) btn.setAttribute('aria-expanded', 'false');
         });
     }
     
