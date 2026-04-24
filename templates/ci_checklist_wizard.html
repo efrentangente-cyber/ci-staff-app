@@ -1197,22 +1197,22 @@ nav[style*="position: fixed"][style*="bottom"],
 const serverPrefillData = {{ (prefill_data or {})|tojson }};
 
 function applyServerPrefill() {
+    const hasDraft = typeof localStorage !== 'undefined' && localStorage.getItem('ci_checklist_draft');
+    const force = serverPrefillData._ci_sample_fill === true && !hasDraft;
     Object.keys(serverPrefillData).forEach((key) => {
+        if (key.indexOf('_') === 0) return;
         const el = document.querySelector(`[name="${key}"]`);
         if (!el) return;
+        const v = serverPrefillData[key];
+        if (v === null || v === undefined) return;
 
         if (el.type === 'checkbox') {
-            // Keep existing user/local value if already checked.
-            if (!el.checked) {
-                el.checked = Boolean(serverPrefillData[key]);
-            }
+            if (force) el.checked = Boolean(v);
+            else if (!el.checked) el.checked = Boolean(v);
             return;
         }
-
-        // Don't overwrite anything already typed/loaded.
-        if (!el.value) {
-            el.value = serverPrefillData[key] ?? '';
-        }
+        const s = (typeof v === 'number' && !Number.isNaN(v)) ? String(v) : String(v);
+        if (force || !el.value) el.value = s;
     });
 }
 
@@ -1472,6 +1472,9 @@ function showCINotification(type, message) {
 
 document.addEventListener('DOMContentLoaded', function() {
     applyServerPrefill();
+    if (typeof updateAllComputations === 'function') {
+        setTimeout(function() { updateAllComputations(); }, 300);
+    }
 });
 </script>
 

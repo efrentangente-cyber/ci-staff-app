@@ -80,7 +80,7 @@ class DataTable {
     }
     
     search(searchValue) {
-        this.searchValue = searchValue.toLowerCase();
+        this.searchValue = (searchValue == null ? '' : String(searchValue)).toLowerCase().trim();
         this.currentPage = 1;
         this.showPage(1);
     }
@@ -247,7 +247,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Search function
 function searchApplications(query) {
     const searchInput = document.getElementById('searchInput');
-    const searchValue = searchInput ? searchInput.value : (query || '');
+    const searchValue = (searchInput ? searchInput.value : (query || '')) || '';
     if (dataTable) {
         dataTable.search(searchValue);
     }

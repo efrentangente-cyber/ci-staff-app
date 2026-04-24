@@ -59,6 +59,16 @@ class ExcelSpreadsheet {
                 <i class="bi bi-text-right"></i>
             </button>
             <div class="toolbar-divider"></div>
+            <button type="button" class="btn btn-sm" style="background:#ffcccc;border:1px solid #c00;" onclick="excelSheet.fillSelectionColor('#ffcccc')" title="Highlight selected cells red">
+                Red
+            </button>
+            <button type="button" class="btn btn-sm" style="background:#ccffcc;border:1px solid #080;" onclick="excelSheet.fillSelectionColor('#ccffcc')" title="Highlight selected cells green">
+                Green
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.clearSelectionFill()" title="Clear background color">
+                No fill
+            </button>
+            <div class="toolbar-divider"></div>
             <button type="button" class="btn btn-sm btn-warning" onclick="excelSheet.mergeCells()" title="Merge Cells">
                 <i class="bi bi-border-outer"></i> Merge
             </button>
@@ -204,6 +214,9 @@ class ExcelSpreadsheet {
                     // Apply text alignment
                     if (this.cells[cellRef].align) {
                         input.style.textAlign = this.cells[cellRef].align;
+                    }
+                    if (this.cells[cellRef].bgColor) {
+                        input.style.backgroundColor = this.cells[cellRef].bgColor;
                     }
                 }
 
@@ -879,112 +892,140 @@ class ExcelSpreadsheet {
         return formatted;
     }
 
-    // Add row
+    // Add row — inserts a new row directly *below* the selected row (like Excel)
     addRow() {
-        // If a cell is selected, insert row below it
         if (this.selectedCell) {
-            const selectedRow = parseInt(this.selectedCell.dataset.row);
-            const insertAfterRow = selectedRow + 1; // Insert after this row (1-indexed)
-            
-            // Shift all cells below the selected row down by 1
+            const selectedRow0 = parseInt(this.selectedCell.dataset.row, 10);
+            // 1-based Excel row index of the selected cell
+            const Rsel = selectedRow0 + 1;
             const newCells = {};
-            Object.keys(this.cells).forEach(cellRef => {
+            Object.keys(this.cells).forEach((cellRef) => {
                 const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (match) {
-                    const col = match[1];
-                    const row = parseInt(match[2]);
-                    
-                    if (row >= insertAfterRow) {
-                        // Move this cell down by 1 row
-                        const newRef = col + (row + 1);
-                        newCells[newRef] = this.cells[cellRef];
-                    } else {
-                        // Keep this cell as is
-                        newCells[cellRef] = this.cells[cellRef];
-                    }
+                if (!match) {
+                    newCells[cellRef] = this.cells[cellRef];
+                    return;
+                }
+                const col = match[1];
+                const row1 = parseInt(match[2], 10);
+                if (row1 > Rsel) {
+                    newCells[col + (row1 + 1)] = this.cells[cellRef];
+                } else {
+                    newCells[cellRef] = this.cells[cellRef];
                 }
             });
-            
-            // Shift merged cells
-            const newMergedCells = {};
-            Object.keys(this.mergedCells).forEach(cellRef => {
-                const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (match) {
-                    const col = match[1];
-                    const row = parseInt(match[2]);
-                    
-                    if (row >= insertAfterRow) {
-                        const newRef = col + (row + 1);
-                        newMergedCells[newRef] = this.mergedCells[cellRef];
-                    } else {
-                        newMergedCells[cellRef] = this.mergedCells[cellRef];
-                    }
-                }
-            });
-            
             this.cells = newCells;
-            this.mergedCells = newMergedCells;
+
+            const newMerged = {};
+            Object.keys(this.mergedCells).forEach((cellRef) => {
+                const match = cellRef.match(/([A-Z]+)(\d+)/);
+                if (!match) {
+                    newMerged[cellRef] = this.mergedCells[cellRef];
+                    return;
+                }
+                const col = match[1];
+                const row1 = parseInt(match[2], 10);
+                if (row1 > Rsel) {
+                    newMerged[col + (row1 + 1)] = this.mergedCells[cellRef];
+                } else {
+                    newMerged[cellRef] = this.mergedCells[cellRef];
+                }
+            });
+            this.mergedCells = newMerged;
         }
-        
+
         this.rows++;
         this.render();
         this.recalculateAll();
         this.saveData();
     }
 
-    // Add column
+    // Add column — inserts a new column to the *right* of the selected column (like Excel)
     addColumn() {
-        // If a cell is selected, insert column to the right of it
         if (this.selectedCell) {
-            const selectedColIndex = parseInt(this.selectedCell.dataset.col);
-            
-            // Shift all cells to the right of the selected column
+            const sc = parseInt(this.selectedCell.dataset.col, 10);
             const newCells = {};
-            Object.keys(this.cells).forEach(cellRef => {
+            Object.keys(this.cells).forEach((cellRef) => {
                 const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (match) {
-                    const col = match[1];
-                    const row = match[2];
-                    const colIndex = this.columnToIndex(col);
-                    
-                    if (colIndex > selectedColIndex) {
-                        // Move this cell right by 1 column
-                        const newCol = this.indexToColumn(colIndex + 1);
-                        const newRef = newCol + row;
-                        newCells[newRef] = this.cells[cellRef];
-                    } else {
-                        // Keep this cell as is
-                        newCells[cellRef] = this.cells[cellRef];
-                    }
+                if (!match) {
+                    newCells[cellRef] = this.cells[cellRef];
+                    return;
+                }
+                const colName = match[1];
+                const rowNum = match[2];
+                const colIndex = this.columnToIndex(colName);
+                if (colIndex > sc) {
+                    const newCol = this.indexToColumn(colIndex + 1);
+                    newCells[newCol + rowNum] = this.cells[cellRef];
+                } else {
+                    newCells[cellRef] = this.cells[cellRef];
                 }
             });
-            
-            // Shift merged cells
-            const newMergedCells = {};
-            Object.keys(this.mergedCells).forEach(cellRef => {
-                const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (match) {
-                    const col = match[1];
-                    const row = match[2];
-                    const colIndex = this.columnToIndex(col);
-                    
-                    if (colIndex > selectedColIndex) {
-                        const newCol = this.indexToColumn(colIndex + 1);
-                        const newRef = newCol + row;
-                        newMergedCells[newRef] = this.mergedCells[cellRef];
-                    } else {
-                        newMergedCells[cellRef] = this.mergedCells[cellRef];
-                    }
-                }
-            });
-            
             this.cells = newCells;
-            this.mergedCells = newMergedCells;
+
+            const newMerged = {};
+            Object.keys(this.mergedCells).forEach((cellRef) => {
+                const match = cellRef.match(/([A-Z]+)(\d+)/);
+                if (!match) {
+                    newMerged[cellRef] = this.mergedCells[cellRef];
+                    return;
+                }
+                const colName = match[1];
+                const rowNum = match[2];
+                const colIndex = this.columnToIndex(colName);
+                if (colIndex > sc) {
+                    const newCol = this.indexToColumn(colIndex + 1);
+                    newMerged[newCol + rowNum] = this.mergedCells[cellRef];
+                } else {
+                    newMerged[cellRef] = this.mergedCells[cellRef];
+                }
+            });
+            this.mergedCells = newMerged;
         }
-        
+
         this.cols++;
         this.render();
         this.recalculateAll();
+        this.saveData();
+    }
+
+    /**
+     * Apply background color to the current range selection (or single selected cell).
+     * Use with toolbar Red / Green; colors persist in exportData for printing.
+     */
+    fillSelectionColor(color) {
+        const refs = this.selectedRange.length > 0
+            ? [...this.selectedRange]
+            : (this.selectedCell ? [this.selectedCell.dataset.cell] : []);
+        if (refs.length === 0) {
+            const n = document.createElement('div');
+            n.className = 'excel-notification';
+            n.textContent = 'Select cells (click and drag) or one cell, then pick a color.';
+            n.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #6c757d; color: #fff; padding: 10px 20px; border-radius: 5px; z-index: 9999;';
+            document.body.appendChild(n);
+            setTimeout(() => n.remove(), 2000);
+            return;
+        }
+        refs.forEach((cellRef) => {
+            if (!this.cells[cellRef]) this.cells[cellRef] = {};
+            this.cells[cellRef].bgColor = color;
+            const input = document.querySelector(`[data-cell="${cellRef}"]`);
+            if (input) input.style.backgroundColor = color;
+        });
+        this.saveData();
+    }
+
+    clearSelectionFill() {
+        const refs = this.selectedRange.length > 0
+            ? [...this.selectedRange]
+            : (this.selectedCell ? [this.selectedCell.dataset.cell] : []);
+        if (refs.length === 0) return;
+        refs.forEach((cellRef) => {
+            if (this.cells[cellRef]) {
+                delete this.cells[cellRef].bgColor;
+            }
+            const input = document.querySelector(`[data-cell="${cellRef}"]`);
+            if (input) input.style.backgroundColor = '';
+        });
         this.saveData();
     }
 

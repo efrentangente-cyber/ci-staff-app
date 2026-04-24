@@ -192,39 +192,33 @@
 </div>
 
 <script>
-// Search applications
+// Search applications (trim; empty = show all)
 function searchApplications(tableType) {
-    const searchValue = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Completed'}`).value.toLowerCase();
+    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Completed'}`);
+    const q = (input && input.value ? input.value : '').toLowerCase().trim();
     const table = document.getElementById(`${tableType === 'pending' ? 'pending' : 'completed'}Table`);
+    if (!table) return;
     const tbody = table.getElementsByTagName('tbody')[0];
-    
-    if (!tbody) return; // Exit if no tbody found
-    
+    if (!tbody) return;
     const rows = tbody.getElementsByTagName('tr');
     let visibleCount = 0;
-    
     for (let i = 0; i < rows.length; i++) {
-        const cells = rows[i].getElementsByTagName('td');
-        let found = false;
-        
-        for (let j = 0; j < cells.length; j++) {
-            if (cells[j].textContent.toLowerCase().includes(searchValue)) {
-                found = true;
-                break;
-            }
-        }
-        
-        if (found) {
+        if (!q) {
             rows[i].style.display = '';
             visibleCount++;
-        } else {
-            rows[i].style.display = 'none';
+            continue;
         }
+        const cells = rows[i].getElementsByTagName('td');
+        let found = false;
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().includes(q)) { found = true; break; }
+        }
+        rows[i].style.display = found ? '' : 'none';
+        if (found) visibleCount++;
     }
-    
     const countBadge = document.getElementById(`${tableType === 'pending' ? 'pending' : 'completed'}Count`);
     if (countBadge) {
-        countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Completed')}`;
+        countBadge.textContent = `${visibleCount} ${q ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Completed')}`;
     }
 }
 

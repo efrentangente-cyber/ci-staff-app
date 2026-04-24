@@ -1306,18 +1306,20 @@ document.getElementById('messageInput')?.addEventListener('keypress', function(e
 });
 
 document.getElementById('searchChats')?.addEventListener('input', function(e) {
-    const search = e.target.value.toLowerCase();
+    const q = (e.target.value || '').toLowerCase().trim();
     document.querySelectorAll('.conversation-item').forEach(item => {
-        const name = item.querySelector('h6').textContent.toLowerCase();
-        item.style.display = name.includes(search) ? 'flex' : 'none';
+        const h6 = item.querySelector('h6');
+        const name = h6 ? h6.textContent.toLowerCase() : '';
+        item.style.display = !q || name.includes(q) ? 'flex' : 'none';
     });
 });
 
 document.getElementById('searchStaff')?.addEventListener('input', function(e) {
-    const search = e.target.value.toLowerCase();
+    const q = (e.target.value || '').toLowerCase().trim();
     document.querySelectorAll('.staff-item-modal').forEach(item => {
-        const name = item.querySelector('h6').textContent.toLowerCase();
-        item.style.display = name.includes(search) ? 'flex' : 'none';
+        const h6 = item.querySelector('h6');
+        const name = h6 ? h6.textContent.toLowerCase() : '';
+        item.style.display = !q || name.includes(q) ? 'flex' : 'none';
     });
 });
 

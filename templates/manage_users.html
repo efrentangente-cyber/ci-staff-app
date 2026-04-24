@@ -272,37 +272,31 @@
 
 <script>
 function searchUsers(tableType) {
-    const searchValue = document.getElementById(`search${tableType === 'pending' ? 'Pending' : 'Active'}`).value.toLowerCase();
+    const input = document.getElementById(`search${tableType === 'pending' ? 'Pending' : 'Active'}`);
+    const q = (input && input.value ? input.value : '').toLowerCase().trim();
     const table = document.getElementById(`${tableType === 'pending' ? 'pending' : 'active'}Table`);
+    if (!table) return;
     const tbody = table.getElementsByTagName('tbody')[0];
-    
     if (!tbody) return;
-    
     const rows = tbody.getElementsByTagName('tr');
     let visibleCount = 0;
-    
     for (let i = 0; i < rows.length; i++) {
-        const cells = rows[i].getElementsByTagName('td');
-        let found = false;
-        
-        for (let j = 0; j < cells.length; j++) {
-            if (cells[j].textContent.toLowerCase().includes(searchValue)) {
-                found = true;
-                break;
-            }
-        }
-        
-        if (found) {
+        if (!q) {
             rows[i].style.display = '';
             visibleCount++;
-        } else {
-            rows[i].style.display = 'none';
+            continue;
         }
+        const cells = rows[i].getElementsByTagName('td');
+        let found = false;
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().includes(q)) { found = true; break; }
+        }
+        rows[i].style.display = found ? '' : 'none';
+        if (found) visibleCount++;
     }
-    
     const countBadge = document.getElementById(`${tableType === 'pending' ? 'pending' : 'active'}Count`);
     if (countBadge) {
-        countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Active')}`;
+        countBadge.textContent = `${visibleCount} ${q ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Active')}`;
     }
 }
 

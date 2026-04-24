@@ -1108,6 +1108,80 @@ def _split_address(addr):
     return mapped
 
 
+def _ci_wizard_demo_sample_layer(app_dict, name_parts, addr, amount):
+    """
+    Extra sample fields so the CI wizard opens mostly complete for review/training.
+    Real applicant/address/amount from LPS always come from the base prefill layer;
+    this adds spouse, family, employment, and computation samples. Saved DB data
+    still wins when merged after.
+    """
+    city = (addr.get('city') or '').strip() or 'Bayawan City'
+    prov = (addr.get('province') or '').strip() or 'Negros Oriental'
+    last = (name_parts.get('last') or 'Applicant').strip()
+    amt = 0
+    try:
+        amt = float(amount or 0)
+    except (TypeError, ValueError):
+        amt = 0
+    return {
+        '_ci_sample_fill': True,
+        # Spouse (sample)
+        'spouse_last_name': 'Santos',
+        'spouse_first_name': 'Maria',
+        'spouse_middle_name': 'L.',
+        'spouse_birthday': '1991-11-12',
+        'spouse_age': 33,
+        'spouse_employer': 'Private employer (sample)',
+        'spouse_office': f'{city} (sample)',
+        'spouse_contact': (app_dict.get('member_contact') or '') or '09000000000',
+        # Family (sample — CI can edit)
+        'family_1_name': f'Juan {last}',
+        'family_1_age': 14,
+        'family_1_rel': 'Child',
+        'family_1_member': 'Non-member',
+        'family_2_name': f'Carmen {last}',
+        'family_2_age': 65,
+        'family_2_rel': 'Parent',
+        'family_2_member': 'Non-member',
+        'family_3_name': '—',
+        'family_3_age': '',
+        'family_3_rel': '',
+        'family_3_member': '',
+        'family_4_name': '—',
+        'family_4_age': '',
+        'family_4_rel': '',
+        'family_4_member': '',
+        'applicant_birthday': '1989-04-15',
+        'applicant_age': 36,
+        # Work / business
+        'app_employer': 'DCCCO-linked employer (sample)',
+        'app_office': f'{city}, {prov} (sample)',
+        'business_name': 'Agriculture / sari-sari (sample)',
+        'business_address': (app_dict.get('member_address') or f'{city}')[:250],
+        'years_business': 5,
+        # Page 3 computation (sample — triggers formulas)
+        'gross_pay': min(35000, max(15000, amt * 0.5)) if amt else 25000,
+        'allowances': 0,
+        'pera_aca': 0,
+        'long_pay': 0,
+        'statutory_deductions': 3000,
+        'income_business': 0,
+        'remittance': 0,
+        'allotment': 0,
+        'other_income': 0,
+        'household_expenses': 8000,
+        'tuition': 0,
+        'medical': 0,
+        'water_fuel': 1500,
+        'internet': 1000,
+        'collateral_oct': 'T-000000 (sample)',
+        'collateral_location': f'{city} (sample)',
+        'collateral_loan_value': min(500000, max(100000, amt * 2)) if amt else 200000,
+        'collateral_area': 150,
+        'other_info': 'Sample entries from system prefill after LPS submission — verify with interview.',
+    }
+
+
 def _build_ci_prefill_data(application, ci_name):
     """Create initial CI form values from LPS application details."""
     app_dict = dict(application)
@@ -1136,8 +1210,10 @@ def _build_ci_prefill_data(application, ci_name):
         'date_reported': today,
         'date_investigated': today,
         'prepared_by': ci_name or '',
-        'assess_prepared_by': ci_name or ''
+        'assess_prepared_by': ci_name or '',
     }
+    # Demo layer (spouse, family row samples, cash-flow form numbers) — not from LPS.
+    prefill.update(_ci_wizard_demo_sample_layer(app_dict, name, addr, amount))
 
     # If checklist already exists, use saved values as strongest source.
     saved_payload = app_dict.get('ci_checklist_data')
@@ -1846,53 +1922,57 @@ def submit_ci_checklist(id):
     if current_user.role != 'ci_staff':
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
-    conn = get_db()
-    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
-    
-    if not app_data or app_data['assigned_ci_staff'] != current_user.id:
-        flash('Application not found', 'danger')
-        conn.close()
-        return redirect(url_for('ci_dashboard'))
-    
-    try:
-        checklist_data = request.form.get('checklist_data')
-        ci_signature = request.form.get('ci_signature')
-        ci_latitude = request.form.get('ci_latitude')
-        ci_longitude = request.form.get('ci_longitude')
 
-        # Build a complete checklist payload so DB always stores all form fields.
+    skip_form_keys = (
+        'checklist_data', 'ci_signature', 'ci_latitude', 'ci_longitude', 'ci_photos', 'interview_photos',
+    )
+
+    conn = get_db()
+    try:
+        app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
+        if not app_data or app_data.get('assigned_ci_staff') != current_user.id:
+            flash('Application not found', 'danger')
+            return redirect(url_for('ci_dashboard'))
+
+        checklist_raw = request.form.get('checklist_data')
         try:
-            parsed_checklist = json.loads(checklist_data) if checklist_data else {}
+            parsed_checklist = json.loads(checklist_raw) if checklist_raw else {}
+            if not isinstance(parsed_checklist, dict):
+                parsed_checklist = {}
         except Exception:
             parsed_checklist = {}
 
         for key in request.form.keys():
-            if key in ('checklist_data', 'ci_signature', 'ci_latitude', 'ci_longitude'):
+            if key in skip_form_keys:
                 continue
             parsed_checklist[key] = request.form.get(key, '')
-        checklist_data = json.dumps(parsed_checklist)
-        
-        # Use registered signature if not provided
+
+        try:
+            checklist_data = json.dumps(parsed_checklist, default=str, ensure_ascii=False)
+        except Exception as ser_err:
+            app.logger.exception('checklist JSON serialize: %s', ser_err)
+            flash('Could not save checklist (data too large or invalid). Try again.', 'danger')
+            return redirect(url_for('ci_checklist_wizard', id=id))
+
+        ci_signature = request.form.get('ci_signature')
+        ci_latitude = request.form.get('ci_latitude') or None
+        ci_longitude = request.form.get('ci_longitude') or None
+
         if not ci_signature:
             if current_user.signature_path:
-                # Use the registered signature URL
-                ci_signature = url_for('serve_signature', 
-                                      filename=current_user.signature_path.split('/')[-1].split('\\')[-1], 
-                                      _external=True)
-            else:
-                flash('Signature is required. Please update your signature in Change Password page.', 'danger')
-                conn.close()
-                return redirect(url_for('ci_checklist', id=id))
-        
-        # Update application
+                sig_file = (current_user.signature_path or '').replace('\\', '/').split('/')[-1]
+                if sig_file:
+                    ci_signature = url_for('serve_signature', filename=sig_file, _external=True)
+            if not ci_signature:
+                flash('Signature is required. Please update your signature on Change Password.', 'danger')
+                return redirect(url_for('ci_checklist_wizard', id=id))
+
         conn.execute('''
-            UPDATE loan_applications 
+            UPDATE loan_applications
             SET status=?, ci_checklist_data=?, ci_signature=?, ci_completed_at=?, ci_latitude=?, ci_longitude=?
             WHERE id=?
         ''', ('ci_completed', checklist_data, ci_signature, now_ph().isoformat(), ci_latitude, ci_longitude, id))
-        
-        # Handle CI photo uploads (supports both old/new input names).
+
         uploaded_files = []
         if 'interview_photos' in request.files:
             uploaded_files.extend(request.files.getlist('interview_photos'))
@@ -1909,38 +1989,61 @@ def submit_ci_checklist(id):
                     'INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
                     (id, filename, filepath, current_user.id)
                 )
-        
-        # Update workload
-        conn.execute('UPDATE users SET current_workload = current_workload - 1 WHERE id=?', (current_user.id,))
+
+        conn.execute('''
+            UPDATE users SET current_workload =
+                CASE WHEN COALESCE(current_workload, 0) < 1 THEN 0 ELSE COALESCE(current_workload, 0) - 1 END
+            WHERE id=?
+        ''', (current_user.id,))
+
         conn.commit()
-        
-        # Emit real-time update
-        socketio.emit('application_updated', {
-            'id': id,
-            'status': 'ci_completed',
-            'member_name': app_data['member_name'],
-            'loan_amount': float(app_data['loan_amount']),
-            'timestamp': now_ph().isoformat()
-        })
-        
-        # Notify loan officer
-        loan_officer = conn.execute("SELECT id FROM users WHERE role='loan_officer' LIMIT 1").fetchone()
-        conn.close()
-        
-        if loan_officer:
-            enqueue_notification(
-                loan_officer['id'],
-                f'CI interview completed for: {app_data["member_name"]}',
-                f'/admin/application/{id}'
-            )
-        
+
+        try:
+            la = float(app_data.get('loan_amount') or 0)
+        except (TypeError, ValueError):
+            la = 0.0
+        try:
+            socketio.emit('application_updated', {
+                'id': id,
+                'status': 'ci_completed',
+                'member_name': app_data.get('member_name') or '',
+                'loan_amount': la,
+                'timestamp': now_ph().isoformat()
+            })
+        except Exception as sock_err:
+            app.logger.debug('socket emit after ci submit: %s', sock_err)
+
+        notifiers = conn.execute('''
+            SELECT id FROM users
+            WHERE is_approved = 1 AND role IN ('loan_officer', 'admin')
+            ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id
+        ''').fetchall() or []
+        for row in notifiers:
+            try:
+                enqueue_notification(
+                    int(row['id']),
+                    f'CI interview completed for: {app_data.get("member_name") or "Application"}',
+                    f'/admin/application/{id}'
+                )
+            except Exception:
+                pass
+
         flash('CI Checklist submitted successfully!', 'success')
         return redirect(url_for('ci_dashboard'))
-        
+
     except Exception as e:
-        conn.close()
-        flash(f'Error: {str(e)}', 'danger')
-        return redirect(url_for('ci_checklist', id=id))
+        app.logger.exception('submit_ci_checklist failed: %s', e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash('Submission failed. Please try again. If it continues, contact support.', 'danger')
+        return redirect(url_for('ci_checklist_wizard', id=id))
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 # ADMIN ROUTES
 @app.route('/admin/dashboard')

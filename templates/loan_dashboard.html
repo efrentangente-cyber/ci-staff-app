@@ -1,5 +1,8 @@
     {% extends "base.html" %}
 {% block title %}LPS Dashboard{% endblock %}
+{% block extra_head %}
+<link rel="prefetch" href="{{ url_for('submit_application') }}">
+{% endblock %}
 {% block content %}
 <div class="top-bar">
     <h2>LPS Dashboard</h2>

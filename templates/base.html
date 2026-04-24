@@ -883,6 +883,7 @@
             margin: 4px 0;
         }
     </style>
+    {% block extra_head %}{% endblock %}
 </head>
 <body{% if current_user.is_authenticated %} class="authenticated"{% endif %}>
     <!-- Apply dark mode immediately on body load -->

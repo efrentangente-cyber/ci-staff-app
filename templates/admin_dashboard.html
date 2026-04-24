@@ -532,55 +532,47 @@ function updateCIStaffStatus(userId, isOnline, userName) {
     document.getElementById('onlineCount').textContent = `${onlineCount} Online`;
 }
 
-// Search applications
+// Search applications (trim query; empty = show all rows)
 function searchApplications(tableType) {
-    let searchValue, table, countBadge, countLabel;
-    
+    let raw, table, countBadge, countLabel;
     if (tableType === 'pending') {
-        searchValue = document.getElementById('searchInputPending').value.toLowerCase();
+        raw = document.getElementById('searchInputPending');
         table = document.getElementById('pendingTable');
         countBadge = document.getElementById('pendingCount');
         countLabel = 'Pending';
     } else if (tableType === 'inprocess') {
-        searchValue = document.getElementById('searchInputInProcess').value.toLowerCase();
+        raw = document.getElementById('searchInputInProcess');
         table = document.getElementById('inProcessTable');
         countBadge = document.getElementById('inProcessCount');
         countLabel = 'In Process';
     } else {
-        searchValue = document.getElementById('searchInputProcessed').value.toLowerCase();
+        raw = document.getElementById('searchInputProcessed');
         table = document.getElementById('processedTable');
         countBadge = document.getElementById('processedCount');
         countLabel = 'Processed';
     }
-    
+    if (!table) return;
+    const q = (raw && raw.value ? raw.value : '').toLowerCase().trim();
     const tbody = table.getElementsByTagName('tbody')[0];
-    
-    if (!tbody) return; // Exit if no tbody found
-    
+    if (!tbody) return;
     const rows = tbody.getElementsByTagName('tr');
     let visibleCount = 0;
-    
     for (let i = 0; i < rows.length; i++) {
-        const cells = rows[i].getElementsByTagName('td');
-        let found = false;
-        
-        for (let j = 0; j < cells.length; j++) {
-            if (cells[j].textContent.toLowerCase().includes(searchValue)) {
-                found = true;
-                break;
-            }
-        }
-        
-        if (found) {
+        if (!q) {
             rows[i].style.display = '';
             visibleCount++;
-        } else {
-            rows[i].style.display = 'none';
+            continue;
         }
+        const cells = rows[i].getElementsByTagName('td');
+        let found = false;
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().includes(q)) { found = true; break; }
+        }
+        rows[i].style.display = found ? '' : 'none';
+        if (found) visibleCount++;
     }
-    
     if (countBadge) {
-        countBadge.textContent = `${visibleCount} ${searchValue ? 'Found' : countLabel}`;
+        countBadge.textContent = `${visibleCount} ${q ? 'Found' : countLabel}`;
     }
 }
 
