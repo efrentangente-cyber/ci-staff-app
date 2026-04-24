@@ -194,8 +194,16 @@ class ExcelSpreadsheet {
 
                 // Load saved value - DISPLAY ONLY (not formula)
                 if (this.cells[cellRef]) {
-                    // Always show the display value (calculated result), never the formula
-                    input.value = this.cells[cellRef].display || this.cells[cellRef].value || '';
+                    // Always prefer computed display, even when it is intentionally empty.
+                    if (
+                        Object.prototype.hasOwnProperty.call(this.cells[cellRef], 'display') &&
+                        this.cells[cellRef].display !== null &&
+                        this.cells[cellRef].display !== undefined
+                    ) {
+                        input.value = this.cells[cellRef].display;
+                    } else {
+                        input.value = this.cells[cellRef].value || '';
+                    }
                     
                     // Mark formula cells visually but don't show formula in cell
                     if (this.cells[cellRef].formula) {
@@ -610,32 +618,48 @@ class ExcelSpreadsheet {
 
     // Replace cell references in formula
     replaceCellReferences(formula) {
-        // Match cell references like A1, B2, etc.
-        const cellRefPattern = /([A-Z]+)(\d+)/g;
+        // Match references like A1, $A$1, A$1, $A1.
+        const cellRefPattern = /(\$?[A-Z]+)(\$?\d+)/g;
         
         return formula.replace(cellRefPattern, (match, col, row) => {
-            const cellRef = col + row;
-            const cell = this.cells[cellRef];
-            
-            if (cell && (cell.display !== undefined && cell.display !== null && cell.display !== '')) {
-                // Use display value if available
-                const value = cell.display.toString();
-                // Remove any non-numeric characters except decimal point and minus
-                const numericValue = value.replace(/[^\d.-]/g, '');
-                return numericValue || '0';
-            } else if (cell && (cell.value !== undefined && cell.value !== null && cell.value !== '')) {
-                // Use value if display is not available
-                const value = cell.value.toString();
-                // Remove any non-numeric characters except decimal point and minus
-                const numericValue = value.replace(/[^\d.-]/g, '');
-                return numericValue || '0';
-            }
-            return '0';
+            const cleanCol = col.replace(/\$/g, '');
+            const cleanRow = row.replace(/\$/g, '');
+            const cellRef = cleanCol + cleanRow;
+            return this.getCellNumericValue(cellRef);
         });
     }
 
+    getCellNumericValue(cellRef) {
+        const cell = this.cells[cellRef];
+        if (!cell) return '0';
+        if (cell.display !== undefined && cell.display !== null && cell.display !== '') {
+            return this.parseLiteralNumber(cell.display);
+        }
+        if (cell.value !== undefined && cell.value !== null && cell.value !== '') {
+            return this.parseLiteralNumber(cell.value);
+        }
+        return '0';
+    }
+
+    parseLiteralNumber(raw) {
+        if (raw === null || raw === undefined || raw === '') return '0';
+        const text = String(raw).trim();
+        if (!text) return '0';
+
+        // Convert percentages (e.g. 15% => 0.15)
+        if (/%$/.test(text)) {
+            const p = parseFloat(text.replace(/[,%\s]/g, ''));
+            if (!isNaN(p)) return String(p / 100);
+        }
+
+        // Remove currency symbols, spaces, and thousand separators
+        const numericText = text.replace(/[,\s₱$€£¥]/g, '');
+        const n = parseFloat(numericText);
+        return isNaN(n) ? '0' : String(n);
+    }
+
     // Evaluate expression (supports basic math and Excel functions)
-    // Supports: +, -, *, /, (), SUM, AVERAGE, MIN, MAX, COUNT, IF
+    // Supports: +, -, *, /, (), SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, ABS, ROUND, IF, IFERROR
     evaluateExpression(expression) {
         // Handle SUM function
         expression = this.handleSumFunction(expression);
@@ -652,12 +676,24 @@ class ExcelSpreadsheet {
         // Handle COUNT function
         expression = this.handleCountFunction(expression);
 
+        // Handle COUNTA function
+        expression = this.handleCountAFunction(expression);
+
+        // Handle ABS function
+        expression = this.handleAbsFunction(expression);
+
+        // Handle ROUND function
+        expression = this.handleRoundFunction(expression);
+
         // Replace remaining standalone cell references (e.g., A1+B1).
         // Do this AFTER range functions so refs like D6:D7 are preserved for SUM.
         expression = this.replaceCellReferences(expression);
         
         // Handle IF function (basic support)
         expression = this.handleIfFunction(expression);
+
+        // Handle IFERROR function
+        expression = this.handleIfErrorFunction(expression);
 
         try {
             // Use Function constructor for safe evaluation
@@ -726,14 +762,45 @@ class ExcelSpreadsheet {
         });
     }
 
+    // Handle COUNTA function
+    handleCountAFunction(expression) {
+        const countAPattern = /COUNTA\(([^)]+)\)/gi;
+        return expression.replace(countAPattern, (match, args) => {
+            const values = this.getFunctionArgValues(args);
+            return values.filter(v => v !== null && v !== undefined && String(v).trim() !== '').length;
+        });
+    }
+
+    // Handle ABS function
+    handleAbsFunction(expression) {
+        const absPattern = /ABS\(([^)]+)\)/gi;
+        return expression.replace(absPattern, (match, arg) => {
+            const n = parseFloat(arg);
+            return isNaN(n) ? 0 : Math.abs(n);
+        });
+    }
+
+    // Handle ROUND function: ROUND(number, decimals)
+    handleRoundFunction(expression) {
+        const roundPattern = /ROUND\(([^,]+),([^)]+)\)/gi;
+        return expression.replace(roundPattern, (match, numExpr, decExpr) => {
+            const n = parseFloat(numExpr);
+            const d = parseInt(decExpr, 10);
+            if (isNaN(n)) return 0;
+            const decimals = isNaN(d) ? 0 : d;
+            return Number(n).toFixed(decimals);
+        });
+    }
+
     // Supports function args like: A1:A10, A1, B2, 100, A1:B2, C5
     getFunctionArgValues(argsString) {
-        const tokens = argsString.split(',').map(t => t.trim()).filter(Boolean);
+        const tokens = argsString.split(/[;,]/).map(t => t.trim()).filter(Boolean);
         const values = [];
 
         tokens.forEach((token) => {
-            const rangeMatch = token.match(/^([A-Z]+\d+):([A-Z]+\d+)$/i);
-            const cellMatch = token.match(/^([A-Z]+\d+)$/i);
+            const normalized = token.replace(/\$/g, '').toUpperCase();
+            const rangeMatch = normalized.match(/^([A-Z]+\d+):([A-Z]+\d+)$/i);
+            const cellMatch = normalized.match(/^([A-Z]+\d+)$/i);
             const num = parseFloat(token);
 
             if (rangeMatch) {
@@ -761,6 +828,22 @@ class ExcelSpreadsheet {
                 return condResult ? trueVal.trim() : falseVal.trim();
             } catch (e) {
                 return 0;
+            }
+        });
+    }
+
+    // Handle IFERROR function: IFERROR(value, fallback)
+    handleIfErrorFunction(expression) {
+        const ifErrPattern = /IFERROR\(([^,]+),([^)]+)\)/gi;
+        return expression.replace(ifErrPattern, (match, valueExpr, fallbackExpr) => {
+            try {
+                const result = new Function('return ' + valueExpr)();
+                if (result === null || result === undefined || isNaN(result) || !isFinite(result)) {
+                    return fallbackExpr.trim();
+                }
+                return result;
+            } catch (e) {
+                return fallbackExpr.trim();
             }
         });
     }

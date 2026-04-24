@@ -1058,8 +1058,25 @@ def _can_fallback_to_textbelt(semaphore_error):
         'message cannot start with test',
         'could not parse philippine mobile number',
         'invalid or empty phone number',
+        'not yet been approved for sending messages',
+        'complete your account profile',
     )
     return not any(marker in err for marker in blocked_markers)
+
+
+def _friendly_sms_error(raw_error):
+    """Normalize provider errors into a concise operator-friendly message."""
+    err = (raw_error or '').strip()
+    low = err.lower()
+    if not err:
+        return 'SMS could not be sent.'
+    if 'not yet been approved for sending messages' in low:
+        return 'Semaphore account is not yet approved for sending SMS. Complete account profile/verification in Semaphore and try again.'
+    if 'free sms are disabled for this country' in low:
+        return 'Fallback SMS provider is unavailable for this country. Please use an approved paid SMS provider.'
+    if 'invalid or empty phone number' in low or 'could not parse philippine mobile number' in low:
+        return 'Invalid member mobile number format.'
+    return err[:500]
 
 
 def send_sms(phone_number, message, **log_ctx):
@@ -1123,16 +1140,19 @@ def send_sms(phone_number, message, **log_ctx):
                         _log('success', f"Semaphore failed then TextBelt sent: {err}", send_body, phone)
                         return True, None
                     combined_err = f"Semaphore: {err}; TextBelt: {tb_err}"
-                    _log('failed', combined_err, send_body, phone)
-                    return False, combined_err
+                    friendly = _friendly_sms_error(combined_err)
+                    _log('failed', friendly, send_body, phone)
+                    return False, friendly
 
-                _log('failed', err, send_body, phone)
-                return False, err
+                friendly = _friendly_sms_error(err)
+                _log('failed', friendly, send_body, phone)
+                return False, friendly
             if use_sem and not ph09:
                 msg = 'Could not parse Philippine mobile number (use 09XX XXX XXXX or +63...)'
                 print(f"✗ {msg} raw={phone_number!r}")
-                _log('failed', msg, send_body, phone)
-                return False, msg
+                friendly = _friendly_sms_error(msg)
+                _log('failed', friendly, send_body, phone)
+                return False, friendly
 
             # No Semaphore key: try TextBelt on international-style number
             print("[SMS] No SEMAPHORE_API_KEY — using TextBelt (limited free tier)")
@@ -1140,15 +1160,17 @@ def send_sms(phone_number, message, **log_ctx):
             if ok:
                 _log('success', None, send_body, phone)
                 return True, None
-            _log('failed', err, send_body, phone)
-            return False, err
+            friendly = _friendly_sms_error(err)
+            _log('failed', friendly, send_body, phone)
+            return False, friendly
 
         except Exception as e:
             print(f"✗ SMS provider exception: {str(e)}")
             import traceback
             traceback.print_exc()
-            _log('failed', str(e), send_body, phone)
-            return False, str(e)
+            friendly = _friendly_sms_error(str(e))
+            _log('failed', friendly, send_body, phone)
+            return False, friendly
 
     except Exception as e:
         print(f"✗ SMS error: {str(e)}")
@@ -1158,8 +1180,9 @@ def send_sms(phone_number, message, **log_ctx):
             body = f"DCCCO: {message}"
         except Exception:
             body = ''
-        _log('failed', str(e), body, str(phone_number or ''))
-        return False, str(e)
+        friendly = _friendly_sms_error(str(e))
+        _log('failed', friendly, body, str(phone_number or ''))
+        return False, friendly
 
 
 def send_bulk_sms(phone_numbers, message, sent_by_user_id=None):
@@ -2762,7 +2785,7 @@ def admin_application(id):
                         loan_application_id=id,
                         sent_by_user_id=current_user.id,
                         category=decision,
-                        member_name=app_data.get('member_name'),
+                        member_name=(app_data['member_name'] if 'member_name' in app_data.keys() else ''),
                     )
             
             # Notify loan staff in background to keep response fast.
@@ -2790,27 +2813,30 @@ def admin_application(id):
             flash(f'Error: {str(e)}', 'danger')
             return redirect(url_for('admin_application', id=id))
     
-    documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=?', (id,)).fetchall()
-    messages = conn.execute('''
-        SELECT m.*, u.name as sender_name 
-        FROM messages m
-        JOIN users u ON m.sender_id = u.id
-        WHERE m.loan_application_id=?
-        ORDER BY m.sent_at ASC
-    ''', (id,)).fetchall()
+    try:
+        documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=?', (id,)).fetchall()
+    except Exception as doc_err:
+        print(f"WARNING loading documents for admin_application({id}): {doc_err}")
+        documents = []
+
+    try:
+        messages = conn.execute('''
+            SELECT m.*, u.name as sender_name 
+            FROM messages m
+            JOIN users u ON m.sender_id = u.id
+            WHERE m.loan_application_id=?
+            ORDER BY m.sent_at ASC
+        ''', (id,)).fetchall()
+    except Exception as msg_err:
+        print(f"WARNING loading messages for admin_application({id}): {msg_err}")
+        messages = []
     
-    # Get CI staff list for reassignment
-    ci_staff_list = conn.execute('''
-        SELECT id, name, email 
-        FROM users 
-        WHERE role='ci_staff' AND is_approved=1
-        ORDER BY name ASC
-    ''').fetchall()
-    
-    row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
-    unread_count = row['count'] if row else 0
+    # Get CI staff list for reassignment (schema-compatible across deployments).
+    ci_staff_list = fetch_ci_staff_list(conn, include_pending=False)
     conn.close()
+
+    # Use centralized unread count helper with backward-compatible fallbacks.
+    unread_count = get_unread_notification_count(current_user.id)
     
     return render_template('admin_application.html', 
                          application=app_data, 

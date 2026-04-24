@@ -520,21 +520,48 @@
                 
                 @media print {
                     .excel-container-view {
-                        border: 1px solid #000;
+                        border: none !important;
+                        background: #fff !important;
+                        overflow: visible !important;
                     }
-                    
-                    .excel-table-view th,
+
+                    /* Hide Excel row/column headers when printing */
+                    .excel-col-header,
+                    .excel-row-header,
+                    .excel-corner,
+                    .excel-table-view thead,
+                    .excel-table-view th {
+                        display: none !important;
+                    }
+
+                    /* Clean professional print: no grid lines */
                     .excel-table-view td {
-                        border: 1px solid #000;
+                        border: none !important;
                         font-size: 10px;
-                        padding: 4px;
+                        padding: 4px 6px;
+                        background: transparent !important;
+                        color: #000 !important;
                     }
-                    
+
+                    .excel-table-view {
+                        border: none !important;
+                    }
+
+                    .excel-cell-view {
+                        border: none !important;
+                        background: transparent !important;
+                        box-shadow: none !important;
+                    }
+
                     .excel-cell-view.has-formula {
-                        background: #f8f9fa !important;
+                        background: transparent !important;
                         color: #000 !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
+                    }
+
+                    .excel-cell-view.merged-cell-view {
+                        background: transparent !important;
                     }
                 }
             </style>
