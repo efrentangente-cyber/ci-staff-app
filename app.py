@@ -186,14 +186,73 @@ def get_unread_notification_count(user_id):
     if cached is not None:
         return cached
     conn = get_db()
-    row = conn.execute(
-        "SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-        (user_id,)
-    ).fetchone()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
+            (user_id,)
+        ).fetchone()
+    except Exception:
+        # Backward compatibility for deployments where notifications.message does not exist yet.
+        row = conn.execute(
+            "SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0",
+            (user_id,)
+        ).fetchone()
     conn.close()
     count = row['count'] if row else 0
     _set_cached_count(_notification_count_cache, user_id, count)
     return count
+
+
+def fetch_ci_staff_list(conn, include_pending=True):
+    """
+    Fetch CI staff list with compatibility for older schemas where users.is_approved
+    may not exist yet in production.
+    """
+    where_role = "WHERE role='ci_staff'"
+    order_by = "ORDER BY name ASC"
+    if include_pending:
+        try:
+            return conn.execute(
+                f'''
+                SELECT id, name, email, is_approved
+                FROM users
+                {where_role}
+                {order_by}
+                '''
+            ).fetchall()
+        except Exception:
+            rows = conn.execute(
+                f'''
+                SELECT id, name, email
+                FROM users
+                {where_role}
+                {order_by}
+                '''
+            ).fetchall()
+            return [
+                {'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1}
+                for r in rows
+            ]
+
+    try:
+        return conn.execute(
+            f'''
+            SELECT id, name, email, is_approved
+            FROM users
+            {where_role} AND is_approved=1
+            {order_by}
+            '''
+        ).fetchall()
+    except Exception:
+        rows = conn.execute(
+            f'''
+            SELECT id, name, email
+            FROM users
+            {where_role}
+            {order_by}
+            '''
+        ).fetchall()
+        return [{'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1} for r in rows]
 
 
 def _fetch_loan_types_flexible(conn, active_only=False):
@@ -1327,13 +1386,14 @@ def load_user(user_id):
                 conn.commit()
             except Exception as role_update_error:
                 print(f"⚠️  Role normalization warning (user_loader): {role_update_error}")
+        signature_path = row['signature_path'] if 'signature_path' in row.keys() else None
         backup_email = row['backup_email'] if 'backup_email' in row.keys() else None
         profile_photo = row['profile_photo'] if 'profile_photo' in row.keys() else None
         assigned_route = row['assigned_route'] if 'assigned_route' in row.keys() else None
         permissions = row['permissions'] if 'permissions' in row.keys() else None
         conn.close()
         user = User(
-            row['id'], row['email'], row['name'], effective_role, row['signature_path'],
+            row['id'], row['email'], row['name'], effective_role, signature_path,
             backup_email, profile_photo, assigned_route, permissions,
         )
         if has_request_context():
@@ -1567,12 +1627,15 @@ def login():
         email = request.form['email']
         password = request.form['password']
         conn = get_db()
-        row = conn.execute('''
-            SELECT id, email, password_hash, name, role, signature_path, backup_email, profile_photo, assigned_route, permissions, is_approved
+        row = conn.execute(
+            '''
+            SELECT *
             FROM users
             WHERE email=?
             LIMIT 1
-        ''', (email,)).fetchone()
+            ''',
+            (email,),
+        ).fetchone()
         conn.close()
         if row and check_password_hash(row['password_hash'], password):
             normalized_role = normalize_role(row['role'])
@@ -1587,11 +1650,12 @@ def login():
                     print(f"⚠️  Role normalization warning (login): {role_update_error}")
 
             # Check if user is approved
-            if row['is_approved'] == 0:
+            is_approved = row['is_approved'] if 'is_approved' in row.keys() else 1
+            if is_approved == 0:
                 flash('Your account is pending admin approval. Please wait.', 'warning')
                 return render_template('login.html')
             
-            user = User(row['id'], row['email'], row['name'], effective_role, row['signature_path'], 
+            user = User(row['id'], row['email'], row['name'], effective_role, row['signature_path'] if 'signature_path' in row.keys() else None, 
                        row['backup_email'] if 'backup_email' in row.keys() else None,
                        row['profile_photo'] if 'profile_photo' in row.keys() else None,
                        row['assigned_route'] if 'assigned_route' in row.keys() else None,
@@ -1632,12 +1696,7 @@ def loan_dashboard():
     ''', (current_user.id,)).fetchall()
     
     # Get all CI staff for the dropdown
-    ci_staff_list = conn.execute('''
-        SELECT id, name, email 
-        FROM users 
-        WHERE role='ci_staff' 
-        ORDER BY name ASC
-    ''').fetchall()
+    ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
     
     # Fixed: Handle None case when no notifications exist
     unread_count_row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'", 
@@ -1842,14 +1901,24 @@ def submit_application():
             if needs_ci:
                 if specific_ci_id:
                     # Assign to specific approved CI staff when explicitly selected.
-                    selected_ci = conn.execute(
-                        '''
-                        SELECT id FROM users
-                        WHERE id = ? AND role = 'ci_staff' AND is_approved = 1
-                        LIMIT 1
-                        ''',
-                        (specific_ci_id,),
-                    ).fetchone()
+                    try:
+                        selected_ci = conn.execute(
+                            '''
+                            SELECT id FROM users
+                            WHERE id = ? AND role = 'ci_staff' AND is_approved = 1
+                            LIMIT 1
+                            ''',
+                            (specific_ci_id,),
+                        ).fetchone()
+                    except Exception:
+                        selected_ci = conn.execute(
+                            '''
+                            SELECT id FROM users
+                            WHERE id = ? AND role = 'ci_staff'
+                            LIMIT 1
+                            ''',
+                            (specific_ci_id,),
+                        ).fetchone()
                     ci_staff_id = selected_ci['id'] if selected_ci else None
                 else:
                     # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route
@@ -1890,15 +1959,40 @@ def submit_application():
                                 ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
                                 ci_staff_id = ci_staff['id'] if ci_staff else None
                             except Exception as route_assign_error:
-                                print(f"Route-based CI assignment lookup failed, using fallback: {route_assign_error}")
+                                print(f"Route-based CI assignment lookup failed, trying legacy query: {route_assign_error}")
+                                try:
+                                    ci_staff = conn.execute('''
+                                        SELECT id, assigned_route FROM users 
+                                        WHERE role='ci_staff'
+                                        AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
+                                        LIMIT 1
+                                    ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
+                                    ci_staff_id = ci_staff['id'] if ci_staff else None
+                                except Exception as route_assign_error_legacy:
+                                    print(f"Route-based CI legacy lookup also failed: {route_assign_error_legacy}")
                     # Fallback to workload-based if no route match
                     if not ci_staff_id:
-                        ci_staff = conn.execute('''
-                            SELECT id FROM users 
-                            WHERE role='ci_staff' AND is_approved=1
-                            ORDER BY current_workload ASC 
-                            LIMIT 1
-                        ''').fetchone()
+                        try:
+                            ci_staff = conn.execute('''
+                                SELECT id FROM users 
+                                WHERE role='ci_staff' AND is_approved=1
+                                ORDER BY current_workload ASC 
+                                LIMIT 1
+                            ''').fetchone()
+                        except Exception:
+                            try:
+                                ci_staff = conn.execute('''
+                                    SELECT id FROM users 
+                                    WHERE role='ci_staff'
+                                    ORDER BY current_workload ASC 
+                                    LIMIT 1
+                                ''').fetchone()
+                            except Exception:
+                                ci_staff = conn.execute('''
+                                    SELECT id FROM users 
+                                    WHERE role='ci_staff'
+                                    LIMIT 1
+                                ''').fetchone()
                         ci_staff_id = ci_staff['id'] if ci_staff else None
                 
                 if ci_staff_id:
@@ -1918,14 +2012,23 @@ def submit_application():
                     conn.close()
             else:
                 # Send directly to loan officer
-                loan_officer = conn.execute('''
-                    SELECT id
-                    FROM users
-                    WHERE is_approved = 1
-                      AND role IN ('loan_officer', 'admin')
-                    ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id ASC
-                    LIMIT 1
-                ''').fetchone()
+                try:
+                    loan_officer = conn.execute('''
+                        SELECT id
+                        FROM users
+                        WHERE is_approved = 1
+                          AND role IN ('loan_officer', 'admin')
+                        ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id ASC
+                        LIMIT 1
+                    ''').fetchone()
+                except Exception:
+                    loan_officer = conn.execute('''
+                        SELECT id
+                        FROM users
+                        WHERE role IN ('loan_officer', 'admin')
+                        ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id ASC
+                        LIMIT 1
+                    ''').fetchone()
                 conn.commit()
                 conn.close()
                 if loan_officer:
@@ -1957,17 +2060,9 @@ def submit_application():
             return redirect(url_for('submit_application'))
     
     conn = get_db()
-    # Get all CI staff (both approved and pending)
-    ci_staff_list = conn.execute('''
-        SELECT id, name, email, is_approved 
-        FROM users 
-        WHERE role='ci_staff' 
-        ORDER BY name ASC
-    ''').fetchall()
-    
-    unread_count_row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
-    unread_count = unread_count_row['count'] if unread_count_row else 0
+    # Get all CI staff with backward-compatible schema handling.
+    ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
+    unread_count = get_unread_notification_count(current_user.id)
     conn.close()
     return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
 
