@@ -25,6 +25,12 @@ body.ci-field-user a.btn {
   touch-action: manipulation;
 }
 
+/* Loan amortization table: selected row (tap to select before “Add loan row”) */
+#loan_rows_container tr.loan-row--selected td {
+  box-shadow: inset 0 0 0 2px #217346;
+  background: #f7faf7;
+}
+
 @media (max-width: 1024px) {
   body.ci-field-user .main-content {
     padding-left: max(12px, env(safe-area-inset-left, 0px));

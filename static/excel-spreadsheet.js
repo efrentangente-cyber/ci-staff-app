@@ -42,47 +42,44 @@ class ExcelSpreadsheet {
         const toolbar = document.createElement('div');
         toolbar.className = 'excel-toolbar';
         toolbar.innerHTML = `
-            <button type="button" class="btn btn-sm btn-primary" onclick="excelSheet.addRow()" title="Add Row">
-                <i class="bi bi-plus"></i> Add Row
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="excelSheet.addRow()" title="Add row under the selected cell (like Excel)">
+                <i class="bi bi-plus"></i> Add row
             </button>
-            <button type="button" class="btn btn-sm btn-primary" onclick="excelSheet.addColumn()" title="Add Column">
-                <i class="bi bi-plus"></i> Add Column
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="excelSheet.addColumn()" title="Add column to the right of the selection">
+                <i class="bi bi-plus"></i> Add column
             </button>
             <div class="toolbar-divider"></div>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('left')" title="Align Left">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.alignText('left')" title="Align Left">
                 <i class="bi bi-text-left"></i>
             </button>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('center')" title="Align Center">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.alignText('center')" title="Align Center">
                 <i class="bi bi-text-center"></i>
             </button>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="excelSheet.alignText('right')" title="Align Right">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.alignText('right')" title="Align Right">
                 <i class="bi bi-text-right"></i>
             </button>
             <div class="toolbar-divider"></div>
-            <button type="button" class="btn btn-sm" style="background:#ffcccc;border:1px solid #c00;" onclick="excelSheet.fillSelectionColor('#ffcccc')" title="Highlight selected cells red">
-                Red
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.fillSelectionColor('#f1f3f4')" title="Subtle fill on selected cells">
+                Shade
             </button>
-            <button type="button" class="btn btn-sm" style="background:#ccffcc;border:1px solid #080;" onclick="excelSheet.fillSelectionColor('#ccffcc')" title="Highlight selected cells green">
-                Green
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.clearSelectionFill()" title="Clear background color">
-                No fill
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.clearSelectionFill()" title="Clear background color in selection">
+                Clear fill
             </button>
             <div class="toolbar-divider"></div>
-            <button type="button" class="btn btn-sm btn-warning" onclick="excelSheet.mergeCells()" title="Merge Cells">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.mergeCells()" title="Merge Cells">
                 <i class="bi bi-border-outer"></i> Merge
             </button>
-            <button type="button" class="btn btn-sm btn-warning" onclick="excelSheet.unmergeCells()" title="Unmerge Cells">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.unmergeCells()" title="Unmerge Cells">
                 <i class="bi bi-border-inner"></i> Unmerge
             </button>
             <div class="toolbar-divider"></div>
-            <button type="button" class="btn btn-sm btn-danger" onclick="excelSheet.clearAll()" title="Clear All">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.clearAll()" title="Clear All">
                 <i class="bi bi-trash"></i> Clear
             </button>
-            <button type="button" class="btn btn-sm btn-success" onclick="excelSheet.saveData()" title="Save">
+            <button type="button" class="btn btn-sm btn-primary" onclick="excelSheet.saveData()" title="Save">
                 <i class="bi bi-save"></i> Save
             </button>
-            <button type="button" class="btn btn-sm btn-info" onclick="excelSheet.printSpreadsheet()" title="Print">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.printSpreadsheet()" title="Print">
                 <i class="bi bi-printer"></i> Print
             </button>
             <div class="toolbar-info">
@@ -371,41 +368,47 @@ class ExcelSpreadsheet {
         }
     }
 
-    // Setup event listeners
+    // Setup event listeners (pointer events: works for mouse + tablet/touch)
     setupEventListeners() {
-        // Mouse down - start selection
-        this.container.addEventListener('mousedown', (e) => {
+        if (this._excelListenersBound) {
+            return;
+        }
+        this._excelListenersBound = true;
+
+        const endDragSelect = () => {
+            if (this.isSelecting) {
+                this.isSelecting = false;
+                this.container.classList.remove('is-selecting');
+            }
+        };
+
+        this.container.addEventListener('pointerdown', (e) => {
             if (e.target.classList.contains('cell-input')) {
                 this.isSelecting = true;
                 this.selectionStart = e.target;
                 this.selectCell(e.target);
                 this.container.classList.add('is-selecting');
-                // Don't prevent default - allow text editing
             }
         });
 
-        // Mouse move - extend selection
-        this.container.addEventListener('mousemove', (e) => {
+        this.container.addEventListener('pointermove', (e) => {
             if (this.isSelecting && e.target.classList.contains('cell-input')) {
                 this.selectRange(this.selectionStart, e.target);
             }
         });
 
-        // Mouse up - end selection
-        this.container.addEventListener('mouseup', (e) => {
-            if (this.isSelecting) {
-                this.isSelecting = false;
-                this.container.classList.remove('is-selecting');
+        this.container.addEventListener('focusin', (e) => {
+            if (!e.target.classList.contains('cell-input')) {
+                return;
             }
+            if (this.isSelecting) {
+                return;
+            }
+            this.selectCell(e.target);
         });
 
-        // Mouse leave - end selection if dragging outside
-        this.container.addEventListener('mouseleave', (e) => {
-            if (this.isSelecting) {
-                this.isSelecting = false;
-                this.container.classList.remove('is-selecting');
-            }
-        });
+        document.addEventListener('pointerup', endDragSelect);
+        document.addEventListener('pointercancel', endDragSelect);
 
         this.container.addEventListener('input', (e) => {
             if (e.target.classList.contains('cell-input')) {
@@ -440,16 +443,30 @@ class ExcelSpreadsheet {
         });
     }
 
+    clearSelectionChrome() {
+        if (!this.container) {
+            return;
+        }
+        this.container.querySelectorAll('td.excel-cell').forEach((td) => {
+            td.classList.remove('excel-cell--active', 'excel-cell--range', 'excel-cell--handle');
+        });
+    }
+
     // Select cell
     selectCell(input) {
-        // Remove previous selection
-        document.querySelectorAll('.cell-input').forEach(cell => {
-            cell.classList.remove('selected');
+        this.container.querySelectorAll('.cell-input').forEach((cell) => {
+            cell.classList.remove('selected', 'range-selected');
         });
+        this.clearSelectionChrome();
 
-        // Add selection
         input.classList.add('selected');
         this.selectedCell = input;
+        this.selectedRange = [];
+
+        const td = input.closest('td');
+        if (td) {
+            td.classList.add('excel-cell--active', 'excel-cell--handle');
+        }
 
         // Update formula bar - show formula if exists, otherwise show value
         const cellRef = input.dataset.cell;
@@ -460,8 +477,10 @@ class ExcelSpreadsheet {
             this.formulaBar.value = input.value;
         }
 
-        // Update cell info
-        document.getElementById('cell-info').textContent = `Cell: ${cellRef}`;
+        const cellInfo = document.getElementById('cell-info');
+        if (cellInfo) {
+            cellInfo.textContent = `Cell: ${cellRef}`;
+        }
     }
 
     // Handle cell input - SMART COMPUTATION: automatically updates all dependent cells
@@ -892,95 +911,115 @@ class ExcelSpreadsheet {
         return formatted;
     }
 
-    // Add row — inserts a new row directly *below* the selected row (like Excel)
+    // Add row — inserts a new row directly *below* the selected row (like Excel).
+    // If no cell is selected, inserts below the first row (not at the bottom).
     addRow() {
-        if (this.selectedCell) {
-            const selectedRow0 = parseInt(this.selectedCell.dataset.row, 10);
-            // 1-based Excel row index of the selected cell
-            const Rsel = selectedRow0 + 1;
-            const newCells = {};
-            Object.keys(this.cells).forEach((cellRef) => {
-                const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (!match) {
-                    newCells[cellRef] = this.cells[cellRef];
-                    return;
-                }
-                const col = match[1];
-                const row1 = parseInt(match[2], 10);
-                if (row1 > Rsel) {
-                    newCells[col + (row1 + 1)] = this.cells[cellRef];
-                } else {
-                    newCells[cellRef] = this.cells[cellRef];
-                }
-            });
-            this.cells = newCells;
+        const selectedRow0 = this.selectedCell
+            ? parseInt(this.selectedCell.dataset.row, 10)
+            : 0;
+        const selCol = this.selectedCell
+            ? parseInt(this.selectedCell.dataset.col, 10)
+            : 0;
+        // 1-based index of the row to insert *after* (insert below this row in the grid)
+        const Rsel = selectedRow0 + 1;
 
-            const newMerged = {};
-            Object.keys(this.mergedCells).forEach((cellRef) => {
-                const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (!match) {
-                    newMerged[cellRef] = this.mergedCells[cellRef];
-                    return;
-                }
-                const col = match[1];
-                const row1 = parseInt(match[2], 10);
-                if (row1 > Rsel) {
-                    newMerged[col + (row1 + 1)] = this.mergedCells[cellRef];
-                } else {
-                    newMerged[cellRef] = this.mergedCells[cellRef];
-                }
-            });
-            this.mergedCells = newMerged;
-        }
+        const newCells = {};
+        Object.keys(this.cells).forEach((cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) {
+                newCells[cellRef] = this.cells[cellRef];
+                return;
+            }
+            const col = match[1];
+            const row1 = parseInt(match[2], 10);
+            if (row1 > Rsel) {
+                newCells[col + (row1 + 1)] = this.cells[cellRef];
+            } else {
+                newCells[cellRef] = this.cells[cellRef];
+            }
+        });
+        this.cells = newCells;
+
+        const newMerged = {};
+        Object.keys(this.mergedCells).forEach((cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) {
+                newMerged[cellRef] = this.mergedCells[cellRef];
+                return;
+            }
+            const col = match[1];
+            const row1 = parseInt(match[2], 10);
+            if (row1 > Rsel) {
+                newMerged[col + (row1 + 1)] = this.mergedCells[cellRef];
+            } else {
+                newMerged[cellRef] = this.mergedCells[cellRef];
+            }
+        });
+        this.mergedCells = newMerged;
 
         this.rows++;
         this.render();
         this.recalculateAll();
         this.saveData();
+
+        const newRow0 = selectedRow0 + 1;
+        const newRef = this.getCellReference(newRow0, selCol);
+        requestAnimationFrame(() => {
+            const inp = this.container.querySelector(`.cell-input[data-cell="${newRef}"]`);
+            if (inp) {
+                this.selectCell(inp);
+                try {
+                    inp.focus({ preventScroll: true });
+                } catch (e) {
+                    inp.focus();
+                }
+            }
+        });
     }
 
     // Add column — inserts a new column to the *right* of the selected column (like Excel)
     addColumn() {
-        if (this.selectedCell) {
-            const sc = parseInt(this.selectedCell.dataset.col, 10);
-            const newCells = {};
-            Object.keys(this.cells).forEach((cellRef) => {
-                const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (!match) {
-                    newCells[cellRef] = this.cells[cellRef];
-                    return;
-                }
-                const colName = match[1];
-                const rowNum = match[2];
-                const colIndex = this.columnToIndex(colName);
-                if (colIndex > sc) {
-                    const newCol = this.indexToColumn(colIndex + 1);
-                    newCells[newCol + rowNum] = this.cells[cellRef];
-                } else {
-                    newCells[cellRef] = this.cells[cellRef];
-                }
-            });
-            this.cells = newCells;
+        const sc = this.selectedCell
+            ? parseInt(this.selectedCell.dataset.col, 10)
+            : 0;
 
-            const newMerged = {};
-            Object.keys(this.mergedCells).forEach((cellRef) => {
-                const match = cellRef.match(/([A-Z]+)(\d+)/);
-                if (!match) {
-                    newMerged[cellRef] = this.mergedCells[cellRef];
-                    return;
-                }
-                const colName = match[1];
-                const rowNum = match[2];
-                const colIndex = this.columnToIndex(colName);
-                if (colIndex > sc) {
-                    const newCol = this.indexToColumn(colIndex + 1);
-                    newMerged[newCol + rowNum] = this.mergedCells[cellRef];
-                } else {
-                    newMerged[cellRef] = this.mergedCells[cellRef];
-                }
-            });
-            this.mergedCells = newMerged;
-        }
+        const newCells = {};
+        Object.keys(this.cells).forEach((cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) {
+                newCells[cellRef] = this.cells[cellRef];
+                return;
+            }
+            const colName = match[1];
+            const rowNum = match[2];
+            const colIndex = this.columnToIndex(colName);
+            if (colIndex > sc) {
+                const newCol = this.indexToColumn(colIndex + 1);
+                newCells[newCol + rowNum] = this.cells[cellRef];
+            } else {
+                newCells[cellRef] = this.cells[cellRef];
+            }
+        });
+        this.cells = newCells;
+
+        const newMerged = {};
+        Object.keys(this.mergedCells).forEach((cellRef) => {
+            const match = cellRef.match(/([A-Z]+)(\d+)/);
+            if (!match) {
+                newMerged[cellRef] = this.mergedCells[cellRef];
+                return;
+            }
+            const colName = match[1];
+            const rowNum = match[2];
+            const colIndex = this.columnToIndex(colName);
+            if (colIndex > sc) {
+                const newCol = this.indexToColumn(colIndex + 1);
+                newMerged[newCol + rowNum] = this.mergedCells[cellRef];
+            } else {
+                newMerged[cellRef] = this.mergedCells[cellRef];
+            }
+        });
+        this.mergedCells = newMerged;
 
         this.cols++;
         this.render();
@@ -990,7 +1029,7 @@ class ExcelSpreadsheet {
 
     /**
      * Apply background color to the current range selection (or single selected cell).
-     * Use with toolbar Red / Green; colors persist in exportData for printing.
+     * Colors persist in cell data for printing/export.
      */
     fillSelectionColor(color) {
         const refs = this.selectedRange.length > 0
@@ -1008,7 +1047,7 @@ class ExcelSpreadsheet {
         refs.forEach((cellRef) => {
             if (!this.cells[cellRef]) this.cells[cellRef] = {};
             this.cells[cellRef].bgColor = color;
-            const input = document.querySelector(`[data-cell="${cellRef}"]`);
+            const input = this.container.querySelector(`[data-cell="${cellRef}"]`);
             if (input) input.style.backgroundColor = color;
         });
         this.saveData();
@@ -1023,7 +1062,7 @@ class ExcelSpreadsheet {
             if (this.cells[cellRef]) {
                 delete this.cells[cellRef].bgColor;
             }
-            const input = document.querySelector(`[data-cell="${cellRef}"]`);
+            const input = this.container.querySelector(`[data-cell="${cellRef}"]`);
             if (input) input.style.backgroundColor = '';
         });
         this.saveData();
@@ -1407,38 +1446,52 @@ class ExcelSpreadsheet {
 
     // Select range of cells
     selectRange(startInput, endInput) {
-        const startRow = parseInt(startInput.dataset.row);
-        const startCol = parseInt(startInput.dataset.col);
-        const endRow = parseInt(endInput.dataset.row);
-        const endCol = parseInt(endInput.dataset.col);
+        const startRow = parseInt(startInput.dataset.row, 10);
+        const startCol = parseInt(startInput.dataset.col, 10);
+        const endRow = parseInt(endInput.dataset.row, 10);
+        const endCol = parseInt(endInput.dataset.col, 10);
 
         const minRow = Math.min(startRow, endRow);
         const maxRow = Math.max(startRow, endRow);
         const minCol = Math.min(startCol, endCol);
         const maxCol = Math.max(startCol, endCol);
 
-        // Clear previous selection
-        document.querySelectorAll('.cell-input').forEach(cell => {
+        this.container.querySelectorAll('.cell-input').forEach((cell) => {
             cell.classList.remove('selected', 'range-selected');
         });
+        this.clearSelectionChrome();
 
-        // Select range
         this.selectedRange = [];
         for (let row = minRow; row <= maxRow; row++) {
             for (let col = minCol; col <= maxCol; col++) {
                 const cellRef = this.getCellReference(row, col);
-                const input = document.querySelector(`[data-cell="${cellRef}"]`);
+                const input = this.container.querySelector(`[data-cell="${cellRef}"]`);
                 if (input) {
                     input.classList.add('range-selected');
                     this.selectedRange.push(cellRef);
+                    const td = input.closest('td');
+                    if (td) {
+                        td.classList.add('excel-cell--range');
+                    }
                 }
+            }
+        }
+
+        const brInput = this.container.querySelector(`[data-cell="${this.getCellReference(maxRow, maxCol)}"]`);
+        if (brInput) {
+            const brTd = brInput.closest('td');
+            if (brTd) {
+                brTd.classList.add('excel-cell--handle');
             }
         }
 
         // Update cell info
         const startRef = this.getCellReference(minRow, minCol);
         const endRef = this.getCellReference(maxRow, maxCol);
-        document.getElementById('cell-info').textContent = `Range: ${startRef}:${endRef}`;
+        const cellInfo = document.getElementById('cell-info');
+        if (cellInfo) {
+            cellInfo.textContent = `Range: ${startRef}:${endRef}`;
+        }
     }
 
     // Merge selected cells
@@ -1449,7 +1502,7 @@ class ExcelSpreadsheet {
             const notification = document.createElement('div');
             notification.className = 'excel-notification';
             notification.textContent = 'Select multiple cells to merge (click and drag)';
-            notification.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #ffc107; color: #000; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);';
+            notification.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #495057; color: #fff; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);';
             document.body.appendChild(notification);
             setTimeout(() => notification.remove(), 2000);
             return;
@@ -1506,7 +1559,7 @@ class ExcelSpreadsheet {
             const notification = document.createElement('div');
             notification.className = 'excel-notification';
             notification.textContent = 'Select a merged cell to unmerge';
-            notification.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #ffc107; color: #000; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);';
+            notification.style.cssText = 'position: fixed; top: 80px; right: 20px; background: #495057; color: #fff; padding: 10px 20px; border-radius: 5px; z-index: 9999; box-shadow: 0 2px 10px rgba(0,0,0,0.2);';
             document.body.appendChild(notification);
             setTimeout(() => notification.remove(), 2000);
             return;

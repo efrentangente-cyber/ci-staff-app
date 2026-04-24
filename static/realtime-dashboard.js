@@ -3,6 +3,18 @@
 
 let lastUpdateTime = Date.now();
 let currentDashboard = null;
+const lpsUserId = typeof window.__LPS_USER_ID === 'number' || typeof window.__LPS_USER_ID === 'string'
+    ? parseInt(String(window.__LPS_USER_ID), 10)
+    : null;
+function lpsWantsThisSocketPayload(data) {
+    if (currentDashboard !== 'loan' || lpsUserId == null || Number.isNaN(lpsUserId)) {
+        return true;
+    }
+    if (!data || data.submitted_by == null) {
+        return false;
+    }
+    return parseInt(String(data.submitted_by), 10) === lpsUserId;
+}
 
 // Detect which dashboard we're on
 if (window.location.pathname.includes('/admin/dashboard')) {
@@ -13,60 +25,79 @@ if (window.location.pathname.includes('/admin/dashboard')) {
     currentDashboard = 'ci';
 }
 
-// WebSocket connection for instant updates
-const socket = io({
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionDelay: 100,  // Immediate reconnection
-    reconnectionAttempts: Infinity,  // Never stop trying
-    timeout: 5000,
-    upgrade: true,
-    rememberUpgrade: true,
-    forceNew: false
-});
-
-// Connection status logging
-socket.on('connect', function() {
-    console.log('✅ Dashboard Socket.IO connected - Real-time updates enabled');
-    console.log('🔄 Fetching latest data...');
-    refreshApplications(); // Immediately fetch latest data on connect
-});
-
-socket.on('disconnect', function(reason) {
-    console.log('❌ Dashboard Socket.IO disconnected:', reason);
-    if (reason === 'io server disconnect') {
-        // Server disconnected, try to reconnect
-        socket.connect();
+// Use the single client from base.html (window.__dcccoSocket) — a second io() call doubled
+// connections and could make the app feel slow / overload the server.
+let refreshDebounce = null;
+function scheduleRefreshApplications() {
+    if (refreshDebounce) {
+        clearTimeout(refreshDebounce);
     }
-});
+    refreshDebounce = setTimeout(function() {
+        refreshDebounce = null;
+        refreshApplications();
+    }, 200);
+}
 
-socket.on('connect_error', function(error) {
-    console.log('⚠️ Connection error:', error);
-});
+function initDcccoDashboardRealtime() {
+    if (initDcccoDashboardRealtime._done) {
+        return;
+    }
+    const socket = window.__dcccoSocket;
+    if (!socket || !currentDashboard) {
+        return;
+    }
+    initDcccoDashboardRealtime._done = true;
 
-socket.on('reconnect', function(attemptNumber) {
-    console.log('🔄 Reconnected after', attemptNumber, 'attempts');
-    refreshApplications(); // Fetch latest data after reconnection
-});
+    socket.on('connect', function() {
+        if (hasApplicationsTableForPolling()) {
+            scheduleRefreshApplications();
+        }
+    });
 
-// Listen for new application submissions - INSTANT UPDATE
-socket.on('new_application', function(data) {
-    console.log('🆕 NEW APPLICATION:', data);
-    // Show toast notification
-    showToast('New Application', `${data.member_name} submitted a loan application`, 'success');
-    // Immediately refresh the table
-    refreshApplications();
-});
+    socket.on('disconnect', function(reason) {
+        if (reason === 'io server disconnect') {
+            try {
+                socket.connect();
+            } catch (e) { /* ignore */ }
+        }
+    });
 
-// Listen for application updates - INSTANT UPDATE
-socket.on('application_updated', function(data) {
-    console.log('🔄 APPLICATION UPDATED:', data);
-    // Show toast notification
-    const statusText = data.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    showToast('Application Updated', `${data.member_name} - ${statusText}`, 'info');
-    // Immediately refresh the table
-    refreshApplications();
-});
+    socket.on('reconnect', function() {
+        if (hasApplicationsTableForPolling()) {
+            scheduleRefreshApplications();
+        }
+    });
+
+    socket.on('new_application', function(data) {
+        if (!lpsWantsThisSocketPayload(data)) {
+            return;
+        }
+        showToast('New Application', `${data.member_name} submitted a loan application`, 'success');
+        scheduleRefreshApplications();
+    });
+
+    socket.on('application_updated', function(data) {
+        if (!lpsWantsThisSocketPayload(data)) {
+            return;
+        }
+        const rawStatus = (data && data.status) ? data.status : 'Updated';
+        const statusText = String(rawStatus).replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+        showToast('Application Updated', `${data.member_name} - ${statusText}`, 'info');
+        scheduleRefreshApplications();
+    });
+}
+
+function hasApplicationsTableForPolling() {
+    return !!document.querySelector('#applicationsTable tbody');
+}
+
+if (currentDashboard) {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDcccoDashboardRealtime, { once: true });
+    } else {
+        initDcccoDashboardRealtime();
+    }
+}
 
 // Toast notification function
 function showToast(title, message, type = 'info') {
@@ -88,11 +119,18 @@ function showToast(title, message, type = 'info') {
 }
 
 function refreshApplications() {
-    if (!currentDashboard) return;
-    
+    if (!currentDashboard) {
+        return;
+    }
+    // No template currently defines #applicationsTable; polling it was hammering
+    // the server every 2s for no UI benefit. Skip the API when there is no legacy table.
+    if (!hasApplicationsTableForPolling()) {
+        return;
+    }
+
     const apiUrl = `/api/${currentDashboard}/applications`;
-    
-    fetch(apiUrl)
+
+    fetch(apiUrl, { credentials: 'same-origin' })
         .then(response => response.json())
         .then(applications => {
             updateApplicationsTable(applications);
@@ -189,14 +227,14 @@ function updateApplicationsTable(applications) {
     // Update stats if they exist
     updateDashboardStats(applications);
     
-    // Reapply search and filter
-    if (searchValue && typeof searchApplications === 'function') {
+    // Reapply search and filter (legacy #applicationsTable + datatable.js only)
+    if (searchValue && typeof dataTable !== 'undefined' && dataTable && searchInput) {
         searchInput.value = searchValue;
-        searchApplications();
+        if (typeof runDataTableSearch === 'function') runDataTableSearch();
     }
-    if (filterValue !== 'all' && typeof filterApplications === 'function') {
+    if (filterValue !== 'all' && typeof dataTable !== 'undefined' && dataTable && filterSelect) {
         filterSelect.value = filterValue;
-        filterApplications();
+        if (typeof runDataTableFilter === 'function') runDataTableFilter();
     } else {
         const totalCount = document.getElementById('totalCount');
         if (totalCount) {
@@ -247,10 +285,11 @@ function updateDashboardStats(applications) {
     }
 }
 
-// Fallback: Auto-refresh every 2 seconds (in case WebSocket fails)
-// This ensures data is always up-to-date even if WebSocket connection drops
+// Optional slow poll only if a legacy #applicationsTable exists (e.g. future admin view).
 if (currentDashboard) {
-    setInterval(refreshApplications, 2000); // Reduced from 5 seconds to 2 seconds
-    console.log(`⚡ Real-time WebSocket updates enabled for ${currentDashboard} dashboard`);
-    console.log(`🔄 Fallback polling every 2 seconds for maximum reliability`);
+    setInterval(function() {
+        if (document.visibilityState === 'visible' && hasApplicationsTableForPolling() && (!window.__dcccoSocket || !window.__dcccoSocket.connected)) {
+            refreshApplications();
+        }
+    }, 90000);
 }

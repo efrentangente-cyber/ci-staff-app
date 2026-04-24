@@ -244,8 +244,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Search function
-function searchApplications(query) {
+// Legacy DataTable helpers (unique names — do not use "searchApplications"; dashboards define that for their own tables)
+function runDataTableSearch(query) {
     const searchInput = document.getElementById('searchInput');
     const searchValue = (searchInput ? searchInput.value : (query || '')) || '';
     if (dataTable) {
@@ -253,8 +253,7 @@ function searchApplications(query) {
     }
 }
 
-// Filter function
-function filterApplications() {
+function runDataTableFilter() {
     const filterSelect = document.getElementById('statusFilter');
     const filterValue = filterSelect ? filterSelect.value : 'all';
     if (dataTable) {

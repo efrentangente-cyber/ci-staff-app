@@ -6,6 +6,7 @@ let currentAction = null;
 let currentMemberName = '';
 let currentLoanAmount = '';
 let currentLoanType = '';
+let currentTemplateId = null;
 
 // Show SMS modal
 function showSMSModal(appId, action, memberName, loanAmount, loanType, memberContact) {
@@ -14,6 +15,7 @@ function showSMSModal(appId, action, memberName, loanAmount, loanType, memberCon
     currentMemberName = memberName;
     currentLoanAmount = loanAmount;
     currentLoanType = loanType;
+    currentTemplateId = null;
     
     // Set modal title and color
     const modal = document.getElementById('smsModal');
@@ -102,6 +104,7 @@ function displayTemplates(templates) {
 
 // Select a template
 function selectTemplate(templateId, message) {
+    currentTemplateId = templateId;
     // Remove active class from all templates
     document.querySelectorAll('.template-option').forEach(el => {
         el.classList.remove('active');
@@ -164,45 +167,69 @@ function sendSMSAndUpdate() {
     const btn = document.getElementById('send_sms_btn');
     const originalBtnText = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving & sending SMS…';
     
-    // Send request
+    const controller = new AbortController();
+    const timeoutMs = 60000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    // Send request (server no longer blocks on Socket.IO; still guard against network hangs)
     fetch(`/send_sms_and_update_status/${currentAppId}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
+        credentials: 'same-origin',
+        signal: controller.signal,
         body: JSON.stringify({
             action: currentAction,
             message: message,
-            notes: notes
+            notes: notes,
+            template_id: currentTemplateId
         })
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(async (response) => {
+        let data;
+        const text = await response.text();
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch (parseErr) {
+            throw new Error(response.status >= 500
+                ? 'Server error. Try again in a moment.'
+                : 'Unexpected response. Please try again.');
+        }
+        if (!response.ok) {
+            throw new Error((data && data.error) || `Request failed (${response.status})`);
+        }
+        return data;
+    })
+    .then((data) => {
         if (data.success) {
-            // Show success message
-            showNotification('success', `Application ${currentAction} and SMS sent successfully!`);
-            
-            // Close modal
+            if (data.sms_error) {
+                showNotification('warning', (data.message || 'Decision saved.') + ' ' + (data.sms_error || ''));
+            } else {
+                showNotification('success', data.message || 'Decision saved. SMS was sent to the member.');
+            }
             const modal = bootstrap.Modal.getInstance(document.getElementById('smsModal'));
-            modal.hide();
-            
-            // Reload page after 1 second
+            if (modal) modal.hide();
             setTimeout(() => {
                 location.reload();
-            }, 1000);
+            }, 800);
         } else {
-            throw new Error(data.error || 'Failed to send SMS');
+            throw new Error(data.error || 'Failed to save');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        showNotification('error', 'Failed to send SMS: ' + error.message);
-        
-        // Re-enable button
+        const msg = (error && error.name === 'AbortError')
+            ? 'Request timed out. Check your connection and try again.'
+            : (error.message || 'Request failed');
+        showNotification('error', msg);
         btn.disabled = false;
         btn.innerHTML = originalBtnText;
+    })
+    .finally(() => {
+        clearTimeout(timeoutId);
     });
 }
 
@@ -218,7 +245,8 @@ function capitalizeFirst(str) {
 }
 
 function showNotification(type, message) {
-    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const classMap = { success: 'alert-success', error: 'alert-danger', warning: 'alert-warning' };
+    const alertClass = classMap[type] || 'alert-info';
     const icon = type === 'success' ? 'check-circle' : 'exclamation-triangle';
     
     const notification = document.createElement('div');

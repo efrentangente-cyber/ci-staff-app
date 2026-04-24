@@ -1083,16 +1083,16 @@
     
     {% if current_user.is_authenticated %}
     <script>
-        // Initialize Socket.IO with optimized settings for real-time delivery
-        const socket = io({
-            transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
+        // Single shared Socket.IO client (dashboards reuse window.__dcccoSocket — do not call io() again)
+        const socket = (window.__dcccoSocket = io({
+            transports: ['websocket', 'polling'],
             reconnection: true,
-            reconnectionDelay: 500,  // Faster reconnection (was 1000)
-            reconnectionAttempts: 10,  // More attempts (was 5)
+            reconnectionDelay: 500,
+            reconnectionAttempts: 10,
             timeout: 10000,
             upgrade: true,
             rememberUpgrade: true
-        });
+        }));
         
         // Connection status logging (for debugging)
         socket.on('connect', function() {

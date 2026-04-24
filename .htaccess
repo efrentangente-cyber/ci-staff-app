@@ -1,0 +1,10 @@
+# Hardening when this folder is served by Apache (XAMPP).
+# The Flask app on another port (e.g. 5000) is unaffected.
+
+# Stop directory listing (browsing /project/ should not show file indexes).
+Options -Indexes
+
+# Do not allow direct HTTP access to common sensitive file types
+<FilesMatch "\.(?i:env|ini|log|db|sqlite3?|py|pyc|pyo|pyd|key|pem|sql|htpasswd)$">
+    Require all denied
+</FilesMatch>

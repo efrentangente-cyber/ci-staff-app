@@ -162,7 +162,7 @@ class CashFlowCalculator {
         // Add row button
         const addButton = document.createElement('button');
         addButton.type = 'button';
-        addButton.className = 'btn btn-sm btn-success mt-2';
+        addButton.className = 'btn btn-sm btn-outline-primary mt-2';
         addButton.innerHTML = '<i class="bi bi-plus"></i> Add Row';
         addButton.onclick = () => {
             const rowIndex = tbody.children.length;
@@ -237,7 +237,7 @@ class CashFlowCalculator {
         const actionTd = document.createElement('td');
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'btn btn-sm btn-danger';
+        deleteBtn.className = 'btn btn-sm btn-outline-secondary';
         deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
         deleteBtn.onclick = () => {
             tr.remove();

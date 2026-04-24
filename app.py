@@ -2,7 +2,7 @@
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory, session
+from flask import Flask, g, has_request_context, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_socketio import SocketIO, emit, join_room
 from flask_wtf.csrf import CSRFProtect
@@ -40,6 +40,11 @@ else:
     print("   ⚠️  WARNING: DATABASE_URL not set! App will use SQLite (local only)")
     print("   For Render deployment, set DATABASE_URL in dashboard!")
 print("="*80 + "\n")
+
+if (os.getenv('SEMAPHORE_API_KEY') or os.getenv('SMS_API_KEY') or '').strip():
+    print("✓ SEMAPHORE_API_KEY is set — outbound SMS will use Semaphore (Philippines).")
+else:
+    print("ℹ️  SEMAPHORE_API_KEY is not set — set it in the environment (or .env) to send SMS via your Semaphore credits; otherwise TextBelt free tier is used as fallback.\n")
 
 # Always store UTC - JS will convert to local time for display
 def now_ph():
@@ -246,7 +251,7 @@ socketio = SocketIO(
 online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timestamp}}
 
 # Tiny in-memory caches to reduce repeated COUNT(*) queries per request.
-_COUNT_CACHE_TTL_SECONDS = 5
+_COUNT_CACHE_TTL_SECONDS = 20
 _count_cache_lock = eventlet.semaphore.Semaphore()
 _notification_count_cache = {}
 _message_count_cache = {}
@@ -289,6 +294,26 @@ def sanitize_filename(filename):
     # Remove any remaining path separators
     filename = filename.replace('/', '').replace('\\', '')
     return filename
+
+
+def _is_path_within_directory(directory, candidate_path):
+    """
+    True if candidate_path is inside directory (after resolving ..).
+    Safer than str.startswith() on Windows (e.g. C:\\a vs C:\\ab).
+    """
+    d = os.path.abspath(directory)
+    p = os.path.abspath(candidate_path)
+    d_prefix = d if d.endswith(os.sep) else d + os.sep
+    return p == d or p.startswith(d_prefix)
+
+
+@app.after_request
+def _add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
+
 
 class User(UserMixin):
     def __init__(self, id, email, name, role, signature_path=None, backup_email=None, profile_photo=None, assigned_route=None, permissions=None):
@@ -581,6 +606,92 @@ def ensure_sms_templates_table():
     except Exception as e:
         print(f"⚠️  sms_templates migration warning: {e}")
 
+
+def ensure_sms_sent_log_table():
+    """Store outgoing SMS for audit, search, and support."""
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+        if db_type == 'postgresql':
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS sms_sent_log (
+                    id SERIAL PRIMARY KEY,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    phone_number TEXT NOT NULL,
+                    message_body TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    error_detail TEXT,
+                    loan_application_id INTEGER,
+                    sent_by_user_id INTEGER,
+                    category TEXT,
+                    template_id INTEGER,
+                    member_name TEXT
+                )
+            ''')
+        else:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS sms_sent_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    phone_number TEXT NOT NULL,
+                    message_body TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    error_detail TEXT,
+                    loan_application_id INTEGER,
+                    sent_by_user_id INTEGER,
+                    category TEXT,
+                    template_id INTEGER,
+                    member_name TEXT
+                )
+            ''')
+        conn.commit()
+        conn.close()
+        print("✓ sms_sent_log table ensured")
+    except Exception as e:
+        print(f"⚠️  sms_sent_log migration warning: {e}")
+
+
+def _persist_sms_sent_log(
+    phone,
+    message_body,
+    status,
+    error_detail=None,
+    loan_application_id=None,
+    sent_by_user_id=None,
+    category=None,
+    template_id=None,
+    member_name=None,
+):
+    """Best-effort row insert; does not raise (logging must not break sends)."""
+    try:
+        ensure_sms_sent_log_table()
+        conn = get_db()
+        conn.execute(
+            '''
+            INSERT INTO sms_sent_log (
+                phone_number, message_body, status, error_detail,
+                loan_application_id, sent_by_user_id, category, template_id, member_name
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                phone or '',
+                message_body or '',
+                status,
+                error_detail,
+                loan_application_id,
+                sent_by_user_id,
+                category,
+                template_id,
+                member_name,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        app.logger.exception("sms_sent_log insert failed: %s", e)
+
+
 # Initialize database on startup
 try:
     init_db()
@@ -592,6 +703,7 @@ ensure_performance_indexes()
 ensure_direct_message_columns()
 ensure_users_columns()
 ensure_sms_templates_table()
+ensure_sms_sent_log_table()
 
 # Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
@@ -753,73 +865,212 @@ def enqueue_notification(user_id, message, link=None):
     run_background_task(create_notification, user_id, message, link)
 
 
-def send_sms(phone_number, message):
+def _ph_number_for_semaphore(phone_number):
     """
-    Send SMS using TextBelt (FREE - works immediately, no registration needed)
-    Supports INTERNATIONAL phone numbers
+    Semaphore expects Philippine mobiles like 09171234567 (11 digits, leading 0).
+    Accepts +63, 63, 09, or 9XXXXXXXXX digit strings.
     """
+    d = re.sub(r'\D', '', str(phone_number or ''))
+    if not d:
+        return None
+    if d.startswith('63') and len(d) == 12 and d[2] == '9':
+        return '0' + d[2:]
+    if len(d) == 11 and d.startswith('09'):
+        return d
+    if len(d) == 10 and d[0] == '9':
+        return '0' + d
+    if d.startswith('09') and len(d) == 11:
+        return d
+    return None
+
+
+def _send_sms_semaphore(phone_09, send_body_for_log):
+    """
+    POST to Semaphore API. phone_09 must be 09xxxxxxxxx.
+    """
+    api_key = (os.getenv('SEMAPHORE_API_KEY') or os.getenv('SMS_API_KEY') or '').strip()
+    if not api_key:
+        return False, 'SEMAPHORE_API_KEY is not set in the server environment'
+
+    # Semaphore silently drops messages that start with "TEST"
+    if send_body_for_log.lstrip().upper().startswith('TEST'):
+        return False, 'Message cannot start with TEST (ignored by provider)'
+
+    url = 'https://api.semaphore.co/api/v4/messages'
+    sender = (os.getenv('SEMAPHORE_SENDERNAME') or 'SEMAPHORE').strip() or 'SEMAPHORE'
+    payload = {
+        'apikey': api_key,
+        'number': phone_09,
+        'message': send_body_for_log,
+        'sendername': sender,
+    }
     try:
-        # Clean phone number (remove spaces, dashes, etc.)
-        phone = re.sub(r'[^\d+]', '', phone_number)
-        
-        # Auto-format Philippine numbers (09xx -> +639xx)
+        print(f"[SMS] Semaphore → {phone_09} (sender={sender})")
+        response = requests.post(url, data=payload, timeout=30)
+        text = (response.text or '').strip()
+        try:
+            data = response.json()
+        except Exception:
+            err = f'HTTP {response.status_code}: {text[:500]}'
+            print(f"✗ Semaphore non-JSON: {err}")
+            return False, err
+
+        if response.status_code >= 400:
+            if isinstance(data, dict):
+                err = data.get('message') or data.get('error') or str(data)[:500]
+            else:
+                err = text[:500] or f'HTTP {response.status_code}'
+            print(f"✗ Semaphore HTTP {response.status_code}: {err}")
+            return False, str(err)
+
+        # Success payload is usually a one-element list
+        if isinstance(data, list) and len(data) == 0:
+            return False, 'Empty response from Semaphore'
+        if isinstance(data, dict) and 'message_id' not in data:
+            err = data.get('message') or data.get('error')
+            if err:
+                return False, str(err)[:500]
+        row = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
+        if not row:
+            return False, 'Unexpected Semaphore response'
+        st = (row.get('status') or '').strip().lower() if row else ''
+        if st == 'failed':
+            err = row.get('message') or 'Semaphore status Failed'
+            print(f"✗ Semaphore failed: {row}")
+            return False, str(err)[:500]
+
+        print(f"✓ Semaphore accepted: {row.get('message_id', row)} status={row.get('status')}")
+        return True, None
+    except requests.RequestException as e:
+        err = str(e)
+        print(f"✗ Semaphore request error: {err}")
+        return False, err
+
+
+def _send_sms_textbelt(phone, send_body, log_phone):
+    """Legacy fallback when Semaphore is not configured."""
+    url = 'https://textbelt.com/text'
+    payload = {'phone': phone, 'message': send_body, 'key': (os.getenv('TEXTBELT_API_KEY') or 'textbelt')}
+    try:
+        response = requests.post(url, data=payload, timeout=8)
+        result = response.json()
+    except (requests.RequestException, ValueError) as e:
+        return False, str(e)
+    print(f"[SMS] TextBelt Response: {result}")
+    if result.get('success'):
+        return True, None
+    return False, str(result.get('error', 'Unknown error'))
+
+
+def send_sms(phone_number, message, **log_ctx):
+    """
+    Send SMS: Semaphore (Philippines) when SEMAPHORE_API_KEY is set, else TextBelt fallback.
+    Optional log_ctx: loan_application_id, sent_by_user_id, category, template_id, member_name
+    Returns (success: bool, error_message: str | None).
+    """
+    loan_application_id = log_ctx.get('loan_application_id')
+    sent_by_user_id = log_ctx.get('sent_by_user_id')
+    category = log_ctx.get('category')
+    template_id = log_ctx.get('template_id')
+    member_name = log_ctx.get('member_name')
+
+    def _log(status, error_detail, body, dest_phone):
+        _persist_sms_sent_log(
+            dest_phone,
+            body,
+            status,
+            error_detail=error_detail,
+            loan_application_id=loan_application_id,
+            sent_by_user_id=sent_by_user_id,
+            category=category,
+            template_id=template_id,
+            member_name=member_name,
+        )
+
+    try:
+        phone = re.sub(r'[^\d+]', '', str(phone_number or ''))
         if phone.startswith('09') and len(phone) == 11:
             phone = '+63' + phone[1:]
-        # Ensure + prefix for international format
         elif not phone.startswith('+'):
-            # If no country code, assume Philippines
             if len(phone) == 10:
                 phone = '+63' + phone
             else:
                 phone = '+' + phone
-        
+
+        send_body = f"DCCCO: {message}"
+
+        if not phone or len(phone) < 8:
+            _log('failed', 'Invalid or empty phone number', send_body, phone or str(phone_number or ''))
+            return False, 'Invalid or empty phone number'
+
         print(f"\n[SMS] Attempting to send to {phone}")
         print(f"[SMS] Message: {message[:50]}...")
-        
-        # Use TextBelt (FREE - 1 SMS per day per number, works internationally)
-        # No registration needed, works immediately!
+
+        use_sem = bool((os.getenv('SEMAPHORE_API_KEY') or os.getenv('SMS_API_KEY') or '').strip())
+        ph09 = _ph_number_for_semaphore(phone_number) or _ph_number_for_semaphore(phone)
+
         try:
-            print(f"[SMS] Using TextBelt (FREE, no registration needed)...")
-            url = 'https://textbelt.com/text'
-            payload = {
-                'phone': phone,
-                'message': f"DCCCO: {message}",  # Add DCCCO prefix
-                'key': 'textbelt'  # Free tier key
-            }
-            
-            # Keep a short timeout so API failures don't block request flow.
-            response = requests.post(url, data=payload, timeout=4)
-            result = response.json()
-            
-            print(f"[SMS] TextBelt Response: {result}")
-            
-            if result.get('success'):
-                print(f"✓ SMS sent via TextBelt to {phone}")
-                print(f"  Text ID: {result.get('textId', 'N/A')}")
-                print(f"  Quota remaining today: {result.get('quotaRemaining', 'N/A')}")
-                return True
-            else:
-                error_msg = result.get('error', 'Unknown error')
-                print(f"✗ TextBelt failed: {error_msg}")
-                
-                # If quota exceeded, show helpful message
-                if 'quota' in error_msg.lower():
-                    print(f"  Note: TextBelt free tier allows 1 SMS per day per number")
-                    print(f"  You can get more at https://textbelt.com")
-                
-                return False
-                
+            if use_sem and ph09:
+                ok, err = _send_sms_semaphore(ph09, send_body)
+                if ok:
+                    _log('success', None, send_body, phone)
+                    return True, None
+                _log('failed', err, send_body, phone)
+                return False, err
+            if use_sem and not ph09:
+                msg = 'Could not parse Philippine mobile number (use 09XX XXX XXXX or +63...)'
+                print(f"✗ {msg} raw={phone_number!r}")
+                _log('failed', msg, send_body, phone)
+                return False, msg
+
+            # No Semaphore key: try TextBelt on international-style number
+            print("[SMS] No SEMAPHORE_API_KEY — using TextBelt (limited free tier)")
+            ok, err = _send_sms_textbelt(phone, send_body, phone)
+            if ok:
+                _log('success', None, send_body, phone)
+                return True, None
+            _log('failed', err, send_body, phone)
+            return False, err
+
         except Exception as e:
-            print(f"✗ TextBelt exception: {str(e)}")
+            print(f"✗ SMS provider exception: {str(e)}")
             import traceback
             traceback.print_exc()
-            return False
-        
+            _log('failed', str(e), send_body, phone)
+            return False, str(e)
+
     except Exception as e:
         print(f"✗ SMS error: {str(e)}")
         import traceback
         traceback.print_exc()
-        return False
+        try:
+            body = f"DCCCO: {message}"
+        except Exception:
+            body = ''
+        _log('failed', str(e), body, str(phone_number or ''))
+        return False, str(e)
+
+
+def send_bulk_sms(phone_numbers, message, sent_by_user_id=None):
+    """
+    Send to a comma- or newline-separated list of numbers; each attempt is logged.
+    Returns counts for the API response.
+    """
+    raw = phone_numbers
+    if isinstance(raw, (list, tuple)):
+        parts = [str(x).strip() for x in raw if str(x).strip()]
+    else:
+        s = str(raw or '')
+        parts = re.split(r'[\s,;]+', s)
+        parts = [p.strip() for p in parts if p.strip()]
+
+    ok = 0
+    for num in parts:
+        s_ok, _ = send_sms(num, message, sent_by_user_id=sent_by_user_id, category='bulk')
+        if s_ok:
+            ok += 1
+
+    return {'success': ok, 'total': len(parts), 'failed': len(parts) - ok}
 
 def build_system_context():
     """
@@ -1022,14 +1273,21 @@ Be friendly and conversational while maintaining professionalism."""
 
 @login_manager.user_loader
 def load_user(user_id):
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    if has_request_context():
+        if getattr(g, '_login_user_id', None) == uid and getattr(g, '_login_user_obj', None) is not None:
+            return g._login_user_obj
     conn = get_db()
-    row = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+    row = conn.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
     if row:
         normalized_role = normalize_role(row['role'])
         effective_role = normalized_role if normalized_role else row['role']
         if normalized_role and normalized_role != row['role']:
             try:
-                conn.execute('UPDATE users SET role=? WHERE id=?', (normalized_role, user_id))
+                conn.execute('UPDATE users SET role=? WHERE id=?', (normalized_role, uid))
                 conn.commit()
             except Exception as role_update_error:
                 print(f"⚠️  Role normalization warning (user_loader): {role_update_error}")
@@ -1038,7 +1296,14 @@ def load_user(user_id):
         assigned_route = row['assigned_route'] if 'assigned_route' in row.keys() else None
         permissions = row['permissions'] if 'permissions' in row.keys() else None
         conn.close()
-        return User(row['id'], row['email'], row['name'], effective_role, row['signature_path'], backup_email, profile_photo, assigned_route, permissions)
+        user = User(
+            row['id'], row['email'], row['name'], effective_role, row['signature_path'],
+            backup_email, profile_photo, assigned_route, permissions,
+        )
+        if has_request_context():
+            g._login_user_id = uid
+            g._login_user_obj = user
+        return user
     conn.close()
     return None
 
@@ -1300,12 +1565,15 @@ def loan_dashboard():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     conn = get_db()
+    # LPS users only see applications they submitted (submitted_by); duplicate checks on submit
+    # and /api/member_application_prefill still read across all members for data hygiene.
     applications = conn.execute('''
         SELECT la.*, u.name as ci_staff_name 
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
+        WHERE la.submitted_by = ?
         ORDER BY la.submitted_at ASC
-    ''').fetchall()
+    ''', (current_user.id,)).fetchall()
     
     # Get all CI staff for the dropdown
     ci_staff_list = conn.execute('''
@@ -1338,19 +1606,33 @@ def update_application_status(app_id):
     new_status = data.get('status')
     
     conn = get_db()
+    app_data = conn.execute(
+        'SELECT * FROM loan_applications WHERE id=? AND submitted_by=?',
+        (app_id, current_user.id),
+    ).fetchone()
+    if not app_data:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
     conn.execute('UPDATE loan_applications SET status=? WHERE id=?', (new_status, app_id))
     conn.commit()
-    
-    # Get application details for real-time update
     app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (app_id,)).fetchone()
     conn.close()
     
+    try:
+        if not app_data:
+            _st_sb = None
+        else:
+            _r = app_data['submitted_by']
+            _st_sb = int(_r) if _r is not None else None
+    except (KeyError, TypeError, ValueError):
+        _st_sb = None
     # Emit real-time update to all connected dashboards
     socketio.emit('application_updated', {
         'id': app_id,
         'status': new_status,
         'member_name': app_data['member_name'] if app_data else '',
         'loan_amount': float(app_data['loan_amount']) if app_data else 0,
+        'submitted_by': _st_sb,
         'timestamp': now_ph().isoformat()
     })
     
@@ -1366,6 +1648,13 @@ def update_ci_staff_assignment(app_id):
     ci_staff_id = data.get('ci_staff_id')
     
     conn = get_db()
+    owner = conn.execute(
+        'SELECT id FROM loan_applications WHERE id=? AND submitted_by=?',
+        (app_id, current_user.id),
+    ).fetchone()
+    if not owner:
+        conn.close()
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
     if ci_staff_id:
         conn.execute('UPDATE loan_applications SET assigned_ci_staff=?, status=? WHERE id=?', 
                     (ci_staff_id, 'assigned_to_ci', app_id))
@@ -1384,6 +1673,14 @@ def update_ci_staff_assignment(app_id):
     app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (app_id,)).fetchone()
     conn.close()
     
+    try:
+        if not app_data:
+            _ci2_sb = None
+        else:
+            _r2 = app_data['submitted_by']
+            _ci2_sb = int(_r2) if _r2 is not None else None
+    except (KeyError, TypeError, ValueError):
+        _ci2_sb = None
     # Emit real-time update to all connected dashboards
     socketio.emit('application_updated', {
         'id': app_id,
@@ -1391,6 +1688,7 @@ def update_ci_staff_assignment(app_id):
         'member_name': app_data['member_name'] if app_data else '',
         'loan_amount': float(app_data['loan_amount']) if app_data else 0,
         'ci_staff_id': ci_staff_id,
+        'submitted_by': _ci2_sb,
         'timestamp': now_ph().isoformat()
     })
     
@@ -1588,7 +1886,8 @@ def submit_application():
             socketio.emit('new_application', {
                 'id': app_id,
                 'member_name': member_name,
-                'status': 'assigned_to_ci' if needs_ci else 'submitted'
+                'status': 'assigned_to_ci' if needs_ci else 'submitted',
+                'submitted_by': int(current_user.id),
             })
             
             return redirect(url_for('loan_dashboard'))
@@ -1616,6 +1915,59 @@ def submit_application():
     unread_count = unread_count_row['count'] if unread_count_row else 0
     conn.close()
     return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
+
+
+@app.route('/api/member_application_prefill')
+@login_required
+def api_member_application_prefill():
+    """
+    For new submissions: return the most recent loan_application row for this member name
+    (case-insensitive, trimmed) so the form can prefill contact/address/loan — all still editable.
+    """
+    if current_user.role != 'loan_staff':
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    name = (request.args.get('name') or '').strip()
+    if len(name) < 2:
+        return jsonify({'ok': True, 'found': False})
+    conn = get_db()
+    try:
+        row = conn.execute(
+            '''
+            SELECT member_contact, member_address, loan_type, loan_amount
+            FROM loan_applications
+            WHERE LOWER(TRIM(COALESCE(member_name, ''))) = LOWER(TRIM(?))
+            ORDER BY id DESC
+            LIMIT 1
+            ''',
+            (name,),
+        ).fetchone()
+        if not row:
+            return jsonify({'ok': True, 'found': False})
+        d = dict(row)
+        la = d.get('loan_amount')
+        try:
+            la_out = float(la) if la is not None and la != '' else None
+        except (TypeError, ValueError):
+            la_out = None
+        return jsonify(
+            {
+                'ok': True,
+                'found': True,
+                'member_contact': (d.get('member_contact') or '') or '',
+                'member_address': (d.get('member_address') or '') or '',
+                'loan_type': (d.get('loan_type') or '') or '',
+                'loan_amount': la_out,
+            }
+        )
+    except Exception as e:
+        app.logger.exception('api_member_application_prefill: %s', e)
+        return jsonify({'ok': False, 'error': 'server_error'}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 
 # CI STAFF ROUTES
 @app.route('/ci/dashboard')
@@ -2003,11 +2355,17 @@ def submit_ci_checklist(id):
         except (TypeError, ValueError):
             la = 0.0
         try:
+            try:
+                _ci_sb = app_data['submitted_by'] if app_data else None
+                _ci_sb = int(_ci_sb) if _ci_sb is not None else None
+            except (KeyError, TypeError, ValueError):
+                _ci_sb = None
             socketio.emit('application_updated', {
                 'id': id,
                 'status': 'ci_completed',
                 'member_name': app_data.get('member_name') or '',
                 'loan_amount': la,
+                'submitted_by': _ci_sb,
                 'timestamp': now_ph().isoformat()
             })
         except Exception as sock_err:
@@ -2156,15 +2514,31 @@ def admin_application(id):
             ''', (decision, admin_notes, now_ph().isoformat(), id))
             
             conn.commit()
-            
-            # Emit real-time update to all connected dashboards
-            socketio.emit('application_updated', {
-                'id': id,
-                'status': decision,
-                'member_name': app_data['member_name'],
-                'loan_amount': float(app_data['loan_amount']),
-                'timestamp': now_ph().isoformat()
-            })
+            conn.close()
+
+            def _emit_admin():
+                try:
+                    try:
+                        la = float(app_data['loan_amount'] or 0)
+                    except (TypeError, KeyError, ValueError):
+                        la = 0.0
+                    try:
+                        _admin_sb = app_data['submitted_by']
+                        _admin_sb = int(_admin_sb) if _admin_sb is not None else None
+                    except (KeyError, TypeError, ValueError):
+                        _admin_sb = None
+                    socketio.emit('application_updated', {
+                        'id': id,
+                        'status': decision,
+                        'member_name': app_data['member_name'],
+                        'loan_amount': la,
+                        'submitted_by': _admin_sb,
+                        'timestamp': now_ph().isoformat()
+                    })
+                except Exception as ex:
+                    app.logger.debug('background emit application_updated: %s', ex)
+
+            run_background_task(_emit_admin)
             
             # Send SMS notification to applicant
             sms_message = None
@@ -2180,10 +2554,12 @@ def admin_application(id):
                     run_background_task(
                         send_sms,
                         app_data['member_contact'],
-                        sms_message
+                        sms_message,
+                        loan_application_id=id,
+                        sent_by_user_id=current_user.id,
+                        category=decision,
+                        member_name=app_data.get('member_name'),
                     )
-            
-            conn.close()
             
             # Notify loan staff in background to keep response fast.
             run_background_task(
@@ -2199,7 +2575,14 @@ def admin_application(id):
             )
             return redirect(url_for('admin_dashboard'))
         except Exception as e:
-            conn.close()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
             flash(f'Error: {str(e)}', 'danger')
             return redirect(url_for('admin_application', id=id))
     
@@ -2472,7 +2855,16 @@ def loan_application(id):
             conn.close()
             
             flash('Application updated successfully!', 'success')
-            socketio.emit('application_updated', {'id': id, 'member_name': member_name})
+            try:
+                _lps = app_data['submitted_by'] if app_data else None
+                _lps = int(_lps) if _lps is not None else None
+            except (KeyError, TypeError, ValueError):
+                _lps = None
+            socketio.emit('application_updated', {
+                'id': id,
+                'member_name': member_name,
+                'submitted_by': _lps,
+            })
             
             return redirect(url_for('loan_application', id=id))
             
@@ -2705,13 +3097,12 @@ def notifications():
                     item['created_at'] = str(ts)
             notifs.append(item)
 
-        conn.execute('UPDATE notifications SET is_read=1 WHERE user_id=? AND is_read=0', (current_user.id,))
-        conn.commit()
-        try:
-            _clear_cached_count(_notification_count_cache, current_user.id)
-        except Exception:
-            pass
-        return render_template('notifications.html', notifications=notifs, unread_count=0)
+        unread_in_list = sum(1 for n in notifs if not n.get('is_read'))
+        return render_template(
+            'notifications.html',
+            notifications=notifs,
+            unread_count=unread_in_list,
+        )
     except Exception as exc:
         app.logger.exception("notifications list failed: %s", exc)
         flash('Unable to load notifications right now.', 'danger')
@@ -3267,7 +3658,7 @@ def download_document(doc_id):
     upload_folder = os.path.abspath(app.config['UPLOAD_FOLDER'])
     requested_path = os.path.abspath(file_path)
     
-    if not requested_path.startswith(upload_folder):
+    if not _is_path_within_directory(upload_folder, requested_path):
         flash('Invalid file path', 'danger')
         return redirect(url_for('index'))
     
@@ -3278,27 +3669,31 @@ def download_document(doc_id):
         return redirect(url_for('index'))
 
 @app.route('/signatures/<path:filename>')
+@login_required
 def serve_signature(filename):
-    """Serve signature images"""
+    """Serve signature images (auth required; no directory listing)."""
+    sig_folder = os.path.abspath(app.config['SIGNATURE_FOLDER'])
+    file_path = os.path.normpath(os.path.join(sig_folder, filename))
+    if not _is_path_within_directory(sig_folder, file_path):
+        return "Access denied", 403
+    if not os.path.isfile(file_path):
+        return "File not found", 404
     return send_from_directory(app.config['SIGNATURE_FOLDER'], filename)
 
 @app.route('/uploads/<path:filename>')
+@login_required
 def serve_upload(filename):
-    """Serve uploaded files"""
+    """Serve uploaded files — requires login; blocks path traversal."""
     try:
         upload_folder = app.config['UPLOAD_FOLDER']
-        file_path = os.path.join(upload_folder, filename)
-        
-        # Check if file exists
-        if not os.path.exists(file_path):
+        base_abs = os.path.abspath(upload_folder)
+        file_path = os.path.normpath(os.path.join(base_abs, filename))
+        if not _is_path_within_directory(base_abs, file_path):
+            print(f"ERROR: Security violation - path outside uploads: {filename!r}")
+            return "Access denied", 403
+        if not os.path.isfile(file_path):
             print(f"ERROR: File not found: {file_path}")
             return "File not found", 404
-        
-        # Security check - ensure file is within upload folder
-        if not os.path.abspath(file_path).startswith(os.path.abspath(upload_folder)):
-            print(f"ERROR: Security violation - path traversal attempt: {filename}")
-            return "Access denied", 403
-        
         return send_from_directory(upload_folder, filename)
     except Exception as e:
         print(f"ERROR serving upload {filename}: {str(e)}")
@@ -3310,17 +3705,18 @@ def serve_upload(filename):
 @login_required
 def serve_message_file(filename):
     """Serve message media files (images and voice messages)"""
-    # Check if file exists in message_attachments folder (for images)
-    message_attachments_path = os.path.join('message_attachments', filename)
-    if os.path.exists(message_attachments_path):
-        return send_from_directory('message_attachments', filename)
-    
-    # Otherwise check voice_messages folder
-    voice_messages_path = os.path.join('voice_messages', filename)
-    if os.path.exists(voice_messages_path):
-        return send_from_directory('voice_messages', filename)
-    
-    # File not found
+    if '..' in filename.replace('\\', '/').split('/'):
+        return "Access denied", 403
+    rel = os.path.normpath(filename)
+    if rel.startswith('..') or (len(rel) > 0 and rel[0] in (os.sep, '/')):
+        return "Access denied", 403
+    for folder_name in ('message_attachments', 'voice_messages'):
+        base = os.path.abspath(folder_name)
+        full = os.path.normpath(os.path.join(base, rel))
+        if not _is_path_within_directory(base, full):
+            continue
+        if os.path.isfile(full):
+            return send_from_directory(folder_name, rel)
     return "File not found", 404
 
 @app.route('/api/send_message', methods=['POST'])
@@ -3522,7 +3918,9 @@ def download_message_file(msg_id):
     ]
     requested_path = os.path.abspath(file_path)
     
-    is_valid = any(requested_path.startswith(folder) for folder in allowed_folders)
+    is_valid = any(
+        _is_path_within_directory(folder, requested_path) for folder in allowed_folders
+    )
     if not is_valid:
         flash('Invalid file path', 'danger')
         return redirect(url_for('index'))
@@ -5113,8 +5511,9 @@ def api_loan_applications():
         SELECT la.*, u.name as ci_staff_name 
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
+        WHERE la.submitted_by = ?
         ORDER BY la.submitted_at ASC
-    ''').fetchall()
+    ''', (current_user.id,)).fetchall()
     conn.close()
     
     return jsonify([dict(app) for app in applications])
@@ -5581,6 +5980,7 @@ def manage_sms_templates():
     
     try:
         ensure_sms_templates_table()
+        ensure_sms_sent_log_table()
         conn = get_db()
         # Get all templates
         templates = conn.execute('''
@@ -5599,6 +5999,42 @@ def manage_sms_templates():
         disapproved_count = len(disapproved_templates)
         deferred_count = len(deferred_templates)
         custom_count = len(custom_templates)
+
+        search_q = (request.args.get('q') or '').strip()
+        if search_q:
+            like = f'%{search_q}%'
+            sent_rows = conn.execute(
+                '''
+                SELECT s.*, u.name AS sent_by_name
+                FROM sms_sent_log s
+                LEFT JOIN users u ON s.sent_by_user_id = u.id
+                WHERE (
+                    LOWER(s.phone_number) LIKE LOWER(?) OR
+                    LOWER(s.message_body) LIKE LOWER(?) OR
+                    LOWER(COALESCE(s.member_name, '')) LIKE LOWER(?) OR
+                    LOWER(COALESCE(s.category, '')) LIKE LOWER(?) OR
+                    LOWER(COALESCE(s.status, '')) LIKE LOWER(?)
+                )
+                ORDER BY s.sent_at DESC
+                LIMIT 500
+                ''',
+                (like, like, like, like, like),
+            ).fetchall()
+        else:
+            sent_rows = conn.execute(
+                '''
+                SELECT s.*, u.name AS sent_by_name
+                FROM sms_sent_log s
+                LEFT JOIN users u ON s.sent_by_user_id = u.id
+                ORDER BY s.sent_at DESC
+                LIMIT 500
+                '''
+            ).fetchall()
+
+        sent_log_count = conn.execute('SELECT COUNT(*) AS c FROM sms_sent_log').fetchone()
+        total_sent_ever = sent_log_count['c'] if sent_log_count else 0
+
+        sent_messages = [dict(r) for r in sent_rows]
         
         row = conn.execute('''
             SELECT COUNT(*) as count FROM notifications 
@@ -5618,6 +6054,9 @@ def manage_sms_templates():
                              disapproved_count=disapproved_count,
                              deferred_count=deferred_count,
                              custom_count=custom_count,
+                             sent_messages=sent_messages,
+                             search_q=search_q,
+                             total_sent_ever=total_sent_ever,
                              unread_count=unread_count)
     
     except Exception as e:
@@ -5686,23 +6125,69 @@ def send_sms_and_update_status(app_id):
         
         conn.commit()
         conn.close()
-        
-        # Send SMS notification in background for faster response.
-        if app_data['member_contact']:
-            run_background_task(send_sms, app_data['member_contact'], message)
-        
-        # Emit real-time update
-        socketio.emit('application_updated', {
-            'id': app_id,
-            'status': action,
-            'member_name': app_data['member_name'],
-            'loan_amount': float(app_data['loan_amount']),
-            'timestamp': now_ph().isoformat()
-        })
-        
+
+        # Snap values for background work (row may be closed)
+        _name = app_data['member_name']
+        _lamount = app_data['loan_amount']
+        _contact = app_data['member_contact']
+        try:
+            _raw_sb = app_data['submitted_by']
+            _sub_by = int(_raw_sb) if _raw_sb is not None else None
+        except (TypeError, ValueError, KeyError):
+            _sub_by = None
+
+        # SMS in-process so the client gets real success/fail from Semaphore (not background)
+        sms_sent = None
+        sms_error = None
+        if _contact and message:
+            _tid = data.get('template_id')
+            try:
+                _tid = int(_tid) if _tid is not None and str(_tid).strip() != '' else None
+            except (TypeError, ValueError):
+                _tid = None
+            sent_ok, sent_err = send_sms(
+                _contact,
+                message,
+                loan_application_id=app_id,
+                sent_by_user_id=current_user.id,
+                category=action,
+                template_id=_tid,
+                member_name=_name,
+            )
+            sms_sent = bool(sent_ok)
+            if not sent_ok:
+                sms_error = sent_err or 'SMS could not be sent (see Sent log on SMS Templates).'
+        elif not _contact and message:
+            sms_error = 'No member phone on file; SMS not sent.'
+
+        def _emit_update():
+            try:
+                la = float(_lamount) if _lamount is not None else 0.0
+                socketio.emit('application_updated', {
+                    'id': app_id,
+                    'status': action,
+                    'member_name': _name,
+                    'loan_amount': la,
+                    'submitted_by': _sub_by,
+                    'timestamp': now_ph().isoformat()
+                })
+            except Exception as ex:
+                app.logger.debug('background emit application_updated: %s', ex)
+
+        run_background_task(_emit_update)
+
+        msg = f'Application {action} and saved.'
+        if _contact and message:
+            msg = f'Application {action}. ' + (
+                'SMS was sent to the member via Semaphore.'
+                if sms_sent
+                else (sms_error or 'SMS was not sent.')
+            )
         return jsonify({
             'success': True,
-            'message': f'Application {action} updated. SMS sending in background.'
+            'message': msg,
+            'sms_sent': sms_sent,
+            'sms_error': sms_error,
         })
         
     except Exception as e:
@@ -5730,7 +6215,7 @@ def send_bulk_sms_route():
             return jsonify({'success': False, 'error': 'Message is required'}), 400
         
         # Send bulk SMS
-        results = send_bulk_sms(phone_numbers, message)
+        results = send_bulk_sms(phone_numbers, message, sent_by_user_id=current_user.id)
         
         return jsonify({
             'success': True,

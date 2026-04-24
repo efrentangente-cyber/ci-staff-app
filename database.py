@@ -161,6 +161,18 @@ def get_db():
         database_file = os.getenv('SQLITE_DATABASE', 'app.db')
         conn = sqlite3.connect(database_file, timeout=10)
         conn.row_factory = sqlite3.Row
+        # Faster reads under concurrent use (WAL) without sacrificing durability
+        # much for a typical app workload (see SQLite docs for synchronous modes).
+        try:
+            c = conn.cursor()
+            c.execute('PRAGMA journal_mode=WAL')
+            c.execute('PRAGMA synchronous=NORMAL')
+            c.execute('PRAGMA temp_store=MEMORY')
+            c.execute('PRAGMA mmap_size=134217728')
+            c.execute('PRAGMA cache_size=-32000')  # ~32MB page cache; negative = KB
+            c.close()
+        except Exception:
+            pass
         return DatabaseConnection(conn, 'sqlite')
 
 def get_database_type():

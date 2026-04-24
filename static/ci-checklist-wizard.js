@@ -466,26 +466,90 @@ function updateFinalCalculations() {
     }
 }
 
-// Add dynamic loan row
+function renumberLoanRows() {
+    const container = document.getElementById('loan_rows_container');
+    if (!container) return;
+    const rows = Array.from(container.querySelectorAll('tr.loan-row'));
+    rows.forEach((tr, idx) => {
+        const n = idx + 1;
+        tr.querySelectorAll('input[name^="loan_"]').forEach((input) => {
+            const name = input.getAttribute('name');
+            if (!name) return;
+            const m = name.match(/^loan_\d+_(.+)$/);
+            if (m) {
+                input.setAttribute('name', `loan_${n}_${m[1]}`);
+            }
+        });
+    });
+    rows.forEach((tr) => {
+        const del = tr.querySelector('button[onclick*="removeLoanRow"]');
+        if (del) {
+            del.disabled = rows.length <= 1;
+        }
+    });
+}
+
+function initLoanRowSelection() {
+    const tb = document.getElementById('loan_rows_container');
+    if (!tb) return;
+    tb.addEventListener('click', (e) => {
+        const tr = e.target.closest('tr.loan-row');
+        if (!tr) return;
+        if (e.target.closest('button')) return;
+        tb.querySelectorAll('tr.loan-row').forEach((r) => r.classList.remove('loan-row--selected'));
+        tr.classList.add('loan-row--selected');
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initLoanRowSelection);
+} else {
+    initLoanRowSelection();
+}
+
+// Add dynamic loan row — inserted under the selected row (reindexes names)
 function addLoanRow() {
     const container = document.getElementById('loan_rows_container');
-    const rowCount = container.querySelectorAll('.loan-row').length + 1;
-    
+    if (!container) return;
+    const n = container.querySelectorAll('tr.loan-row').length + 1;
     const row = document.createElement('tr');
     row.className = 'loan-row';
     row.innerHTML = `
-        <td><input type="text" name="loan_${rowCount}_institution" class="form-control form-control-sm"></td>
-        <td><input type="number" name="loan_${rowCount}_principal" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
-        <td><input type="number" name="loan_${rowCount}_balance" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
-        <td><input type="number" name="loan_${rowCount}_monthly" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
-        <td><button type="button" class="btn btn-sm btn-danger" onclick="removeLoanRow(this)"><i class="bi bi-trash"></i></button></td>
+        <td><input type="text" name="loan_${n}_institution" class="form-control form-control-sm"></td>
+        <td><input type="number" name="loan_${n}_principal" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
+        <td><input type="number" name="loan_${n}_balance" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
+        <td><input type="number" name="loan_${n}_monthly" class="form-control form-control-sm" step="0.01" value="0" oninput="updateAllComputations()"></td>
+        <td class="text-center align-middle py-1"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="removeLoanRow(this)" title="Remove row"><i class="bi bi-trash"></i></button></td>
     `;
-    container.appendChild(row);
+    const selected = container.querySelector('tr.loan-row--selected');
+    if (selected) {
+        selected.insertAdjacentElement('afterend', row);
+    } else {
+        container.appendChild(row);
+    }
+    container.querySelectorAll('tr.loan-row').forEach((r) => r.classList.remove('loan-row--selected'));
+    row.classList.add('loan-row--selected');
+    renumberLoanRows();
+    updateAllComputations();
 }
 
 // Remove loan row
 function removeLoanRow(button) {
-    button.closest('.loan-row').remove();
+    const container = document.getElementById('loan_rows_container');
+    if (!container) return;
+    if (container.querySelectorAll('tr.loan-row').length <= 1) {
+        return;
+    }
+    const tr = button.closest('tr.loan-row');
+    const next = tr.nextElementSibling;
+    tr.remove();
+    renumberLoanRows();
+    if (next && next.classList.contains('loan-row')) {
+        next.classList.add('loan-row--selected');
+    } else {
+        const first = container.querySelector('tr.loan-row');
+        if (first) first.classList.add('loan-row--selected');
+    }
     updateAllComputations();
 }
 

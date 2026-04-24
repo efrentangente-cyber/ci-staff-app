@@ -53,14 +53,19 @@
 <div class="card position-relative">
     <div class="card-body">
         <form method="POST" enctype="multipart/form-data">
+            <div id="memberPrefillBanner" class="alert alert-info py-2 small mb-3" style="display: none;" role="status">
+                <span id="memberPrefillBannerText">Details from a previous application were filled in below. You can change any field before submitting.</span>
+                <button type="button" class="btn-close float-end" aria-label="Dismiss" id="memberPrefillBannerDismiss"></button>
+            </div>
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Member Name *</label>
-                    <input type="text" name="member_name" class="form-control" required>
+                    <input type="text" name="member_name" id="member_name" class="form-control" required autocomplete="name">
+                    <small class="text-muted">If this member applied before, leaving this field (tab out or click away) can load their saved contact and address.</small>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Contact Number</label>
-                    <input type="text" name="member_contact" class="form-control">
+                    <input type="text" name="member_contact" id="member_contact" class="form-control" autocomplete="tel">
                 </div>
             </div>
             <div class="mb-3">
@@ -233,6 +238,92 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// When member name matches a prior application, prefill empty fields (all remain editable)
+(function setupMemberApplicationPrefill() {
+    const prefillUrl = {{ url_for('api_member_application_prefill') | tojson }};
+    let lastPrefillName = '';
+    const banner = document.getElementById('memberPrefillBanner');
+    const bannerDismiss = document.getElementById('memberPrefillBannerDismiss');
+
+    function showPrefillBanner() {
+        if (banner) banner.style.display = 'block';
+    }
+    function hidePrefillBanner() {
+        if (banner) banner.style.display = 'none';
+    }
+    bannerDismiss?.addEventListener('click', hidePrefillBanner);
+
+    document.getElementById('member_name')?.addEventListener('input', function() {
+        const t = (this.value || '').trim();
+        if (t.length < 2) {
+            lastPrefillName = '';
+        } else if (t !== lastPrefillName) {
+            lastPrefillName = '';
+        }
+    });
+
+    document.getElementById('member_name')?.addEventListener('blur', async function() {
+        const name = (this.value || '').trim();
+        if (name.length < 2 || name === lastPrefillName) {
+            return;
+        }
+        let u;
+        try {
+            u = new URL(prefillUrl, window.location.origin);
+        } catch (e) {
+            u = new URL('/api/member_application_prefill', window.location.origin);
+        }
+        u.searchParams.set('name', name);
+        try {
+            const res = await fetch(u.toString(), { credentials: 'same-origin' });
+            const data = await res.json();
+            if (!res.ok || !data || !data.ok) {
+                return;
+            }
+            lastPrefillName = name;
+            if (!data.found) {
+                return;
+            }
+            let any = false;
+            const contact = document.getElementById('member_contact');
+            const address = document.getElementById('member_address');
+            const loanTypeIn = document.getElementById('loanTypeInput');
+            const loanTypeH = document.getElementById('loanTypeHidden');
+            const loanAmt = document.getElementById('loan_amount');
+            const loanAmtRaw = document.getElementById('loan_amount_raw');
+
+            if (contact && !contact.value.trim() && (data.member_contact || '').trim()) {
+                contact.value = (data.member_contact || '').trim();
+                any = true;
+            }
+            if (address && !address.value.trim() && (data.member_address || '').trim()) {
+                address.value = (data.member_address || '').trim();
+                any = true;
+            }
+            if (loanTypeIn && !loanTypeIn.value.trim() && (data.loan_type || '').trim()) {
+                const lt = (data.loan_type || '').trim();
+                loanTypeIn.value = lt;
+                if (loanTypeH) loanTypeH.value = lt;
+                any = true;
+            }
+            if (loanAmt && loanAmtRaw && (data.loan_amount != null && data.loan_amount !== '')) {
+                const n = Number(data.loan_amount);
+                if (!Number.isNaN(n) && n > 0 && !String(loanAmtRaw.value || '').trim()) {
+                    const raw = n % 1 === 0 ? String(Math.round(n)) : String(n);
+                    loanAmt.value = raw;
+                    loanAmt.dispatchEvent(new Event('input', { bubbles: true }));
+                    any = true;
+                }
+            }
+            if (any) {
+                showPrefillBanner();
+            }
+        } catch (err) {
+            console.error('Member prefill failed', err);
+        }
+    });
+})(); 
 
 // Loan amount formatting with commas
 const loanAmountInput = document.getElementById('loan_amount');

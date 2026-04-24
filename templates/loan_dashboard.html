@@ -7,7 +7,7 @@
 <div class="top-bar">
     <div>
         <h2 class="mb-0">LPS Dashboard</h2>
-        <p class="text-muted small mb-0 mt-1 d-none d-md-block">Submit new applications and track status in Pending and Processed below.</p>
+        <p class="text-muted small mb-0 mt-1 d-none d-md-block">You only see applications you submitted. Submit and duplicate checks still use the full member list.</p>
     </div>
     <div class="top-bar-actions">
         <a href="{{ url_for('submit_application') }}" class="btn btn-warning" aria-label="Start a new loan application">
@@ -397,6 +397,7 @@ function clearSearch(tableType) {
 }
 </style>
 
-<!-- Real-time Dashboard Updates -->
+<!-- Real-time: only react to this user's applications on LPS dashboard -->
+<script>window.__LPS_USER_ID = {{ current_user.id | tojson }};</script>
 <script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
 {% endblock %}

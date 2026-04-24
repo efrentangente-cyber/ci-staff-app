@@ -188,6 +188,12 @@ nav[style*="position: fixed"][style*="bottom"],
         <i class="bi bi-phone" aria-hidden="true"></i>
         <strong>Field mode:</strong> turn your phone sideways for more width. Wider tables scroll sideways. <strong>Back</strong> and <strong>Next</strong> stay at the bottom while you work.
     </p>
+    <p class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 no-print small py-2 mb-3" role="status">
+        <span><i class="bi bi-mic" aria-hidden="true"></i> <strong>Voice input:</strong> tap any text or number field, then <strong>Dictate</strong> to speak in English (or your browser language). Allow the microphone when asked.</span>
+        <button type="button" class="btn btn-sm btn-primary" id="ciChecklistDictateBtn" title="Add speech to the focused field">
+            <i class="bi bi-mic-fill" aria-hidden="true"></i> Dictate
+        </button>
+    </p>
     <form id="ciChecklistForm" method="POST" action="{{ url_for('submit_ci_checklist', id=application.id) }}" enctype="multipart/form-data">
         <input type="hidden" name="checklist_data" id="checklist_data">
         <input type="hidden" name="ci_signature" id="ci_signature" required>
@@ -582,7 +588,7 @@ nav[style*="position: fixed"][style*="bottom"],
                         <li><strong>Align text</strong>: Select cells, then click Left/Center/Right alignment buttons</li>
                         <li><strong>Merge cells</strong>: Click and drag to select cells, then click "Merge"</li>
                         <li><strong>Unmerge cells</strong>: Click a merged cell, then click "Unmerge"</li>
-                        <li><strong>Add rows/columns</strong>: Click "Add Row" or "Add Column" buttons to expand</li>
+                        <li><strong>Add rows/columns</strong>: Use "Add row" / "Add column" in the toolbar — the new row is inserted under the selected cell (or after row 1 if none selected). On the loan table, tap a row to select it, then "Add loan row" inserts directly below.</li>
                         <li><strong>Everything is editable</strong>: Click ANY cell to change text, numbers, labels, or formulas</li>
                         <li><strong>Enter values</strong>: Click any cell and type your data</li>
                         <li><strong>Enter formulas</strong>: Type = in a cell or formula bar (e.g., =A1+B1, =SUM(A1:A10))</li>
@@ -710,19 +716,24 @@ nav[style*="position: fixed"][style*="bottom"],
                         <th>Principal</th>
                         <th>Balance</th>
                         <th>Monthly Amortization</th>
+                        <th class="text-center" style="width:2.75rem" title="Remove row"></th>
                     </tr>
                     <tbody id="loan_rows_container">
-                        <tr class="loan-row">
+                        <tr class="loan-row loan-row--selected">
                             <td><input type="text" name="loan_1_institution"></td>
                             <td><input type="number" name="loan_1_principal" step="0.01" value="0" oninput="updateAllComputations()"></td>
                             <td><input type="number" name="loan_1_balance" step="0.01" value="0" oninput="updateAllComputations()"></td>
                             <td><input type="number" name="loan_1_monthly" step="0.01" value="0" oninput="updateAllComputations()"></td>
+                            <td class="text-center align-middle py-1"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="removeLoanRow(this)" title="Remove row" disabled><i class="bi bi-trash"></i></button></td>
                         </tr>
                     </tbody>
                     <tr>
-                        <td colspan="4" style="text-align: center;">
-                            <button type="button" class="btn btn-sm btn-success" onclick="addLoanRow()">
-                                <i class="bi bi-plus"></i> Add Loan
+                        <td colspan="5" class="text-center text-muted small py-2">Tap a row to select it, then add a loan — the new row is inserted directly under the selected row.</td>
+                    </tr>
+                    <tr>
+                        <td colspan="5" style="text-align: center;">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addLoanRow()">
+                                <i class="bi bi-plus-lg"></i> Add loan row
                             </button>
                         </td>
                     </tr>
@@ -1238,7 +1249,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     <button type="button" class="btn btn-secondary" onclick="previousPage()">
                         <i class="bi bi-arrow-left"></i> Back
                     </button>
-                    <button type="button" class="btn btn-success" onclick="submitChecklist()">
+                    <button type="button" class="btn btn-primary" onclick="submitChecklist()">
                         <i class="bi bi-check-circle"></i> Submit
                     </button>
                 </div>
@@ -1248,10 +1259,26 @@ nav[style*="position: fixed"][style*="bottom"],
     </form>
 </div>
 
+<script src="{{ url_for('static', filename='ci-voice.js') }}"></script>
 <script src="{{ url_for('static', filename='excel-spreadsheet.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}"></script>
 <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var d = document.getElementById('ciChecklistDictateBtn');
+    if (d) {
+        if (!window.__ciVoiceSupported) {
+            d.disabled = true;
+            d.title = 'Voice not supported in this browser';
+            d.classList.add('opacity-50');
+        } else d.addEventListener('click', function () {
+            if (window.ciVoiceToFocusedField) window.ciVoiceToFocusedField();
+        });
+    }
+});
+</script>
 
 <script>
 const serverPrefillData = {{ (prefill_data or {})|tojson }};
@@ -1560,7 +1587,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div id="ciCapturedPreview" style="display: none;">
                         <img id="ciCapturedImage" src="" style="width: 100%; max-width: 640px; border-radius: 8px;">
                         <div class="mt-3 d-flex gap-2 justify-content-center">
-                            <button type="button" class="btn btn-success" id="ciUsePhotoBtn">
+                            <button type="button" class="btn btn-primary" id="ciUsePhotoBtn">
                                 <i class="bi bi-check-lg"></i> Use This Photo
                             </button>
                             <button type="button" class="btn btn-secondary" id="ciRetakeBtn">

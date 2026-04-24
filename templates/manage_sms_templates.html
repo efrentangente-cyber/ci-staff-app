@@ -23,7 +23,7 @@
     <!-- Tabs for Categories -->
     <ul class="nav nav-tabs mb-3" role="tablist">
         <li class="nav-item">
-            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#approved-tab">
+            <button class="nav-link {% if not search_q %}active{% endif %}" type="button" data-bs-toggle="tab" data-bs-target="#approved-tab">
                 <i class="bi bi-check-circle text-success"></i> Approved ({{ approved_count }})
             </button>
         </li>
@@ -42,12 +42,17 @@
                 <i class="bi bi-pencil text-primary"></i> Custom ({{ custom_count }})
             </button>
         </li>
+        <li class="nav-item">
+            <button class="nav-link {% if search_q %}active{% endif %}" type="button" data-bs-toggle="tab" data-bs-target="#sent-log-tab" id="sent-log-tab-btn">
+                <i class="bi bi-send-check text-info"></i> Sent log ({{ total_sent_ever }})
+            </button>
+        </li>
     </ul>
 
     <!-- Tab Content -->
     <div class="tab-content">
         <!-- Approved Templates -->
-        <div class="tab-pane fade show active" id="approved-tab">
+        <div class="tab-pane fade {% if not search_q %}show active{% endif %}" id="approved-tab">
             <div class="row">
                 {% for template in approved_templates %}
                 <div class="col-md-6 mb-3">
@@ -177,6 +182,70 @@
                 {% endfor %}
             </div>
         </div>
+
+        <!-- Sent SMS log -->
+        <div class="tab-pane fade {% if search_q %}show active{% endif %}" id="sent-log-tab">
+            <form method="get" action="{{ url_for('manage_sms_templates') }}" class="row g-2 align-items-end mb-3">
+                <div class="col-md-6 col-lg-5">
+                    <label class="form-label small text-muted mb-0">Search sent messages</label>
+                    <input type="search" name="q" class="form-control" placeholder="Phone, message, member, category, status…"
+                           value="{{ search_q or '' }}" autocomplete="off">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> Search
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <a href="{{ url_for('manage_sms_templates') }}" class="btn btn-outline-secondary">Clear</a>
+                </div>
+            </form>
+            <p class="text-muted small mb-2">Showing up to 500 most recent rows{% if search_q %} matching your search{% endif %}.</p>
+            <div class="table-responsive border rounded">
+                <table class="table table-sm table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Sent</th>
+                            <th scope="col">Phone</th>
+                            <th scope="col">Member</th>
+                            <th scope="col">App</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">By</th>
+                            <th scope="col">Message</th>
+                            <th scope="col">Error</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in sent_messages %}
+                        <tr>
+                            <td class="text-nowrap small">{{ row.sent_at | fmt_datetime }}</td>
+                            <td class="small">{{ row.phone_number }}</td>
+                            <td class="small">{{ row.member_name or '—' }}</td>
+                            <td class="small">{% if row.loan_application_id %}#{{ row.loan_application_id }}{% else %}—{% endif %}</td>
+                            <td class="small">{{ row.category or '—' }}</td>
+                            <td>
+                                {% if row.status == 'success' %}
+                                <span class="badge bg-success">Sent</span>
+                                {% else %}
+                                <span class="badge bg-danger">Failed</span>
+                                {% endif %}
+                            </td>
+                            <td class="small">{{ row.sent_by_name or '—' }}</td>
+                            <td class="small sms-log-msg" title="{{ (row.message_body or '') | e }}">{{ (row.message_body or '')[:160] }}{% if (row.message_body or '')|length > 160 %}…{% endif %}</td>
+                            <td class="small text-danger">{% if row.error_detail %}{{ (row.error_detail or '')[:120] }}{% if (row.error_detail or '')|length > 120 %}…{% endif %}{% else %}—{% endif %}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-4">
+                                No sent messages recorded yet. SMS sends from loan decisions and bulk send will appear here.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -303,6 +372,11 @@
     font-size: 14px;
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+
+.sms-log-msg {
+    max-width: 22rem;
+    word-break: break-word;
 }
 
 .variable-tag {
