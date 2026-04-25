@@ -176,9 +176,25 @@ nav[style*="position: fixed"][style*="bottom"],
         size: A4 landscape;
     }
 
+    html {
+        filter: grayscale(100%) contrast(1.05);
+        -webkit-filter: grayscale(100%) contrast(1.05);
+    }
     body {
-        print-color-adjust: exact;
-        -webkit-print-color-adjust: exact;
+        background: #fff !important;
+        color: #000 !important;
+        print-color-adjust: economy !important;
+        -webkit-print-color-adjust: economy !important;
+    }
+    .paper-form,
+    .card,
+    .form-header,
+    .section-title,
+    .form-table-paper th,
+    .form-table-paper td {
+        background: #fff !important;
+        color: #000 !important;
+        border-color: #000 !important;
     }
 }
 </style>

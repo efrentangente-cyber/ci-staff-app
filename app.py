@@ -1331,6 +1331,125 @@ def _ph_number_for_semaphore(phone_number):
     return None
 
 
+# Cache Semaphore /account/sendernames to avoid rate limits (2/min) and to use approved senders
+_SEMAPHORE_SENDERLIST_CACHE = {'t': 0.0, 'names': None, 'ttl': 0.0}
+
+
+def _semaphore_v4_base_url():
+    u = (os.getenv('SEMAPHORE_API_URL') or 'https://api.semaphore.co/api/v4/messages').strip().rstrip('/')
+    if u.endswith('/messages'):
+        return u[: -len('/messages')]
+    return 'https://api.semaphore.co/api/v4'
+
+
+def _parse_semaphore_sendernames_json(data):
+    """Normalize GET /account/sendernames body into a list of sender name strings."""
+    if isinstance(data, list):
+        rows = data
+    elif isinstance(data, dict):
+        rows = (
+            data.get('results')
+            or data.get('data')
+            or data.get('sendernames')
+            or data.get('sender_names')
+            or []
+        )
+        if not isinstance(rows, list):
+            rows = []
+    else:
+        rows = []
+    out = []
+    for row in rows:
+        if isinstance(row, str) and row.strip():
+            n = row.strip()
+            if n not in out:
+                out.append(n)
+            continue
+        if not isinstance(row, dict):
+            continue
+        n = (row.get('name') or row.get('sender_name') or '').strip()
+        if not n:
+            continue
+        st = (row.get('status') or '').strip().lower()
+        if st in ('rejected', 'denied', 'suspended', 'banned', 'refused'):
+            continue
+        if n not in out:
+            out.append(n)
+    return out
+
+
+def _fetch_semaphore_account_sender_names(api_key):
+    """
+    Names registered on the Semaphore account (API order). Short TTL cache on success;
+    on failure, short cache to avoid hammering the rate-limited endpoint.
+    """
+    now = time.time()
+    c = _SEMAPHORE_SENDERLIST_CACHE
+    if c['names'] is not None and (now - c['t']) < c['ttl']:
+        return c['names'][:]
+
+    url = f"{_semaphore_v4_base_url().rstrip('/')}/account/sendernames"
+    try:
+        r = requests.get(url, params={'apikey': api_key, 'limit': 100, 'page': 1}, timeout=8)
+        if r.status_code != 200:
+            print(f"[SMS] Semaphore sendernames HTTP {r.status_code}: {(r.text or '')[:200]}")
+            names = []
+            c['t'] = now
+            c['ttl'] = 60.0
+            c['names'] = names
+            return names[:]
+        data = r.json()
+        names = _parse_semaphore_sendernames_json(data)
+        print(f"[SMS] Semaphore account sender names ({len(names)}): {names[:5]}{'...' if len(names) > 5 else ''}")
+        c['t'] = now
+        c['ttl'] = 300.0
+        c['names'] = names
+        return names[:]
+    except Exception as ex:
+        print(f"[SMS] Semaphore sendernames fetch error: {ex}")
+        c['t'] = now
+        c['ttl'] = 60.0
+        c['names'] = []
+        return []
+
+
+def _build_semaphore_sender_candidates(api_key):
+    """
+    Build ordered sendername attempts. Prefer env overrides, then names from Semaphore API
+    (so we match whatever is actually approved in the dashboard), then optional fallbacks.
+    Do not default to a hardcoded org name (e.g. DCCCO) — that often is not the approved sender.
+    """
+    seen = set()
+    out = []
+
+    def _add(s):
+        if s in seen:
+            return
+        seen.add(s)
+        out.append(s)
+
+    cfg = (
+        (os.getenv('SEMAPHORE_SENDERNAME') or '')
+        or (os.getenv('SEMAPHORE_SENDER_NAME') or '')
+        or (os.getenv('SMS_SENDER_NAME') or '')
+    ).strip()
+    if cfg:
+        _add(cfg)
+    for part in re.split(r'[,;]+', (os.getenv('SEMAPHORE_SENDER_CANDIDATES') or '')):
+        p = part.strip()
+        if p:
+            _add(p)
+    for n in _fetch_semaphore_account_sender_names(api_key):
+        _add(n)
+    dash = (os.getenv('SEMAPHORE_DASHBOARD_SENDER') or '').strip()
+    if dash:
+        _add(dash)
+    # API docs: omitting sendername defaults to branded "Semaphore"; explicit sometimes matches account
+    _add('SEMAPHORE')
+    _add('')
+    return out
+
+
 def _send_sms_semaphore(phone_09, send_body_for_log):
     """
     POST to Semaphore API. phone_09 must be 09xxxxxxxxx.
@@ -1345,20 +1464,7 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
 
     # Official host (doc); legacy semaphore.co also works, api.semaphore.co is canonical
     url = (os.getenv('SEMAPHORE_API_URL') or 'https://api.semaphore.co/api/v4/messages').strip()
-    configured_sender = (
-        os.getenv('SEMAPHORE_SENDERNAME')
-        or os.getenv('SEMAPHORE_SENDER_NAME')
-        or os.getenv('SMS_SENDER_NAME')
-        or ''
-    ).strip()
-    # Web UI "Send SMS" uses your approved sender (e.g. DCCCO). API omits sendername it defaults to
-    # the literal name "Semaphore" (see Semaphore docs) — that often is NOT approved, so we must try
-    # the dashboard/approved name FIRST, never the empty default before it.
-    dashboard_sender = (os.getenv('SEMAPHORE_DASHBOARD_SENDER') or 'DCCCO').strip()
-    sender_candidates = []
-    for candidate in (dashboard_sender, configured_sender, ''):
-        if candidate not in sender_candidates:
-            sender_candidates.append(candidate)
+    sender_candidates = _build_semaphore_sender_candidates(api_key)
 
     payload = {
         'apikey': api_key,
@@ -1376,9 +1482,16 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
         return (
             'sender' in low
             or 'sendername' in low
+            or 'sender name' in low
             or 'not yet been approved for sending messages' in low
             or 'not yet approved for sending sms' in low
             or 'complete your account profile' in low
+            or 'not verified' in low
+            or 'unverified' in low
+            or 'verify your account' in low
+            or 'account must' in low
+            or 'must verify' in low
+            or 'kyc' in low
         )
 
     try:
@@ -1510,7 +1623,25 @@ def _friendly_sms_error(raw_error):
         or 'not yet approved for sending sms' in low
         or 'complete your account profile' in low
     ):
-        return 'Semaphore account not approved yet for SMS sending.'
+        return (
+            'Semaphore account or sender name is not approved for API sending. '
+            'In Semaphore → Sender Names, use the exact approved name as '
+            'SEMAPHORE_SENDER_NAME (Render env) or SEMAPHORE_SENDER_CANDIDATES, '
+            'or complete account verification in the Semaphore dashboard.'
+        )
+    if (
+        'sender' in low
+        and (
+            'not verified' in low
+            or 'unapproved' in low
+            or 'not approved' in low
+        )
+    ):
+        return (
+            'Semaphore rejected the sender ID for this message. Set '
+            'SEMAPHORE_SENDER_NAME to match your approved Sender Name in Semaphore, '
+            'or add SEMAPHORE_SENDER_CANDIDATES=Name1,Name2 in environment.'
+        )
     if 'free sms are disabled for this country' in low:
         return 'Fallback SMS provider is unavailable for this country.'
     if 'invalid or empty phone number' in low or 'could not parse philippine mobile number' in low:
@@ -2219,6 +2350,19 @@ def index():
         return redirect(url_for('logout'))
     return redirect(url_for('login'))
 
+
+def _login_success_redirect(effective_role):
+    """After successful login, go straight to the role dashboard (same as index() for auth users)."""
+    if effective_role in ['admin', 'loan_officer']:
+        return redirect(url_for('admin_dashboard'))
+    if effective_role == 'loan_staff':
+        return redirect(url_for('loan_dashboard'))
+    if effective_role == 'ci_staff':
+        return redirect(url_for('ci_dashboard'))
+    flash('Account role is not configured correctly. Please contact super admin.', 'danger')
+    return redirect(url_for('logout'))
+
+
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'GET' and current_user.is_authenticated:
@@ -2227,6 +2371,7 @@ def login():
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
+        # One DB checkout for this request: avoids multiple pool checkouts/round-trips on success path.
         conn = get_db()
         row = conn.execute(
             '''
@@ -2237,7 +2382,6 @@ def login():
             ''',
             (email,),
         ).fetchone()
-        conn.close()
         valid_password = bool(row and check_password_hash(row['password_hash'], password))
 
         if valid_password:
@@ -2245,10 +2389,8 @@ def login():
             effective_role = normalized_role if normalized_role else row['role']
             if normalized_role and normalized_role != row['role']:
                 try:
-                    role_conn = get_db()
-                    role_conn.execute('UPDATE users SET role=? WHERE id=?', (normalized_role, row['id']))
-                    role_conn.commit()
-                    role_conn.close()
+                    conn.execute('UPDATE users SET role=? WHERE id=?', (normalized_role, row['id']))
+                    conn.commit()
                 except Exception as role_update_error:
                     print(f"⚠️  Role normalization warning (login): {role_update_error}")
 
@@ -2261,13 +2403,12 @@ def login():
             # Single session: new login always replaces the row in user_login_sessions (ON CONFLICT).
             # Do not block with "log out the other device first" — a stale client cookie can leave
             # is_active=1 in the DB while the user has no real session, which locked them out forever.
-            lock_conn = get_db()
             auth_session_token = uuid.uuid4().hex
-            _upsert_user_session(lock_conn, row['id'], auth_session_token)
-            lock_conn.commit()
-            lock_conn.close()
-            
-            user = User(row['id'], row['email'], row['name'], effective_role, row['signature_path'] if 'signature_path' in row.keys() else None, 
+            _upsert_user_session(conn, row['id'], auth_session_token)
+            conn.commit()
+            # Let teardown return this connection; do not close mid-request (saves an extra pool checkout).
+
+            user = User(row['id'], row['email'], row['name'], effective_role, row['signature_path'] if 'signature_path' in row.keys() else None,
                        row['backup_email'] if 'backup_email' in row.keys() else None,
                        row['profile_photo'] if 'profile_photo' in row.keys() else None,
                        row['assigned_route'] if 'assigned_route' in row.keys() else None,
@@ -2276,14 +2417,16 @@ def login():
             session.permanent = False  # Ensure session is not permanent
             session['auth_session_token'] = auth_session_token
             session['_session_touch_ts'] = int(time.time())
-            _log_system_activity(
-                effective_role.replace('_', ' ').upper() if effective_role else 'SYSTEM',
-                row['name'] if 'name' in row.keys() else row['email'],
+            # Log without blocking the redirect (activity row is still written best-effort).
+            run_background_task(
+                _log_system_activity,
+                (effective_role.replace('_', ' ').upper() if effective_role else 'SYSTEM'),
+                (row['name'] if 'name' in row.keys() else row['email']),
                 'LOG IN',
                 actor_user_id=row['id'],
             )
             flash('Logged in successfully.', 'success')
-            return redirect(url_for('index'))
+            return _login_success_redirect(effective_role)
         if row and not valid_password:
             try:
                 _maybe_send_security_alert(

@@ -7,7 +7,7 @@
 <style>
 .print-page {
     page-break-after: always;
-    page-break-inside: avoid;
+    page-break-inside: auto;
     margin-bottom: 30px;
 }
 
@@ -25,6 +25,12 @@
 .view-table th {
     background: #f8f9fa;
     font-weight: 600;
+}
+
+.view-table .signature-cell {
+    min-height: 2.75rem;
+    vertical-align: top;
+    white-space: pre-wrap;
 }
 
 .section-header {
@@ -52,9 +58,72 @@
 }
 
 @media print {
+    @page { size: auto; margin: 6mm; }
+    /* Filled form look: black ink on white (no screen blues/greens) */
+    html {
+        filter: grayscale(100%) contrast(1.05);
+        -webkit-filter: grayscale(100%) contrast(1.05);
+    }
     .no-print { display: none !important; }
-    .print-page { page-break-after: always; }
-    body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .print-page {
+        page-break-after: always;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+        margin-bottom: 0 !important;
+        box-shadow: none !important;
+        background: #fff !important;
+        color: #000 !important;
+    }
+    .print-page:last-of-type { page-break-after: auto; }
+    .print-page .card {
+        border: 1px solid #000 !important;
+        margin: 0 !important;
+        background: #fff !important;
+    }
+    .print-page .card-header,
+    .print-page .card-body { padding: 6px 10px !important; }
+    .print-page .card-header,
+    .print-page .section-header,
+    .print-page .view-table th {
+        background: #fff !important;
+        color: #000 !important;
+        border-color: #000 !important;
+    }
+    .print-page .section-header,
+    .print-page .highlight-value,
+    .print-page .alert-ratio {
+        background: #fff !important;
+        color: #000 !important;
+        border: 1px solid #000 !important;
+    }
+    .print-page .table-success,
+    .print-page .table-danger,
+    .print-page .table-warning {
+        background: #fff !important;
+        color: #000 !important;
+    }
+    .print-page .badge,
+    .print-page [class^="bg-"],
+    .print-page [class*=" bg-"] {
+        background: #fff !important;
+        color: #000 !important;
+        border: 1px solid #000 !important;
+        print-color-adjust: economy !important;
+        -webkit-print-color-adjust: economy !important;
+    }
+    .print-page h4, .print-page h5 { margin: 4px 0 !important; font-size: 1rem !important; }
+    .print-page [class*="text-white"] { color: #000 !important; }
+    .container-fluid { padding: 0 !important; margin: 0 !important; }
+    .view-table td, .view-table th {
+        padding: 5px 7px !important;
+        border-color: #000 !important;
+    }
+    body {
+        background: #fff !important;
+        color: #000 !important;
+        print-color-adjust: economy !important;
+        -webkit-print-color-adjust: economy !important;
+    }
 }
 </style>
 
@@ -332,7 +401,7 @@
 
     <!-- PAGE 2.5: CASH FLOW STATEMENT (EXCEL SPREADSHEET) -->
     {% if checklist_data.get('excel_cashflow') %}
-    <div class="card print-page">
+    <div class="card print-page print-cashflow-block">
         <div class="card-header bg-info text-white text-center">
             <h4>CASH FLOW STATEMENT</h4>
             <small>Excel Spreadsheet Data</small>
@@ -561,9 +630,10 @@
                 }
                 
                 @media print {
-                    @page {
-                        size: auto;
-                        margin: 12mm;
+                    @page { size: auto; margin: 5mm; }
+
+                    .print-cashflow-block {
+                        page-break-inside: auto !important;
                     }
 
                     html, body {
@@ -601,12 +671,12 @@
                     /* Clean professional print: no grid lines */
                     #excel-view-container .excel-table-view td {
                         border: none !important;
-                        font-size: 10px !important;
-                        padding: 2px 4px !important;
+                        font-size: 8.5px !important;
+                        padding: 1px 2px !important;
                         background: transparent !important;
                         color: #000 !important;
                         min-width: 0 !important;
-                        line-height: 1.25 !important;
+                        line-height: 1.2 !important;
                         white-space: normal !important;
                         word-break: break-word !important;
                         overflow-wrap: anywhere !important;
@@ -628,17 +698,19 @@
                     #excel-view-container .excel-cell-view.has-formula {
                         background: transparent !important;
                         color: #000 !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
+                        -webkit-print-color-adjust: economy;
+                        print-color-adjust: economy;
                     }
 
                     #excel-view-container .excel-cell-view.merged-cell-view {
                         background: transparent !important;
                     }
 
+                    /* Allow natural row breaks so the browser does not insert huge blank gaps
+                       (avoid on every row forces each row to its own "chunk" in many engines). */
                     #excel-view-container .excel-table-view tr {
-                        page-break-inside: avoid !important;
-                        break-inside: avoid !important;
+                        page-break-inside: auto !important;
+                        break-inside: auto !important;
                     }
                 }
             </style>
@@ -874,9 +946,10 @@
         <div class="card-body">
             <table class="view-table">
                 <tr>
-                    <th width="25%">POSITION</th>
-                    <th width="25%">ACTION</th>
-                    <th width="50%">REMARKS</th>
+                    <th width="18%">POSITION</th>
+                    <th width="18%">ACTION</th>
+                    <th width="40%">REMARKS</th>
+                    <th width="24%">SIGNATURE / DATE</th>
                 </tr>
                 <tr>
                     <td><strong>Credit Officer</strong></td>
@@ -886,6 +959,7 @@
                         {% if checklist_data.get('co_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('co_remarks', '') }}</td>
+                    <td class="signature-cell">{{ checklist_data.get('co_signature', '') }}</td>
                 </tr>
                 <tr>
                     <td><strong>CM (Credit Manager)</strong></td>
@@ -895,6 +969,7 @@
                         {% if checklist_data.get('cm_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('cm_remarks', '') }}</td>
+                    <td class="signature-cell">{{ checklist_data.get('cm_signature', '') }}</td>
                 </tr>
                 <tr>
                     <td><strong>OM (Operations Manager)</strong></td>
@@ -904,6 +979,27 @@
                         {% if checklist_data.get('om_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('om_remarks', '') }}</td>
+                    <td class="signature-cell">{{ checklist_data.get('om_signature', '') }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Management Credit Committee</strong></td>
+                    <td>
+                        {% if checklist_data.get('mcc_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
+                        {% if checklist_data.get('mcc_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
+                        {% if checklist_data.get('mcc_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
+                    </td>
+                    <td>{{ checklist_data.get('mcc_remarks', '') }}</td>
+                    <td class="signature-cell">{{ checklist_data.get('mcc_signature', '') }}</td>
+                </tr>
+                <tr>
+                    <td><strong>FTM (Finance &amp; Treasury Manager)</strong></td>
+                    <td>
+                        {% if checklist_data.get('ftm_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
+                        {% if checklist_data.get('ftm_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
+                        {% if checklist_data.get('ftm_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
+                    </td>
+                    <td>{{ checklist_data.get('ftm_remarks', '') }}</td>
+                    <td class="signature-cell">{{ checklist_data.get('ftm_signature', '') }}</td>
                 </tr>
                 <tr>
                     <td><strong>CEO</strong></td>
@@ -913,6 +1009,7 @@
                         {% if checklist_data.get('ceo_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('ceo_remarks', '') }}</td>
+                    <td class="signature-cell">{{ checklist_data.get('ceo_signature', '') }}</td>
                 </tr>
                 <tr>
                     <td><strong>Board of Directors</strong></td>
@@ -921,6 +1018,7 @@
                         {% if checklist_data.get('bod_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('bod_remarks', '') }}</td>
+                    <td class="signature-cell">{{ checklist_data.get('bod_signature', '') }}</td>
                 </tr>
             </table>
         </div>
