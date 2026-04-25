@@ -83,6 +83,46 @@ app.config['SESSION_COOKIE_SECURE'] = True  # Only send cookie over HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
 
+# gzip / br responses (smaller HTML/JSON; no behavior change for users)
+try:
+    from flask_compress import Compress
+    _compress = Compress()
+    _compress.init_app(
+        app,
+        compress_min_size=512,
+    )
+except ImportError:
+    pass
+
+_SKIP_SESSION_ENFORCE_ENDPOINTS = frozenset(
+    {
+        'login',
+        'logout',
+        'serve_static',
+        'favicon',
+        'serve_upload',
+        'serve_signature',
+        'serve_message_file',
+    }
+)
+
+
+def _should_skip_session_enforce():
+    """
+    Do not run user_login_sessions check on every static/upload asset request.
+    A single page can load 20+ images; each was doing a full DB round-trip and
+    made the app feel globally slow. HTML/API routes still enforce every time.
+    """
+    ep = request.endpoint
+    if ep in _SKIP_SESSION_ENFORCE_ENDPOINTS:
+        return True
+    p = request.path or ''
+    if p.startswith('/static/') or p.startswith('/uploads/') or p.startswith('/signatures/') or p.startswith(
+        '/serve_message_file/',
+    ):
+        return True
+    return False
+
 
 @app.template_filter('fmt_datetime')
 def fmt_datetime(value, fmt='%Y-%m-%d %H:%M'):
@@ -1228,7 +1268,11 @@ def _touch_user_session(user_id, session_token):
             ),
         )
         conn.commit()
-        conn.close()
+        if not has_request_context():
+            try:
+                conn.close()
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -1247,7 +1291,11 @@ def _deactivate_user_session(user_id, session_token=None):
                 (now_ph().isoformat(), user_id),
             )
         conn.commit()
-        conn.close()
+        if not has_request_context():
+            try:
+                conn.close()
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -1836,10 +1884,13 @@ def load_user(user_id):
                 g._login_user_obj = user
             return user
         finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            # Keep request-scoped connection open: closing here forced a 2nd/3rd pool
+            # checkout (before_request + view). Teardown closes once per request.
+            if not has_request_context():
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     except Exception as load_err:
         app.logger.exception('load_user failed: %s', load_err)
         return None
@@ -1865,15 +1916,22 @@ def handle_internal_server_error(e):
     except Exception:
         return 'Temporary server issue. Please reload.', 500
 
-# Add security headers to prevent caching of authenticated pages
+# Add security headers to prevent caching of authenticated *pages* (not /static/ JS/CSS)
 @app.after_request
 def add_security_headers(response):
-    # Prevent caching for authenticated users
-    if current_user.is_authenticated:
+    p = request.path or ''
+    ep = request.endpoint
+    static_asset = p.startswith('/static/') or ep in ('serve_static', 'favicon')
+    if static_asset and 'Cache-Control' not in response.headers:
+        # Logged-in users were sending no-cache on every .js/.css; browser re-fetched all assets each
+        # navigation. Public static has no user-specific data; short cache is safe and much faster.
+        response.headers['Cache-Control'] = 'public, max-age=300, stale-while-revalidate=60'
+
+    if current_user.is_authenticated and not static_asset:
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
-        # Touch active session heartbeat once per minute.
+        # Touch active session heartbeat once per minute (skip on static-only responses to cut noise).
         try:
             now_ts = int(time.time())
             last_touch = int(session.get('_session_touch_ts', 0) or 0)
@@ -1892,7 +1950,7 @@ def enforce_single_active_login():
     """Deny stale/replaced sessions so one user has one active login."""
     if not current_user.is_authenticated:
         return None
-    if request.endpoint in ('login', 'logout', 'serve_static', 'static'):
+    if _should_skip_session_enforce():
         return None
 
     auth_token = session.get('auth_session_token')
@@ -1916,7 +1974,6 @@ def enforce_single_active_login():
             ''',
             (current_user.id,),
         ).fetchone()
-        conn.close()
     except Exception:
         return None
 
@@ -2203,39 +2260,10 @@ def login():
                 flash('Your account is pending admin approval. Please wait.', 'warning')
                 return render_template('login.html')
 
-            # Enforce one active device session per user.
+            # Single session: new login always replaces the row in user_login_sessions (ON CONFLICT).
+            # Do not block with "log out the other device first" — a stale client cookie can leave
+            # is_active=1 in the DB while the user has no real session, which locked them out forever.
             lock_conn = get_db()
-            active_row = lock_conn.execute(
-                '''
-                SELECT session_token, is_active, last_seen
-                FROM user_login_sessions
-                WHERE user_id=?
-                LIMIT 1
-                ''',
-                (row['id'],),
-            ).fetchone()
-            active_exists = False
-            if active_row:
-                is_active = int(active_row['is_active']) if 'is_active' in active_row.keys() and active_row['is_active'] is not None else 0
-                is_stale = _is_session_stale(active_row['last_seen'] if 'last_seen' in active_row.keys() else None)
-                if is_active and not is_stale:
-                    active_exists = True
-                else:
-                    lock_conn.execute(
-                        'UPDATE user_login_sessions SET is_active=0, last_seen=? WHERE user_id=?',
-                        (now_ph().isoformat(), row['id']),
-                    )
-                    lock_conn.commit()
-
-            if active_exists:
-                lock_conn.close()
-                _maybe_send_security_alert(
-                    row['id'],
-                    'Security alert: Another login attempt to your account was blocked because you are already logged in on another device.',
-                )
-                flash('This account is already logged in on another device. Please log out there first.', 'warning')
-                return render_template('login.html')
-
             auth_session_token = uuid.uuid4().hex
             _upsert_user_session(lock_conn, row['id'], auth_session_token)
             lock_conn.commit()
