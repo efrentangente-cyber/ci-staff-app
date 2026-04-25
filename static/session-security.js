@@ -9,75 +9,62 @@
         // Session timeout after 2 hours of inactivity (safe behavior only).
         let inactivityTimer;
         const TIMEOUT_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
-        let intentionalNavigation = false;
-        let closeLogoutSent = false;
+        const TAB_ID_KEY = 'dccco_tab_id';
+        const TAB_LOCK_KEY = 'dccco_active_tab_lock';
+        const TAB_LOCK_TTL_MS = 20000; // 20s stale-window recovery
+        const TAB_HEARTBEAT_MS = 5000;
 
-        function getCsrfToken() {
-            const meta = document.querySelector('meta[name="csrf-token"]');
-            return meta ? meta.getAttribute('content') : '';
-        }
-
-        function markIntentionalNavigation() {
-            intentionalNavigation = true;
-            setTimeout(function() {
-                intentionalNavigation = false;
-            }, 3000);
-        }
-
-        document.addEventListener('click', function(event) {
-            const link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
-            if (!link) return;
-
-            const href = link.getAttribute('href') || '';
-            if (
-                !href ||
-                href.startsWith('#') ||
-                href.startsWith('javascript:') ||
-                link.target === '_blank' ||
-                link.hasAttribute('download')
-            ) {
-                return;
-            }
-
+        function newTabId() {
             try {
-                const nextUrl = new URL(link.href, window.location.href);
-                if (nextUrl.origin === window.location.origin) {
-                    markIntentionalNavigation();
+                if (window.crypto && window.crypto.randomUUID) {
+                    return window.crypto.randomUUID();
                 }
             } catch (e) {}
-        }, true);
+            return 'tab_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+        }
 
-        document.addEventListener('submit', function(event) {
-            if (event.target && event.target.matches('form')) {
-                markIntentionalNavigation();
+        function readLock() {
+            try {
+                const raw = localStorage.getItem(TAB_LOCK_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return null;
+                if (!parsed.id || !parsed.ts) return null;
+                return parsed;
+            } catch (e) {
+                return null;
             }
-        }, true);
+        }
 
-        function sendCloseLogout() {
-            if (closeLogoutSent || intentionalNavigation) {
-                return;
+        function writeLock(id) {
+            const payload = {id: id, ts: Date.now()};
+            try {
+                localStorage.setItem(TAB_LOCK_KEY, JSON.stringify(payload));
+            } catch (e) {}
+        }
+
+        function claimOrValidateTab() {
+            const tabId = sessionStorage.getItem(TAB_ID_KEY) || newTabId();
+            sessionStorage.setItem(TAB_ID_KEY, tabId);
+
+            const existing = readLock();
+            const now = Date.now();
+            const isStale = !existing || (now - Number(existing.ts || 0) > TAB_LOCK_TTL_MS);
+
+            if (isStale || existing.id === tabId) {
+                writeLock(tabId);
+                return tabId;
             }
-            closeLogoutSent = true;
 
-            const csrfToken = getCsrfToken();
-            const data = new FormData();
-            if (csrfToken) {
-                data.append('csrf_token', csrfToken);
-            }
-            data.append('reason', 'browser_closed');
+            // Another tab is currently active: show login screen in this tab
+            // without logging out the processing tab.
+            window.location.replace('/login');
+            return null;
+        }
 
-            if (navigator.sendBeacon) {
-                navigator.sendBeacon('/logout', data);
-                return;
-            }
-
-            fetch('/logout', {
-                method: 'POST',
-                body: data,
-                credentials: 'same-origin',
-                keepalive: true,
-                headers: csrfToken ? {'X-CSRFToken': csrfToken} : {}
-            }).catch(function() {});
+        const activeTabId = claimOrValidateTab();
+        if (!activeTabId) {
+            return;
         }
 
         function resetInactivityTimer() {
@@ -97,10 +84,24 @@
         // Start the inactivity timer
         resetInactivityTimer();
 
-        // Best-effort security: when the tab/browser is closed, clear the server session.
-        // Normal in-system navigation is skipped by intentionalNavigation above.
-        window.addEventListener('pagehide', function() {
-            sendCloseLogout();
+        const heartbeat = setInterval(function() {
+            const current = readLock();
+            if (!current || current.id === activeTabId) {
+                writeLock(activeTabId);
+                return;
+            }
+            // If another tab has taken control, this tab should go to login.
+            window.location.replace('/login');
+        }, TAB_HEARTBEAT_MS);
+
+        window.addEventListener('beforeunload', function() {
+            clearInterval(heartbeat);
+            const current = readLock();
+            if (current && current.id === activeTabId) {
+                try {
+                    localStorage.removeItem(TAB_LOCK_KEY);
+                } catch (e) {}
+            }
         });
     }
 

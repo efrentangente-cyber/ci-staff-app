@@ -364,6 +364,9 @@ _COUNT_CACHE_TTL_SECONDS = 20
 _count_cache_lock = eventlet.semaphore.Semaphore()
 _notification_count_cache = {}
 _message_count_cache = {}
+_security_alert_cache = {}
+_SECURITY_ALERT_TTL_SECONDS = 300
+_SINGLE_LOGIN_STALE_SECONDS = 2 * 60 * 60
 
 # Serve static files for PWA
 @app.route('/static/<path:filename>')
@@ -855,6 +858,46 @@ def ensure_system_activity_log_table():
         print(f"⚠️  system_activity_log migration warning: {e}")
 
 
+def ensure_user_login_sessions_table():
+    """Track one active authenticated session per user for security."""
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+        if db_type == 'postgresql':
+            conn.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS user_login_sessions (
+                    user_id INTEGER PRIMARY KEY,
+                    session_token TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                '''
+            )
+        else:
+            conn.execute(
+                '''
+                CREATE TABLE IF NOT EXISTS user_login_sessions (
+                    user_id INTEGER PRIMARY KEY,
+                    session_token TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                '''
+            )
+        conn.commit()
+        conn.close()
+        print("✓ user_login_sessions table ensured")
+    except Exception as e:
+        print(f"⚠️  user_login_sessions migration warning: {e}")
+
+
 def _log_system_activity(role, full_name, action, actor_user_id=None, metadata=None):
     """Best-effort insert of an activity row. Never raises."""
     try:
@@ -898,6 +941,7 @@ ensure_users_columns()
 ensure_sms_templates_table()
 ensure_sms_sent_log_table()
 ensure_system_activity_log_table()
+ensure_user_login_sessions_table()
 
 # Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
@@ -1057,6 +1101,119 @@ def run_background_task(func, *args, **kwargs):
 def enqueue_notification(user_id, message, link=None):
     """Queue notification creation so endpoints stay fast."""
     run_background_task(create_notification, user_id, message, link)
+
+
+def _request_client_ip():
+    """Best-effort client IP extraction behind proxies/CDN."""
+    forwarded = (request.headers.get('X-Forwarded-For') or '').strip()
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return (request.remote_addr or '').strip()
+
+
+def _parse_dt(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except Exception:
+        try:
+            return datetime.strptime(text, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return None
+
+
+def _is_session_stale(last_seen_value):
+    last_seen_dt = _parse_dt(last_seen_value)
+    if last_seen_dt is None:
+        return True
+    if last_seen_dt.tzinfo is not None:
+        now_dt = datetime.now(last_seen_dt.tzinfo)
+    else:
+        now_dt = datetime.utcnow()
+    return (now_dt - last_seen_dt).total_seconds() > _SINGLE_LOGIN_STALE_SECONDS
+
+
+def _upsert_user_session(conn, user_id, session_token):
+    now_iso = now_ph().isoformat()
+    conn.execute('''
+        INSERT INTO user_login_sessions (user_id, session_token, is_active, ip_address, user_agent, created_at, last_seen)
+        VALUES (?, ?, 1, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            session_token=excluded.session_token,
+            is_active=1,
+            ip_address=excluded.ip_address,
+            user_agent=excluded.user_agent,
+            last_seen=excluded.last_seen
+    ''', (
+        user_id,
+        session_token,
+        _request_client_ip(),
+        (request.headers.get('User-Agent') or '')[:255],
+        now_iso,
+        now_iso,
+    ))
+
+
+def _touch_user_session(user_id, session_token):
+    try:
+        conn = get_db()
+        conn.execute(
+            '''
+            UPDATE user_login_sessions
+            SET last_seen=?, ip_address=?, user_agent=?
+            WHERE user_id=? AND session_token=? AND is_active=1
+            ''',
+            (
+                now_ph().isoformat(),
+                _request_client_ip(),
+                (request.headers.get('User-Agent') or '')[:255],
+                user_id,
+                session_token,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def _deactivate_user_session(user_id, session_token=None):
+    try:
+        conn = get_db()
+        if session_token:
+            conn.execute(
+                'UPDATE user_login_sessions SET is_active=0, last_seen=? WHERE user_id=? AND session_token=?',
+                (now_ph().isoformat(), user_id, session_token),
+            )
+        else:
+            conn.execute(
+                'UPDATE user_login_sessions SET is_active=0, last_seen=? WHERE user_id=?',
+                (now_ph().isoformat(), user_id),
+            )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def _maybe_send_security_alert(user_id, message, link='/notifications'):
+    """Throttle security alerts to avoid notification spam."""
+    now_ts = time.time()
+    try:
+        with _count_cache_lock:
+            last_ts = _security_alert_cache.get(user_id, 0)
+            if now_ts - last_ts < _SECURITY_ALERT_TTL_SECONDS:
+                return
+            _security_alert_cache[user_id] = now_ts
+        enqueue_notification(user_id, message, link)
+    except Exception:
+        pass
 
 
 def _ph_number_for_semaphore(phone_number):
@@ -1661,7 +1818,74 @@ def add_security_headers(response):
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
+        # Touch active session heartbeat once per minute.
+        try:
+            now_ts = int(time.time())
+            last_touch = int(session.get('_session_touch_ts', 0) or 0)
+            if now_ts - last_touch >= 60:
+                auth_token = session.get('auth_session_token')
+                if auth_token:
+                    _touch_user_session(current_user.id, auth_token)
+                session['_session_touch_ts'] = now_ts
+        except Exception:
+            pass
     return response
+
+
+@app.before_request
+def enforce_single_active_login():
+    """Deny stale/replaced sessions so one user has one active login."""
+    if not current_user.is_authenticated:
+        return None
+    if request.endpoint in ('login', 'logout', 'serve_static', 'static'):
+        return None
+
+    auth_token = session.get('auth_session_token')
+    if not auth_token:
+        try:
+            logout_user()
+        except Exception:
+            pass
+        session.clear()
+        flash('Please sign in again for security.', 'warning')
+        return redirect(url_for('login'))
+
+    try:
+        conn = get_db()
+        row = conn.execute(
+            '''
+            SELECT session_token, is_active, last_seen
+            FROM user_login_sessions
+            WHERE user_id=?
+            LIMIT 1
+            ''',
+            (current_user.id,),
+        ).fetchone()
+        conn.close()
+    except Exception:
+        return None
+
+    if not row:
+        try:
+            logout_user()
+        except Exception:
+            pass
+        session.clear()
+        flash('Session expired. Please log in again.', 'warning')
+        return redirect(url_for('login'))
+
+    is_active = int(row['is_active']) if 'is_active' in row.keys() and row['is_active'] is not None else 0
+    token_match = str(row['session_token']) == str(auth_token)
+    is_stale = _is_session_stale(row['last_seen'] if 'last_seen' in row.keys() else None)
+    if not token_match or not is_active or is_stale:
+        try:
+            logout_user()
+        except Exception:
+            pass
+        session.clear()
+        flash('Your account is active on another device. Please log in again.', 'warning')
+        return redirect(url_for('login'))
+    return None
 
 
 @app.teardown_request
@@ -1887,6 +2111,9 @@ def index():
 
 @app.route('/login', methods=['GET','POST'])
 def login():
+    if request.method == 'GET' and current_user.is_authenticated:
+        return render_template('login.html')
+
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
@@ -1901,7 +2128,9 @@ def login():
             (email,),
         ).fetchone()
         conn.close()
-        if row and check_password_hash(row['password_hash'], password):
+        valid_password = bool(row and check_password_hash(row['password_hash'], password))
+
+        if valid_password:
             normalized_role = normalize_role(row['role'])
             effective_role = normalized_role if normalized_role else row['role']
             if normalized_role and normalized_role != row['role']:
@@ -1918,6 +2147,44 @@ def login():
             if is_approved == 0:
                 flash('Your account is pending admin approval. Please wait.', 'warning')
                 return render_template('login.html')
+
+            # Enforce one active device session per user.
+            lock_conn = get_db()
+            active_row = lock_conn.execute(
+                '''
+                SELECT session_token, is_active, last_seen
+                FROM user_login_sessions
+                WHERE user_id=?
+                LIMIT 1
+                ''',
+                (row['id'],),
+            ).fetchone()
+            active_exists = False
+            if active_row:
+                is_active = int(active_row['is_active']) if 'is_active' in active_row.keys() and active_row['is_active'] is not None else 0
+                is_stale = _is_session_stale(active_row['last_seen'] if 'last_seen' in active_row.keys() else None)
+                if is_active and not is_stale:
+                    active_exists = True
+                else:
+                    lock_conn.execute(
+                        'UPDATE user_login_sessions SET is_active=0, last_seen=? WHERE user_id=?',
+                        (now_ph().isoformat(), row['id']),
+                    )
+                    lock_conn.commit()
+
+            if active_exists:
+                lock_conn.close()
+                _maybe_send_security_alert(
+                    row['id'],
+                    'Security alert: Another login attempt to your account was blocked because you are already logged in on another device.',
+                )
+                flash('This account is already logged in on another device. Please log out there first.', 'warning')
+                return render_template('login.html')
+
+            auth_session_token = uuid.uuid4().hex
+            _upsert_user_session(lock_conn, row['id'], auth_session_token)
+            lock_conn.commit()
+            lock_conn.close()
             
             user = User(row['id'], row['email'], row['name'], effective_role, row['signature_path'] if 'signature_path' in row.keys() else None, 
                        row['backup_email'] if 'backup_email' in row.keys() else None,
@@ -1926,6 +2193,8 @@ def login():
                        row['permissions'] if 'permissions' in row.keys() else None)
             login_user(user, remember=False)  # Session expires when browser closes
             session.permanent = False  # Ensure session is not permanent
+            session['auth_session_token'] = auth_session_token
+            session['_session_touch_ts'] = int(time.time())
             _log_system_activity(
                 effective_role.replace('_', ' ').upper() if effective_role else 'SYSTEM',
                 row['name'] if 'name' in row.keys() else row['email'],
@@ -1934,6 +2203,14 @@ def login():
             )
             flash('Logged in successfully.', 'success')
             return redirect(url_for('index'))
+        if row and not valid_password:
+            try:
+                _maybe_send_security_alert(
+                    row['id'],
+                    'Security alert: A failed login attempt was detected for your account.',
+                )
+            except Exception:
+                pass
         flash('Invalid credentials', 'danger')
     return render_template('login.html')
 
@@ -1944,6 +2221,7 @@ def logout():
     This route must succeed even when session/user state is partially broken.
     """
     user_id = session.get('_user_id')
+    auth_session_token = session.get('auth_session_token')
     actor_name = None
     actor_role = None
     try:
@@ -1993,6 +2271,9 @@ def logout():
             logout_user()
         except Exception as logout_err:
             app.logger.debug('logout_user failed, forcing session clear: %s', logout_err)
+
+        if user_id is not None:
+            _deactivate_user_session(user_id, auth_session_token)
 
         # Clear any remaining session keys to avoid stale auth state.
         session.clear()
