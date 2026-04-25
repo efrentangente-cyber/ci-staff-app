@@ -1,0 +1,2 @@
+/* Page-specific rules for /reports; keep global styles in static/css/base.css */
+.reports-hero h2 { margin-bottom: 0.35rem; }

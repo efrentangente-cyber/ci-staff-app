@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}CI/BI Dashboard{% endblock %}
+{% block layout_feature_scripts %}{% include 'includes/assets_datatable.html' %}{% endblock %}
 {% block content %}
 
 <!-- Include Offline Indicator -->
@@ -250,8 +251,6 @@ function clearSearch(tableType) {
 }
 </script>
 
-<!-- Real-time Dashboard Updates -->
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
 <script>
 (function () {
     var main = document.getElementById('main-content');
@@ -348,4 +347,7 @@ function clearSearch(tableType) {
     }
 }
 </style>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}" defer></script>
 {% endblock %}

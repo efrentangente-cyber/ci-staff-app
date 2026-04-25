@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Admin Review{% endblock %}
+{% block layout_feature_scripts %}{% include 'includes/assets_datatable.html' %}{% endblock %}
 {% block content %}
 <h2>Admin Review - Application #{{ application.id }}</h2>
 <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary mb-3">
@@ -328,7 +329,7 @@
 {% endblock %}
 {% block scripts %}
 <!-- Include SMS Modal JavaScript -->
-<script src="{{ url_for('static', filename='sms-modal.js') }}"></script>
+<script src="{{ url_for('static', filename='sms-modal.js') }}?v=2"></script>
 
 <script>
 // Lightbox functions

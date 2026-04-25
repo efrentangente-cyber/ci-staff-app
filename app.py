@@ -1439,11 +1439,12 @@ def _build_semaphore_sender_candidates(api_key):
         p = part.strip()
         if p:
             _add(p)
+    # Dashboard / org sender (DCCCO on Semaphore matches most deployments; override with SEMAPHORE_DASHBOARD_SENDER)
+    org_sender = (os.getenv('SEMAPHORE_DASHBOARD_SENDER') or 'DCCCO').strip()
+    if org_sender:
+        _add(org_sender)
     for n in _fetch_semaphore_account_sender_names(api_key):
         _add(n)
-    dash = (os.getenv('SEMAPHORE_DASHBOARD_SENDER') or '').strip()
-    if dash:
-        _add(dash)
     # API docs: omitting sendername defaults to branded "Semaphore"; explicit sometimes matches account
     _add('SEMAPHORE')
     _add('')
@@ -1497,9 +1498,20 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
     try:
         timeout = float(os.getenv('SEMAPHORE_TIMEOUT_SECONDS', '10'))
 
+        def _post_semaphore(url_to_use, send_payload):
+            """POST form body; on connection failure to api.semaphore.co, retry once on legacy host."""
+            try:
+                return requests.post(url_to_use, data=send_payload, timeout=timeout)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as ex:
+                if 'api.semaphore.co' in (url_to_use or ''):
+                    legacy = 'https://semaphore.co/api/v4/messages'
+                    print(f"[SMS] Semaphore connection issue ({ex}); retrying {legacy}")
+                    return requests.post(legacy, data=send_payload, timeout=timeout)
+                raise
+
         def _attempt(send_payload, label):
             print(f"[SMS] Semaphore → {phone_09} ({label})")
-            response = requests.post(url, data=send_payload, timeout=timeout)
+            response = _post_semaphore(url, send_payload)
             text = (response.text or '').strip()
             try:
                 data = response.json()

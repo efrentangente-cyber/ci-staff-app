@@ -239,12 +239,15 @@ function toggleVoiceRecording() {
 </style>
 
 <script>
-const socket = io({
+if (!window.__dcccoSocket) {
+    window.__dcccoSocket = io({
     transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionAttempts: 5
-});
+    });
+}
+const socket = window.__dcccoSocket;
 const receiverId = {{ other_user.id }};
 
 // Clear message badge since we're viewing this chat

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{% if can_edit %}Edit{% else %}View{% endif %} Application #{{ application.id }}{% endblock %}
+{% block layout_feature_scripts %}{% include 'includes/assets_autocomplete.html' %}{% endblock %}
 
 <style>
 #address_suggestions {

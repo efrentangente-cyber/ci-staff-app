@@ -6,8 +6,7 @@ const OFFLINE_URL = '/static/offline.html';
 const STATIC_ASSETS = [
   '/static/offline.html',
   '/static/manifest.json',
-  '/static/datatable.css',
-  '/static/datatable.js',
+  '/static/css/base.css',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js',
   'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css',

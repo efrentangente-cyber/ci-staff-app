@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Admin Dashboard{% endblock %}
+{% block layout_feature_scripts %}{% include 'includes/assets_datatable.html' %}{% endblock %}
 {% block content %}
 <div class="top-bar">
     <div>
@@ -497,12 +498,15 @@
 </style>
 
 <script>
-const socket = io({
+if (!window.__dcccoSocket) {
+    window.__dcccoSocket = io({
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionAttempts: 5
-});
+    });
+}
+const socket = window.__dcccoSocket;
 
 // Listen for online/offline events
 socket.on('user_online', function(data) {
@@ -726,7 +730,7 @@ document.getElementById('reassignForm')?.addEventListener('submit', function(e) 
     });
 });
 </script>
-
-<!-- Real-time Dashboard Updates -->
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}" defer></script>
 {% endblock %}

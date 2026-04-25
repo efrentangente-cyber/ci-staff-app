@@ -8,6 +8,11 @@ let currentLoanAmount = '';
 let currentLoanType = '';
 let currentTemplateId = null;
 
+function getCsrfTokenForFetch() {
+    const m = document.querySelector('meta[name="csrf-token"]');
+    return m ? (m.getAttribute('content') || '') : '';
+}
+
 // Show SMS modal
 function showSMSModal(appId, action, memberName, loanAmount, loanType, memberContact) {
     currentAppId = appId;
@@ -174,11 +179,16 @@ function sendSMSAndUpdate() {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
     // Send request (server no longer blocks on Socket.IO; still guard against network hangs)
+    const csrf = getCsrfTokenForFetch();
+    const sendHeaders = {
+        'Content-Type': 'application/json',
+    };
+    if (csrf) {
+        sendHeaders['X-CSRFToken'] = csrf;
+    }
     fetch(`/send_sms_and_update_status/${currentAppId}`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: sendHeaders,
         credentials: 'same-origin',
         signal: controller.signal,
         body: JSON.stringify({

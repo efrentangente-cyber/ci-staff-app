@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}CI Checklist - {{ application.member_name }}{% endblock %}
 {% block body_class %}ci-checklist-wizard{% endblock %}
+{% block layout_feature_scripts %}{% include 'includes/assets_autocomplete.html' %}{% endblock %}
 
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">

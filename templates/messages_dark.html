@@ -901,7 +901,8 @@
 </style>
 
 <script>
-const socket = io({
+if (!window.__dcccoSocket) {
+    window.__dcccoSocket = io({
     transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
     reconnection: true,
     reconnectionDelay: 500,  // Faster reconnection for instant messaging
@@ -909,7 +910,9 @@ const socket = io({
     timeout: 10000,
     upgrade: true,
     rememberUpgrade: true
-});
+    });
+}
+const socket = window.__dcccoSocket;
 let currentChatUserId = null;
 let onlineUsers = new Set();
 

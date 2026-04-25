@@ -1,5 +1,6 @@
     {% extends "base.html" %}
 {% block title %}LPS Dashboard{% endblock %}
+{% block layout_feature_scripts %}{% include 'includes/assets_datatable.html' %}{% endblock %}
 {% block extra_head %}
 <link rel="prefetch" href="{{ url_for('submit_application') }}">
 {% endblock %}
@@ -398,7 +399,8 @@ function clearSearch(tableType) {
 }
 </style>
 
-<!-- Real-time: only react to this user's applications on LPS dashboard -->
+{% endblock %}
+{% block scripts %}
 <script>window.__LPS_USER_ID = {{ current_user.id | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}" defer></script>
 {% endblock %}

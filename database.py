@@ -6,9 +6,17 @@ Updated: 2026-04-23 - Fixed PostgreSQL compatibility
 """
 
 import os
+import sys
 import sqlite3
 import threading
 import time
+
+# Avoid UnicodeEncodeError on Windows consoles when printing diagnostic messages.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
 
 try:
     from flask import g, has_request_context

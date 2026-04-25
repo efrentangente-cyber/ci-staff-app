@@ -2,6 +2,36 @@
 {% block title %}CI Checklist - {{ application.member_name }}{% endblock %}
 
 {% block content %}
+{% macro formal_page_signoff(ci_signature_url=none) -%}
+  {% set _cd = (checklist_data if (checklist_data is defined and checklist_data) else None) or {} %}
+  {% if _cd is not mapping %}{% set _cd = {} %}{% endif %}
+  {% set _prep0 = (application.ci_staff_name or _cd.get('prepared_by', '') or '')|trim %}
+  {% set _chk0 = (_cd.get('reviewed_by', '') or '')|trim %}
+  {% set _prep = _prep0|upper if _prep0 else '______________________________' %}
+  {% set _chk = _chk0|upper if _chk0 else '______________________________' %}
+<div class="formal-page-signoff" aria-label="Attestation and signatures">
+  <div class="formal-page-signoff__inner">
+    <div class="formal-page-signoff__col">
+      <div class="formal-page-signoff__sigspace{% if ci_signature_url %} formal-page-signoff__sigspace--with-img{% endif %}"{% if not ci_signature_url %} aria-hidden="true"{% endif %}>
+        {% if ci_signature_url %}
+        <div class="formal-page-signoff__imgbox">
+          <img src="{{ ci_signature_url }}" alt="CI/BI digital signature" class="formal-page-signoff__img" loading="lazy" decoding="async">
+        </div>
+        {% endif %}
+      </div>
+      <p class="formal-page-signoff__label">Prepared by:</p>
+      <p class="formal-page-signoff__name">{{ _prep }}</p>
+      <p class="formal-page-signoff__title">CI / BI</p>
+    </div>
+    <div class="formal-page-signoff__col formal-page-signoff__col--right">
+      <div class="formal-page-signoff__sigspace" aria-hidden="true"></div>
+      <p class="formal-page-signoff__label">Checked by:</p>
+      <p class="formal-page-signoff__name">{{ _chk }}</p>
+      <p class="formal-page-signoff__title">CREDIT OFFICER</p>
+    </div>
+  </div>
+</div>
+{%- endmacro %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
 
 <style>
@@ -29,9 +59,89 @@
 
 .view-table .signature-cell {
     min-height: 2.75rem;
-    vertical-align: top;
+    vertical-align: bottom;
     white-space: pre-wrap;
 }
+
+/* DCCCO-style formal footer on every print page (Prepared by / Checked by) */
+.formal-page-signoff {
+    margin-top: 2.25rem;
+    padding-top: 1.15rem;
+    border-top: 1.5pt solid #000;
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+.formal-page-signoff__inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 1.25rem 2rem;
+}
+.formal-page-signoff__col {
+    flex: 1;
+    min-width: 0;
+    max-width: 48%;
+}
+.formal-page-signoff__col--right {
+    text-align: right;
+}
+.formal-page-signoff__sigspace {
+    min-height: 2.75rem;
+    border-bottom: 1pt solid #000;
+    margin-bottom: 0.5rem;
+}
+.formal-page-signoff__sigspace--with-img {
+    min-height: 3.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-start;
+    padding-bottom: 0.25rem;
+}
+.formal-page-signoff__imgbox {
+    width: 100%;
+    max-width: 280px;
+    text-align: left;
+    margin-bottom: 0.15rem;
+}
+.formal-page-signoff__img {
+    display: block;
+    max-width: 100%;
+    max-height: 150px;
+    width: auto;
+    height: auto;
+}
+.formal-page-signoff__label {
+    font-size: 10.5pt;
+    margin: 0 0 0.1rem 0;
+    font-weight: 400;
+    color: #000;
+}
+.formal-page-signoff__name {
+    font-size: 11.5pt;
+    font-weight: 700;
+    margin: 0 0 0.12rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #000;
+    line-height: 1.25;
+}
+.formal-page-signoff__title {
+    font-size: 9.5pt;
+    margin: 0;
+    font-weight: 400;
+    color: #000;
+}
+.formal-remarks-sig {
+    min-height: 3.5rem;
+    border-bottom: 1pt solid #000;
+    padding-bottom: 0.25rem;
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #000;
+}
+.formal-remarks-sig--empty { color: transparent; }
 
 .section-header {
     background: #0d6efd;
@@ -173,6 +283,7 @@
                 </div>
                 {% endfor %}
             </div>
+            {{ formal_page_signoff() }}
         </div>
     </div>
     {% endif %}
@@ -202,6 +313,7 @@
                 </div>
                 {% endfor %}
             </div>
+            {{ formal_page_signoff() }}
         </div>
     </div>
     {% endif %}
@@ -338,6 +450,7 @@
                     <td>{{ checklist_data.get('spouse_contact', 'N/A') }}</td>
                 </tr>
             </table>
+            {{ formal_page_signoff() }}
         </div>
     </div>
 
@@ -396,6 +509,7 @@
                     <td>{{ checklist_data.get('reviewed_by', 'N/A') }}</td>
                 </tr>
             </table>
+            {{ formal_page_signoff() }}
         </div>
     </div>
 
@@ -714,6 +828,7 @@
                     }
                 }
             </style>
+            {{ formal_page_signoff() }}
         </div>
     </div>
     {% endif %}
@@ -834,6 +949,7 @@
                 <span style="font-size: 0.9em;">✓ WITHIN ACCEPTABLE LIMIT</span>
             </div>
             {% endif %}
+            {{ formal_page_signoff() }}
         </div>
     </div>
 
@@ -935,6 +1051,7 @@
             <div class="section-header">OTHER INFORMATION</div>
             <p>{{ checklist_data.get('other_info') }}</p>
             {% endif %}
+            {{ formal_page_signoff() }}
         </div>
     </div>
 
@@ -959,7 +1076,7 @@
                         {% if checklist_data.get('co_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('co_remarks', '') }}</td>
-                    <td class="signature-cell">{{ checklist_data.get('co_signature', '') }}</td>
+                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('co_signature') %}{{ checklist_data.get('co_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
                     <td><strong>CM (Credit Manager)</strong></td>
@@ -969,7 +1086,7 @@
                         {% if checklist_data.get('cm_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('cm_remarks', '') }}</td>
-                    <td class="signature-cell">{{ checklist_data.get('cm_signature', '') }}</td>
+                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('cm_signature') %}{{ checklist_data.get('cm_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
                     <td><strong>OM (Operations Manager)</strong></td>
@@ -979,7 +1096,7 @@
                         {% if checklist_data.get('om_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('om_remarks', '') }}</td>
-                    <td class="signature-cell">{{ checklist_data.get('om_signature', '') }}</td>
+                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('om_signature') %}{{ checklist_data.get('om_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
                     <td><strong>Management Credit Committee</strong></td>
@@ -989,7 +1106,7 @@
                         {% if checklist_data.get('mcc_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('mcc_remarks', '') }}</td>
-                    <td class="signature-cell">{{ checklist_data.get('mcc_signature', '') }}</td>
+                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('mcc_signature') %}{{ checklist_data.get('mcc_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
                     <td><strong>FTM (Finance &amp; Treasury Manager)</strong></td>
@@ -999,7 +1116,7 @@
                         {% if checklist_data.get('ftm_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('ftm_remarks', '') }}</td>
-                    <td class="signature-cell">{{ checklist_data.get('ftm_signature', '') }}</td>
+                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('ftm_signature') %}{{ checklist_data.get('ftm_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
                     <td><strong>CEO</strong></td>
@@ -1009,7 +1126,7 @@
                         {% if checklist_data.get('ceo_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('ceo_remarks', '') }}</td>
-                    <td class="signature-cell">{{ checklist_data.get('ceo_signature', '') }}</td>
+                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('ceo_signature') %}{{ checklist_data.get('ceo_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
                     <td><strong>Board of Directors</strong></td>
@@ -1018,9 +1135,10 @@
                         {% if checklist_data.get('bod_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
                     </td>
                     <td>{{ checklist_data.get('bod_remarks', '') }}</td>
-                    <td class="signature-cell">{{ checklist_data.get('bod_signature', '') }}</td>
+                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('bod_signature') %}{{ checklist_data.get('bod_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
             </table>
+            {{ formal_page_signoff() }}
         </div>
     </div>
 
@@ -1030,48 +1148,32 @@
             <h4>CI/BI SIGNATURE & VERIFICATION</h4>
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6 text-center">
-                    <h5>Signature</h5>
-                    {% if application.ci_signature %}
-                    <div style="display: inline-block; position: relative;">
-                        <!-- Signature image -->
-                        <img src="{{ application.ci_signature }}" style="max-width: 100%; max-height: 150px; display: block; margin: 0 auto;">
-                        <!-- Printed name line below signature -->
-                        <div style="border-top: 2px solid #000; margin-top: 5px; padding-top: 5px; text-align: center; min-width: 250px;">
-                            <strong style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">{{ application.ci_staff_name }}</strong>
-                            <div style="font-size: 12px; color: #666; margin-top: 2px;">CI/BI</div>
+            <h5 class="h6">Verification details</h5>
+            <table class="view-table">
+                <tr>
+                    <td width="40%"><strong>Completed Date:</strong></td>
+                    <td>{{ application.ci_completed_at }}</td>
+                </tr>
+                {% if application.ci_latitude and application.ci_longitude %}
+                <tr>
+                    <td><strong>GPS Location:</strong></td>
+                    <td>{{ application.ci_latitude }}, {{ application.ci_longitude }}</td>
+                </tr>
+                <tr>
+                    <td colspan="2" class="no-print">
+                        <div class="map-embed-wrap rounded border overflow-hidden" style="height: 320px; min-height: 240px; background: #e5e7eb;">
+                            <iframe title="Map at GPS location" class="d-block w-100 h-100 border-0"
+                                style="min-height: 240px;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen
+                                src="https://www.google.com/maps?q={{ application.ci_latitude|urlencode }}%2C{{ application.ci_longitude|urlencode }}&z=18&output=embed&hl=en"></iframe>
                         </div>
-                    </div>
-                    {% else %}
-                    <p class="text-muted">No signature available</p>
-                    {% endif %}
-                </div>
-                <div class="col-md-6">
-                    <h5>Verification Details</h5>
-                    <table class="view-table">
-                        <tr>
-                            <td width="40%"><strong>Completed Date:</strong></td>
-                            <td>{{ application.ci_completed_at }}</td>
-                        </tr>
-                        {% if application.ci_latitude and application.ci_longitude %}
-                        <tr>
-                            <td><strong>GPS Location:</strong></td>
-                            <td>{{ application.ci_latitude }}, {{ application.ci_longitude }}</td>
-                        </tr>
-                        <tr>
-                            <td colspan="2" class="no-print">
-                                <div class="map-embed-wrap rounded border overflow-hidden" style="height: 320px; min-height: 240px; background: #e5e7eb;">
-                                    <iframe title="Map at GPS location" class="d-block w-100 h-100 border-0"
-                                        style="min-height: 240px;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen
-                                        src="https://www.google.com/maps?q={{ application.ci_latitude|urlencode }}%2C{{ application.ci_longitude|urlencode }}&z=18&output=embed&hl=en"></iframe>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endif %}
-                    </table>
-                </div>
-            </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </table>
+            {% if not application.ci_signature %}
+            <p class="text-muted small mb-0">No digital signature image on file. Use the attestation line below for wet signature.</p>
+            {% endif %}
+            {{ formal_page_signoff(application.ci_signature) }}
         </div>
     </div>
 
