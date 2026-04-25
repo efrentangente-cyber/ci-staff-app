@@ -86,11 +86,9 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
 # gzip / br responses (smaller HTML/JSON; no behavior change for users)
 try:
     from flask_compress import Compress
+    app.config.setdefault('COMPRESS_MIN_SIZE', 512)
     _compress = Compress()
-    _compress.init_app(
-        app,
-        compress_min_size=512,
-    )
+    _compress.init_app(app)
 except ImportError:
     pass
 
