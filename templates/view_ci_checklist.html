@@ -65,9 +65,9 @@
             <button onclick="window.print()" class="btn btn-primary btn-lg">
                 <i class="bi bi-printer"></i> Print All 6 Pages
             </button>
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Dashboard
-            </a>
+            <button type="button" class="btn btn-secondary" onclick="history.back()">
+                <i class="bi bi-arrow-left"></i> Back
+            </button>
         </div>
     </div>
 
@@ -580,17 +580,26 @@
                         max-width: 100% !important;
                     }
 
-                    /* Hide Excel row/column headers when printing */
-                    .excel-col-header,
-                    .excel-row-header,
-                    .excel-corner,
-                    .excel-table-view thead,
-                    .excel-table-view th {
+                    /* Text only: hide A–D / 1–N chrome (view checklist cash flow) */
+                    #excel-view-container .excel-table-view thead,
+                    #excel-view-container .excel-corner,
+                    #excel-view-container .excel-col-header,
+                    #excel-view-container .excel-row-header,
+                    #excel-view-container .excel-table-view tbody tr > th {
                         display: none !important;
+                        width: 0 !important;
+                        height: 0 !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        border: 0 !important;
+                        font-size: 0 !important;
+                        line-height: 0 !important;
+                        overflow: hidden !important;
+                        visibility: hidden !important;
                     }
 
                     /* Clean professional print: no grid lines */
-                    .excel-table-view td {
+                    #excel-view-container .excel-table-view td {
                         border: none !important;
                         font-size: 10px !important;
                         padding: 2px 4px !important;
@@ -603,31 +612,31 @@
                         overflow-wrap: anywhere !important;
                     }
 
-                    .excel-table-view {
+                    #excel-view-container .excel-table-view {
                         border: none !important;
                         width: 100% !important;
                         table-layout: auto !important;
                         border-collapse: collapse !important;
                     }
 
-                    .excel-cell-view {
+                    #excel-view-container .excel-cell-view {
                         border: none !important;
                         background: transparent !important;
                         box-shadow: none !important;
                     }
 
-                    .excel-cell-view.has-formula {
+                    #excel-view-container .excel-cell-view.has-formula {
                         background: transparent !important;
                         color: #000 !important;
                         -webkit-print-color-adjust: exact;
                         print-color-adjust: exact;
                     }
 
-                    .excel-cell-view.merged-cell-view {
+                    #excel-view-container .excel-cell-view.merged-cell-view {
                         background: transparent !important;
                     }
 
-                    .excel-table-view tr {
+                    #excel-view-container .excel-table-view tr {
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
                     }
@@ -953,10 +962,12 @@
                             <td>{{ application.ci_latitude }}, {{ application.ci_longitude }}</td>
                         </tr>
                         <tr>
-                            <td colspan="2" class="text-center">
-                                <a href="https://www.google.com/maps?q={{ application.ci_latitude }},{{ application.ci_longitude }}" target="_blank" class="btn btn-sm btn-primary no-print">
-                                    <i class="bi bi-geo-alt"></i> View on Map
-                                </a>
+                            <td colspan="2" class="no-print">
+                                <div class="map-embed-wrap rounded border overflow-hidden" style="height: 320px; min-height: 240px; background: #e5e7eb;">
+                                    <iframe title="Map at GPS location" class="d-block w-100 h-100 border-0"
+                                        style="min-height: 240px;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen
+                                        src="https://www.google.com/maps?q={{ application.ci_latitude|urlencode }}%2C{{ application.ci_longitude|urlencode }}&z=18&output=embed&hl=en"></iframe>
+                                </div>
                             </td>
                         </tr>
                         {% endif %}

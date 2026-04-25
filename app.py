@@ -53,6 +53,17 @@ def now_ph():
     return datetime.utcnow()
 
 
+def naive_utc_iso_z(dt=None):
+    """Format a UTC (naive or aware) instant as ISO-8601 with Z for JavaScript Date."""
+    if dt is None:
+        dt = datetime.utcnow()
+    if not isinstance(dt, datetime):
+        return ''
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(pytz.UTC).replace(tzinfo=None)
+    return dt.isoformat() + 'Z'
+
+
 app = Flask(__name__)
 _secret_key = (os.getenv('SECRET_KEY') or '').strip()
 if not _secret_key:
@@ -86,6 +97,44 @@ def fmt_datetime(value, fmt='%Y-%m-%d %H:%M'):
         except ValueError:
             return value[:16] if len(value) >= 16 else value
     return str(value)
+
+
+def _activity_log_timestamp_display(value, fmt='%b %d, %Y %I:%M %p'):
+    """DB stores UTC; show in DISPLAY_TIMEZONE (default Asia/Manila)."""
+    if value is None:
+        return ''
+    tz_name = (os.getenv('DISPLAY_TIMEZONE') or 'Asia/Manila').strip() or 'Asia/Manila'
+    try:
+        display_tz = pytz.timezone(tz_name)
+    except Exception:
+        display_tz = pytz.timezone('Asia/Manila')
+    dt = value
+    if isinstance(value, str):
+        try:
+            s = value.strip().replace('Z', '+00:00')
+            if 'T' not in s and s[:10].count('-') == 2:
+                s = s.replace(' ', 'T', 1)
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            return value
+    if not isinstance(dt, datetime):
+        return str(value)
+    if dt.tzinfo is None:
+        dt = pytz.UTC.localize(dt)
+    else:
+        dt = dt.astimezone(pytz.UTC)
+    return dt.astimezone(display_tz).strftime(fmt)
+
+
+@app.template_filter('activity_log_ts')
+def activity_log_ts(value, fmt=None):
+    return _activity_log_timestamp_display(value, fmt if fmt else '%b %d, %Y %I:%M %p')
+
+
+@app.template_filter('utc_iso_z')
+def utc_iso_z_filter(value):
+    """Naive DB UTC datetimes as ISO+Z for data attributes / JSON."""
+    return naive_utc_iso_z(value)
 
 # Allowed file extensions for uploads
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm', 'mp3', 'wav'}
@@ -454,6 +503,7 @@ ROLE_ALIASES = {
 }
 
 VALID_ROLES = {'admin', 'loan_officer', 'loan_staff', 'ci_staff'}
+MANAGE_USERS_ASSIGNABLE_ROLES = {'loan_staff', 'ci_staff'}
 
 
 def normalize_role(role):
@@ -1247,16 +1297,20 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
     if send_body_for_log.lstrip().upper().startswith('TEST'):
         return False, 'Message cannot start with TEST (ignored by provider)'
 
-    url = 'https://semaphore.co/api/v4/messages'
+    # Official host (doc); legacy semaphore.co also works, api.semaphore.co is canonical
+    url = (os.getenv('SEMAPHORE_API_URL') or 'https://api.semaphore.co/api/v4/messages').strip()
     configured_sender = (
         os.getenv('SEMAPHORE_SENDERNAME')
         or os.getenv('SEMAPHORE_SENDER_NAME')
         or os.getenv('SMS_SENDER_NAME')
         or ''
     ).strip()
+    # Web UI "Send SMS" uses your approved sender (e.g. DCCCO). API omits sendername it defaults to
+    # the literal name "Semaphore" (see Semaphore docs) — that often is NOT approved, so we must try
+    # the dashboard/approved name FIRST, never the empty default before it.
     dashboard_sender = (os.getenv('SEMAPHORE_DASHBOARD_SENDER') or 'DCCCO').strip()
     sender_candidates = []
-    for candidate in (configured_sender, dashboard_sender, ''):
+    for candidate in (dashboard_sender, configured_sender, ''):
         if candidate not in sender_candidates:
             sender_candidates.append(candidate)
 
@@ -1275,6 +1329,7 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
         low = (err or '').lower()
         return (
             'sender' in low
+            or 'sendername' in low
             or 'not yet been approved for sending messages' in low
             or 'not yet approved for sending sms' in low
             or 'complete your account profile' in low
@@ -3889,7 +3944,7 @@ def chat_with_user(user_id):
             m = dict(msg)
             sent_at = m.get('sent_at')
             if isinstance(sent_at, datetime):
-                m['sent_at'] = sent_at.strftime('%Y-%m-%d %H:%M:%S')
+                m['sent_at'] = naive_utc_iso_z(sent_at)
             elif sent_at is None:
                 m['sent_at'] = ''
             safe_messages.append(m)
@@ -4039,7 +4094,8 @@ def ci_tracking():
     
     conn.close()
     
-    return render_template('ci_tracking.html', ci_staff=ci_staff, unread_count=0)
+    gmaps_key = (os.getenv('GOOGLE_MAPS_API_KEY') or os.getenv('GOOGLE_MAPS_KEY') or '').strip()
+    return render_template('ci_tracking.html', ci_staff=ci_staff, unread_count=0, google_maps_api_key=gmaps_key)
 
 @app.route('/api/update_location', methods=['POST'])
 @login_required
@@ -4120,7 +4176,7 @@ def get_messages(user_id):
             for field in ('sent_at', 'edited_at'):
                 value = m.get(field)
                 if isinstance(value, datetime):
-                    m[field] = value.strftime('%Y-%m-%d %H:%M:%S')
+                    m[field] = naive_utc_iso_z(value)
                 elif value is None:
                     m[field] = ''
             safe.append(m)
@@ -4298,7 +4354,7 @@ def send_direct_message():
             'sender_name': current_user.name,
             'receiver_id': receiver_id,
             'message': message,
-            'timestamp': now_ph().isoformat(),
+            'timestamp': naive_utc_iso_z(),
         }
         try:
             socketio.emit('new_direct_message', payload, room=str(receiver_id))
@@ -4353,7 +4409,7 @@ def send_image_message():
             'message': '[Image]',
             'message_type': 'image',
             'file_name': filename,
-            'timestamp': now_ph().isoformat(),
+            'timestamp': naive_utc_iso_z(),
         }
         try:
             socketio.emit('new_direct_message', payload, room=str(receiver_id))
@@ -4406,7 +4462,7 @@ def send_voice_message():
             'receiver_id': receiver_id,
             'message': '[Voice Message]',
             'message_type': 'voice',
-            'timestamp': now_ph().isoformat(),
+            'timestamp': naive_utc_iso_z(),
         }
         try:
             socketio.emit('new_direct_message', payload, room=str(receiver_id))
@@ -5377,7 +5433,8 @@ def assign_role(user_id):
 
     data = request.get_json(silent=True) or {}
     role = data.get('role')
-    if not role or role not in ['admin', 'loan_officer', 'loan_staff', 'ci_staff']:
+    # Restrict assignment from Manage Users to LPS and CI/BI only.
+    if not role or role not in MANAGE_USERS_ASSIGNABLE_ROLES:
         return jsonify({'success': False, 'error': 'Invalid role'}), 400
 
     conn = get_db()

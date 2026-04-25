@@ -35,7 +35,7 @@
                 <div class="message-sender">{{ msg.sender_name }}</div>
                 {% endif %}
                 <div class="message-text">{{ msg.message }}</div>
-                <div class="message-time" data-time="{{ msg.sent_at }}">{{ msg.sent_at|fmt_datetime('%H:%M') }}</div>
+                <div class="message-time" data-time="{{ msg.sent_at }}">{% if msg.sent_at %}{{ msg.sent_at|activity_log_ts('%H:%M') }}{% endif %}</div>
             </div>
         </div>
         {% endfor %}

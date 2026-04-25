@@ -22,6 +22,9 @@
             <i class="bi bi-bell" aria-hidden="true"></i>
             <span class="badge bg-danger" id="notif-count-topbar" style="position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; {% if not unread_count or unread_count == 0 %}display:none;{% endif %}">{{ unread_count if unread_count else '' }}</span>
         </a>
+        <button type="button" class="btn btn-outline-secondary" onclick="location.reload()" title="Refresh dashboard" aria-label="Refresh dashboard">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+        </button>
         <div class="user-menu-container">
             <button class="btn btn-outline-secondary user-menu-btn" type="button" aria-label="Account and logout menu">
                 <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
@@ -104,9 +107,6 @@
                         </button>
                     </div>
                 </div>
-                <button type="button" class="btn btn-outline-primary btn-sm rounded-pill" id="ciVoicePending" title="Speak to search this table (mic)" aria-label="Voice search pending interviews">
-                    <i class="bi bi-mic-fill" aria-hidden="true"></i>
-                </button>
                 <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'equalto', 'assigned_to_ci')|list|length }} Pending</span>
             </div>
         </div>
@@ -161,9 +161,6 @@
                         </button>
                     </div>
                 </div>
-                <button type="button" class="btn btn-outline-primary btn-sm rounded-pill" id="ciVoiceCompleted" title="Speak to search this table (mic)" aria-label="Voice search completed interviews">
-                    <i class="bi bi-mic-fill" aria-hidden="true"></i>
-                </button>
                 <span class="badge bg-success" id="completedCount">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }} Completed</span>
             </div>
         </div>
@@ -201,31 +198,7 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='ci-voice.js') }}"></script>
 <script>
-function ciVoiceDashboardSearch(tableType) {
-    if (!window.__ciVoiceSupported) {
-        alert('Voice search needs a recent browser (Chrome, Edge, or Safari) over HTTPS, with the microphone allowed.');
-        return;
-    }
-    var id = tableType === 'pending' ? 'searchInputPending' : 'searchInputCompleted';
-    window.ciVoiceToInput(id, function () {
-        searchApplications(tableType);
-        toggleClearButton(tableType);
-    });
-}
-document.addEventListener('DOMContentLoaded', function () {
-    var a = document.getElementById('ciVoicePending');
-    var b = document.getElementById('ciVoiceCompleted');
-    if (!window.__ciVoiceSupported) {
-        if (a) { a.disabled = true; a.title = 'Voice not supported in this browser'; a.classList.add('opacity-50'); }
-        if (b) { b.disabled = true; b.title = 'Voice not supported in this browser'; b.classList.add('opacity-50'); }
-    } else {
-        if (a) a.addEventListener('click', function () { ciVoiceDashboardSearch('pending'); });
-        if (b) b.addEventListener('click', function () { ciVoiceDashboardSearch('completed'); });
-    }
-});
-
 // Search applications (trim; empty = show all)
 function searchApplications(tableType) {
     const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Completed'}`);
@@ -279,6 +252,31 @@ function clearSearch(tableType) {
 
 <!-- Real-time Dashboard Updates -->
 <script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
+<script>
+(function () {
+    var main = document.getElementById('main-content');
+    if (!main || !('ontouchstart' in window)) return;
+    var startY = 0, armed = false, pullOk = false;
+    var THRESH = 100;
+    main.addEventListener('touchstart', function (e) {
+        startY = e.touches[0].clientY;
+        armed = main.scrollTop <= 2;
+        pullOk = false;
+    }, { passive: true });
+    main.addEventListener('touchmove', function (e) {
+        if (!armed || main.scrollTop > 2) return;
+        var dy = e.touches[0].clientY - startY;
+        if (dy > THRESH) pullOk = true;
+    }, { passive: true });
+    main.addEventListener('touchend', function () {
+        if (armed && pullOk && main.scrollTop <= 2) {
+            location.reload();
+        }
+        pullOk = false;
+        armed = false;
+    });
+})();
+</script>
 
 <style>
 /* Search Box Styles */

@@ -510,11 +510,30 @@ td.excel-cell--range.excel-cell--handle {
         page-break-after: auto;
     }
 
-    /* HIDE all column and row headers */
-    .excel-col-header,
-    .excel-row-header,
-    .excel-corner,
-    thead {
+    /* HIDE column/row letters & numbers (scoped so other page tables keep their thead) */
+    .excel-container .excel-col-header,
+    .excel-container .excel-row-header,
+    .excel-container .excel-corner,
+    .excel-container .excel-table thead,
+    .excel-container-view .excel-col-header,
+    .excel-container-view .excel-row-header,
+    .excel-container-view .excel-corner,
+    .excel-container-view thead,
+    .excel-table-view thead {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+        font-size: 0 !important;
+        line-height: 0 !important;
+    }
+
+    .excel-container tbody th.excel-row-header,
+    .excel-table-view tbody th.excel-row-header {
         display: none !important;
     }
 

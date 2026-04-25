@@ -156,11 +156,7 @@
                                         </td>
                                         <td>
                                             {% if log.created_at %}
-                                                {% if log.created_at.__class__.__name__ == 'datetime' %}
-                                                    {{ log.created_at.strftime('%b %d, %Y %I:%M %p') }}
-                                                {% else %}
-                                                    {{ log.created_at }}
-                                                {% endif %}
+                                                {{ log.created_at|activity_log_ts }}
                                             {% else %}
                                                 -
                                             {% endif %}

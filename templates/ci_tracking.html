@@ -122,49 +122,119 @@
 .popup-content p { margin:5px 0; font-size:13px; }
 </style>
 
+{% if not google_maps_api_key %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endif %}
 
 <script>
+const USE_GOOGLE = {{ (google_maps_api_key|default('', true)|length > 0)|tojson }};
+
 let map;
 let markers = {};
+let gmap;
+let gmarkers = {};
+let gInfoWin;
+
 const staffData = {
     {% for staff in ci_staff %}
-    {{ staff.id }}: { name:'{{ staff.name }}', lat:{{ staff.latitude or 'null' }}, lng:{{ staff.longitude or 'null' }}, cases:{{ staff.active_cases }}, activity:'{{ staff.activity or "Active" }}', trackedAt:'{{ staff.tracked_at|fmt_datetime("%m-%d %H:%M") if staff.tracked_at else "" }}' },
+    {{ staff.id }}: { name:'{{ staff.name|e }}', lat:{{ staff.latitude or 'null' }}, lng:{{ staff.longitude or 'null' }}, cases:{{ staff.active_cases }}, activity:'{{ (staff.activity or "Active")|e }}', trackedAt:'{{ staff.tracked_at|fmt_datetime("%m-%d %H:%M") if staff.tracked_at else "" }}' },
     {% endfor %}
 };
-
-function initMap() {
-    map = L.map('trackingMap').setView([9.3667, 122.8000], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap contributors', maxZoom:19 }).addTo(map);
-    Object.entries(staffData).forEach(([id, s]) => { if (s.lat && s.lng) addOrUpdateMarker(parseInt(id), s.lat, s.lng, s.name, s.cases, s.activity, s.trackedAt, false); });
-}
 
 function makeIcon(updated) {
     return L.divIcon({ className:'custom-marker'+(updated?' marker-updated':''), html:'<div class="marker-pin"><i class="bi bi-person-fill"></i></div>', iconSize:[30,42], iconAnchor:[15,42], popupAnchor:[0,-42] });
 }
 
-function buildPopup(name, cases, activity, time, lat, lng) {
+function buildPopupHtml(name, cases, activity, time, lat, lng) {
     return '<div class="popup-content"><h6><i class="bi bi-person-circle"></i> '+name+'</h6><p><i class="bi bi-briefcase"></i> <strong>'+cases+'</strong> active cases</p><p><i class="bi bi-activity"></i> '+activity+'</p><p><i class="bi bi-clock"></i> Last updated: '+time+'</p><p><i class="bi bi-geo-alt"></i> '+parseFloat(lat).toFixed(6)+', '+parseFloat(lng).toFixed(6)+'</p></div>';
 }
 
 function addOrUpdateMarker(id, lat, lng, name, cases, activity, time, animate) {
-    const popup = buildPopup(name, cases, activity, time, lat, lng);
-    if (markers[id]) {
-        markers[id].marker.setLatLng([lat, lng]);
-        markers[id].marker.setPopupContent(popup);
-        if (animate) { markers[id].marker.setIcon(makeIcon(true)); setTimeout(() => { if(markers[id]) markers[id].marker.setIcon(makeIcon(false)); }, 900); }
-        markers[id].lat = lat; markers[id].lng = lng;
+    const html = buildPopupHtml(name, cases, activity, time, lat, lng);
+    if (USE_GOOGLE) {
+        if (gmarkers[id]) {
+            gmarkers[id].setPosition({ lat, lng });
+        } else {
+            const m = new google.maps.Marker({ position: { lat, lng }, map: gmap, title: name });
+            m.addListener('click', function () {
+                const s = staffData[id];
+                if (!s || !gmap) return;
+                gInfoWin.setContent(buildPopupHtml(s.name, s.cases, s.activity, s.trackedAt || '', s.lat, s.lng));
+                gInfoWin.open({ map: gmap, anchor: m });
+            });
+            gmarkers[id] = m;
+        }
     } else {
-        const m = L.marker([lat, lng], { icon: makeIcon(false) }).addTo(map);
-        m.bindPopup(popup);
-        markers[id] = { marker: m, lat, lng, name };
+        if (markers[id]) {
+            markers[id].marker.setLatLng([lat, lng]);
+            markers[id].marker.setPopupContent(html);
+            if (animate) { markers[id].marker.setIcon(makeIcon(true)); setTimeout(function () { if (markers[id]) markers[id].marker.setIcon(makeIcon(false)); }, 900); }
+            markers[id].lat = lat; markers[id].lng = lng;
+        } else {
+            const m = L.marker([lat, lng], { icon: makeIcon(false) }).addTo(map);
+            m.bindPopup(html);
+            markers[id] = { marker: m, lat, lng, name: name };
+        }
     }
 }
 
 function focusOnStaff(id) {
-    if (markers[id]) { map.flyTo([markers[id].lat, markers[id].lng], 16, { duration:1.2 }); markers[id].marker.openPopup(); }
+    if (USE_GOOGLE) {
+        if (gmarkers[id] && gmap) {
+            gmap.panTo(gmarkers[id].getPosition());
+            gmap.setZoom(16);
+            const s = staffData[id];
+            if (s && s.lat && s.lng) {
+                gInfoWin.setContent(buildPopupHtml(s.name, s.cases, s.activity, s.trackedAt, s.lat, s.lng));
+                gInfoWin.open({ map: gmap, anchor: gmarkers[id] });
+            }
+        }
+    } else if (markers[id]) {
+        map.flyTo([markers[id].lat, markers[id].lng], 16, { duration:1.2 });
+        markers[id].marker.openPopup();
+    }
 }
+
+function initLeafletMap() {
+    map = L.map('trackingMap').setView([9.3667, 122.8000], 13);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '© Esri, Maxar, Earthstar Geographics',
+    }).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd', maxZoom: 20, opacity: 0.85,
+    }).addTo(map);
+    Object.entries(staffData).forEach(function (entry) {
+        var sid = entry[0], s = entry[1];
+        if (s.lat && s.lng) addOrUpdateMarker(parseInt(sid, 10), s.lat, s.lng, s.name, s.cases, s.activity, s.trackedAt, false);
+    });
+    var bounds = [];
+    Object.keys(markers).forEach(function (mid) {
+        if (markers[mid] && markers[mid].lat) bounds.push([markers[mid].lat, markers[mid].lng]);
+    });
+    if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+    else if (bounds.length === 1) map.setView(bounds[0], 15);
+}
+
+window.initGTrackingMap = function () {
+    gmap = new google.maps.Map(document.getElementById('trackingMap'), {
+        center: { lat: 9.3667, lng: 122.8 },
+        zoom: 13,
+        mapTypeId: 'hybrid',
+    });
+    gInfoWin = new google.maps.InfoWindow();
+    gmarkers = {};
+    Object.entries(staffData).forEach(function (entry) {
+        var sid = entry[0], s = entry[1];
+        if (s.lat && s.lng) addOrUpdateMarker(parseInt(sid, 10), s.lat, s.lng, s.name, s.cases, s.activity, s.trackedAt, false);
+    });
+    var b = new google.maps.LatLngBounds();
+    Object.keys(gmarkers).forEach(function (mid) {
+        b.extend(gmarkers[mid].getPosition());
+    });
+    if (!b.isEmpty()) gmap.fitBounds(b);
+};
 
 function addLogEntry(name, time) {
     const log = document.getElementById('updateLog');
@@ -206,9 +276,14 @@ trackSocket.on('ci_location_update', function(data) {
     if (item) { item.style.background='#ecfdf5'; setTimeout(()=>{ item.style.background=''; }, 1500); }
 
     addLogEntry(name, time);
-    if (staffData[id]) { staffData[id].lat=lat; staffData[id].lng=lng; staffData[id].activity=activity; }
+    if (staffData[id]) { staffData[id].lat=lat; staffData[id].lng=lng; staffData[id].activity=activity; staffData[id].trackedAt=time; }
 });
 
-window.onload = initMap;
+if (!USE_GOOGLE) {
+    document.addEventListener('DOMContentLoaded', initLeafletMap);
+}
 </script>
+{% if google_maps_api_key %}
+<script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|e }}&callback=initGTrackingMap"></script>
+{% endif %}
 {% endblock %}
