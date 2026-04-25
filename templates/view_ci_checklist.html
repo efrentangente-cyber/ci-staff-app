@@ -2,6 +2,15 @@
 {% block title %}CI Checklist - {{ application.member_name }}{% endblock %}
 
 {% block content %}
+{% macro _ckm(cd, k) -%}{% if cd and cd is mapping and cd.get(k) %}X{% endif %}{%- endmacro %}
+{% macro _cr3(cd, label, pfx) -%}
+                <tr>
+                    <td>{{ label }}</td>
+                    <td class="text-center">{{ _ckm(cd, pfx ~ '_updated') }}</td>
+                    <td class="text-center">{{ _ckm(cd, pfx ~ '_delayed') }}</td>
+                    <td>{{ (cd or {}).get(pfx ~ '_remarks', '') }}</td>
+                </tr>
+{%- endmacro %}
 {% macro formal_page_signoff(ci_signature_url=none) -%}
   {% set _cd = (checklist_data if (checklist_data is defined and checklist_data) else None) or {} %}
   {% if _cd is not mapping %}{% set _cd = {} %}{% endif %}
@@ -32,9 +41,246 @@
   </div>
 </div>
 {%- endmacro %}
+{% macro signoff_deir() -%}
+  {% set _cd = (checklist_data if (checklist_data is defined and checklist_data) else None) or {} %}
+  {% if _cd is not mapping %}{% set _cd = {} %}{% endif %}
+  {% set _prep0 = (application.ci_staff_name or _cd.get('prepared_by', '') or '')|trim %}
+  {% set _noted0 = (_cd.get('comp_noted_by', '') or '')|trim %}
+  {% set _prep = _prep0|upper if _prep0 else '______________________________' %}
+  {% set _noted = _noted0|upper if _noted0 else '______________________________' %}
+<div class="deir-2col-signoff" aria-label="DEIR sign-off">
+  <div class="deir-2col-signoff__col">
+    <p class="deir-2col-signoff__label">Prepared by:</p>
+    <p class="deir-2col-signoff__name">{{ _prep }}</p>
+    <p class="deir-2col-signoff__title">CIBI / LPS / FLMS</p>
+  </div>
+  <div class="deir-2col-signoff__col deir-2col-signoff__col--right">
+    <p class="deir-2col-signoff__label">Noted by:</p>
+    <p class="deir-2col-signoff__name">{{ _noted }}</p>
+    <p class="deir-2col-signoff__title">Credit Officer</p>
+  </div>
+</div>
+<p class="deir-footnote-ref">BOD Res. No. 183, s. 2022 (March 21, 2022)</p>
+{%- endmacro %}
+{% macro signoff_credit_investigation_3col() -%}
+  {% set _cd = (checklist_data if (checklist_data is defined and checklist_data) else None) or {} %}
+  {% if _cd is not mapping %}{% set _cd = {} %}{% endif %}
+  {% set _p = (_cd.get('prepared_by', '') or application.ci_staff_name or '')|trim %}
+  {% set _r = (_cd.get('reviewed_by', '') or '')|trim %}
+  {% set _p2 = _p|upper if _p else '______________________________' %}
+  {% set _r2 = _r|upper if _r else '______________________________' %}
+  {% set _n2 = '______________________________' %}
+<div class="formal-3col-signoff" aria-label="Credit checking sign-off">
+  <div class="formal-3col-signoff__row">
+    <div class="formal-3col-signoff__col">
+      <p class="formal-3col-signoff__label">Prepared by:</p>
+      <div class="formal-3col-signoff__line" aria-hidden="true"></div>
+      <p class="formal-3col-signoff__name">{{ _p2 }}</p>
+      <p class="formal-3col-signoff__title">Credit Investigator</p>
+    </div>
+    <div class="formal-3col-signoff__col">
+      <p class="formal-3col-signoff__label">Reviewed by:</p>
+      <div class="formal-3col-signoff__line" aria-hidden="true"></div>
+      <p class="formal-3col-signoff__name">{{ _r2 }}</p>
+      <p class="formal-3col-signoff__title">Head, Credit Investigator</p>
+    </div>
+    <div class="formal-3col-signoff__col">
+      <p class="formal-3col-signoff__label">Noted by:</p>
+      <div class="formal-3col-signoff__line" aria-hidden="true"></div>
+      <p class="formal-3col-signoff__name formal-3col-signoff__name--muted">{{ _n2 }}</p>
+      <p class="formal-3col-signoff__title">Credit Officer</p>
+    </div>
+  </div>
+  <p class="credit-check-confidential-foot">*This document is <strong>CONFIDENTIAL</strong>. The information contained herein has been obtained with the express permission of the applicant for the exclusive use of DCCCO Multipurpose Cooperative (DCCCO) officers/staff as basis for credit decision.</p>
+</div>
+{%- endmacro %}
+{% macro signoff_cas_2col() -%}
+  {% set _cd = (checklist_data if (checklist_data is defined and checklist_data) else None) or {} %}
+  {% if _cd is not mapping %}{% set _cd = {} %}{% endif %}
+  {% set _p0 = (_cd.get('assess_prepared_by', '') or application.ci_staff_name or _cd.get('prepared_by', '') or '')|trim %}
+  {% set _r0 = (_cd.get('assess_reviewed_by', '') or _cd.get('reviewed_by', '') or '')|trim %}
+  {% set _p = _p0|upper if _p0 else '______________________________' %}
+  {% set _r = _r0|upper if _r0 else '______________________________' %}
+<div class="cas-2col-signoff" aria-label="Credit assessment sign-off">
+  <div class="cas-2col-signoff__col">
+    <p class="cas-2col-signoff__label">Prepared</p>
+    <div class="cas-2col-signoff__line" aria-hidden="true"></div>
+    <p class="cas-2col-signoff__name">{{ _p }}</p>
+    <p class="cas-2col-signoff__title">CIBI / FLMS</p>
+  </div>
+  <div class="cas-2col-signoff__col cas-2col-signoff__col--right">
+    <p class="cas-2col-signoff__label">Reviewed</p>
+    <div class="cas-2col-signoff__line" aria-hidden="true"></div>
+    <p class="cas-2col-signoff__name">{{ _r }}</p>
+    <p class="cas-2col-signoff__title">Head, CIBI</p>
+  </div>
+</div>
+<p class="cas-page-hint">page 1 of 2</p>
+{%- endmacro %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
 
 <style>
+.print-dccco-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: 9pt;
+  color: #000;
+  margin-bottom: 0.35rem;
+}
+.print-dccco-title {
+  text-align: center;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12pt;
+  margin: 0.25rem 0 0.75rem 0;
+  letter-spacing: 0.02em;
+}
+.print-section-dccco {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 9.5pt;
+  margin: 0.9rem 0 0.35rem 0;
+  padding: 2px 4px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+}
+.print-page--photos .card-header {
+  padding: 0.35rem 0.5rem !important;
+  font-size: 10pt;
+}
+.print-photo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 6px 10px;
+  flex: 1;
+  min-height: 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  align-content: start;
+}
+.print-photo-grid__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  border: 1px solid #000;
+  padding: 4px;
+  box-sizing: border-box;
+}
+.print-photo-grid__cell img {
+  max-width: 100%;
+  max-height: 46vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.print-page--photos .card-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+/* DEIR / 3-col / CAS sign-offs (print-form style) */
+.deir-2col-signoff {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  padding-top: 0.5rem;
+  border-top: 1.5pt solid #000;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.deir-2col-signoff__col { flex: 1; min-width: 0; }
+.deir-2col-signoff__col--right { text-align: right; }
+.deir-2col-signoff__label, .deir-2col-signoff__title { font-size: 9.5pt; margin: 0; }
+.deir-2col-signoff__name {
+  font-size: 11pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin: 0.2rem 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.deir-footnote-ref { font-size: 8.5pt; margin: 0.5rem 0 0 0; }
+.formal-3col-signoff { margin-top: 1.25rem; break-inside: avoid; }
+.formal-3col-signoff__row { display: flex; gap: 0.5rem; justify-content: space-between; align-items: flex-end; }
+.formal-3col-signoff__col { flex: 1; min-width: 0; text-align: center; }
+.formal-3col-signoff__label { text-align: left; font-size: 9.5pt; margin: 0; }
+.formal-3col-signoff__line {
+  min-height: 1.1rem;
+  border-bottom: 1px solid #000;
+  margin: 0.2rem 0 0.35rem 0;
+}
+.formal-3col-signoff__name { font-size: 9.5pt; font-weight: 700; text-transform: uppercase; margin: 0; }
+.formal-3col-signoff__name--muted { font-weight: 400; color: #000; }
+.formal-3col-signoff__title { font-size: 8.5pt; margin: 0.15rem 0 0 0; font-weight: 600; }
+.credit-check-confidential-foot {
+  font-size: 7.5pt;
+  font-style: italic;
+  text-align: center;
+  margin: 0.75rem 0 0 0;
+  line-height: 1.25;
+}
+.cas-2col-signoff {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  padding-top: 0.5rem;
+  border-top: 1.5pt solid #000;
+  break-inside: avoid;
+}
+.cas-2col-signoff__col { flex: 1; }
+.cas-2col-signoff__col--right { text-align: right; }
+.cas-2col-signoff__label { font-size: 9.5pt; margin: 0; }
+.cas-2col-signoff__line { min-height: 2.5rem; border-bottom: 1pt solid #000; margin: 0.2rem 0; }
+.cas-2col-signoff__name { font-size: 10.5pt; font-weight: 700; text-transform: uppercase; margin: 0; }
+.cas-2col-signoff__title { font-size: 9pt; margin: 0.2rem 0 0 0; }
+.cas-page-hint { text-align: right; font-size: 8.5pt; margin: 0.5rem 0 0 0; }
+.dccco-remarks-lines {
+  min-height: 7.5rem;
+  border: 1px solid #000;
+  padding: 0.2rem 0.35rem;
+  margin-top: 0.35rem;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 1.35rem,
+    #000 1.35rem,
+    #000 1.36rem
+  );
+}
+.reco-mcc-bar, .reco-bod-bar {
+  background: #c8c8c8 !important;
+  text-align: center;
+  font-weight: 700;
+  font-size: 9.5pt;
+  color: #000 !important;
+}
+.bod-sig-stack .bod-sig-line {
+  min-height: 1.1rem;
+  border-bottom: 1px solid #000;
+  margin: 0.2rem 0;
+}
+.bod-sig-stack { min-height: 8.2rem; }
+.recommend-action-row { vertical-align: top; }
+.recommend-action-acts { font-size: 8.5pt; white-space: nowrap; }
+.recommend-remark-line {
+  min-height: 1.2rem;
+  border-bottom: 1px solid #000;
+  margin-top: 0.2rem;
+  font-size: 9pt;
+}
+.reco-page2-hint { text-align: right; font-size: 8.5pt; margin-top: 0.5rem; }
+.reco-legend { font-size: 8.5pt; margin-top: 0.5rem; }
 .print-page {
     page-break-after: always;
     page-break-inside: auto;
@@ -175,6 +421,7 @@
         -webkit-filter: grayscale(100%) contrast(1.05);
     }
     .no-print { display: none !important; }
+    .print-page--photos { page-break-inside: avoid !important; }
     .print-page {
         page-break-after: always;
         page-break-inside: auto !important;
@@ -183,6 +430,35 @@
         box-shadow: none !important;
         background: #fff !important;
         color: #000 !important;
+    }
+    .print-page--photos, .deir-2col-signoff, .formal-3col-signoff, .cas-2col-signoff, .formal-page-signoff {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    /* Cash flow: dedicated single sheet, keep block together (data / script unchanged). */
+    .card.print-page.print-cashflow-block {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        display: flex;
+        flex-direction: column;
+    }
+    .card.print-page.print-cashflow-block .card-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    .print-cashflow-excel-tile {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    .card.print-page.print-cashflow-block .formal-page-signoff {
+        flex-shrink: 0;
+    }
+    .print-photo-grid, .print-photo-grid__cell { break-inside: avoid !important; page-break-inside: avoid !important; }
+    .reco-mcc-bar, .reco-bod-bar {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
     .print-page:last-of-type { page-break-after: auto; }
     .print-page .card {
@@ -242,7 +518,7 @@
         <h2><i class="bi bi-clipboard-check"></i> CI Assessment Checklist - {{ application.member_name }}</h2>
         <div class="d-flex gap-2">
             <button onclick="window.print()" class="btn btn-primary btn-lg">
-                <i class="bi bi-printer"></i> Print All 6 Pages
+                <i class="bi bi-printer"></i> Print checklist
             </button>
             <button type="button" class="btn btn-secondary" onclick="history.back()">
                 <i class="bi bi-arrow-left"></i> Back
@@ -250,131 +526,136 @@
         </div>
     </div>
 
-    {% if not checklist_data and not lps_photos and not ci_photos %}
-    <div class="alert alert-warning">
-        <i class="bi bi-exclamation-triangle"></i> <strong>No CI Checklist Data Available</strong>
-        <p class="mb-0">The CI staff has not yet uploaded photos or completed the checklist for this application.</p>
+    {% if (not checklist_data) and (not lps_photos) and (not ci_photos) %}
+    <div class="alert alert-warning no-print">
+        <i class="bi bi-exclamation-triangle"></i> <strong>No CI checklist or photos yet</strong>
+        <p class="mb-0">LPS/CI/BI have not attached anything. You can still print the forms below—use the <strong>Recommendation / Action</strong> page for management/board signatures when ready.</p>
     </div>
-    {% else %}
+    {% endif %}
 
-    <!-- PAGE 0: APPLICATION REFERENCE PHOTOS (from LPS) -->
+    <!-- PAGE 0: APPLICATION REFERENCE PHOTOS (from LPS) — 4 per page, 2×2 -->
     {% if lps_photos %}
-    <div class="card print-page">
+    {% for photo_batch in lps_photos|batch(4) %}
+    <div class="card print-page print-page--photos">
         <div class="card-header bg-info text-white text-center">
             <h4>APPLICATION REFERENCE PHOTOS</h4>
-            <small>Loan application form submitted by LPS</small>
+            <small>Page {{ loop.index }} of {{ ((lps_photos|length) + 3) // 4 }} — from LPS</small>
         </div>
         <div class="card-body">
-            <div class="row g-3">
-                {% for photo in lps_photos %}
-                <div class="col-md-6 text-center">
-                    {% if photo.is_image %}
-                        <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank">
+            <div class="print-photo-grid" role="list">
+                {% for i in range(4) %}
+                {% set photo = photo_batch[i] if i < (photo_batch|length) else none %}
+                <div class="print-photo-grid__cell" role="listitem">
+                    {% if photo and photo.is_image %}
+                        <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
                             <img src="{{ url_for('serve_upload', filename=photo.filename) }}"
-                                 alt="{{ photo.file_name }}"
-                                 style="max-width: 100%; max-height: 520px; border: 1px solid #d0d7de; border-radius: 6px; box-shadow: 0 2px 6px rgba(15,23,42,0.08);">
+                                 alt="{{ photo.file_name }}">
                         </a>
-                        <div class="text-muted small mt-2">{{ photo.file_name }}</div>
-                    {% else %}
-                        <a class="btn btn-outline-primary" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank">
+                        <div class="text-muted small mt-1" style="font-size:7.5pt;">{{ photo.file_name }}</div>
+                    {% elif photo %}
+                        <a class="small" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
                             <i class="bi bi-file-earmark"></i> {{ photo.file_name }}
                         </a>
                     {% endif %}
                 </div>
                 {% endfor %}
             </div>
-            {{ formal_page_signoff() }}
         </div>
     </div>
+    {% endfor %}
     {% endif %}
 
     {% if ci_photos %}
-    <div class="card print-page">
+    {% for photo_batch in ci_photos|batch(4) %}
+    <div class="card print-page print-page--photos">
         <div class="card-header bg-secondary text-white text-center">
             <h4>CI/BI FIELD PHOTOS</h4>
-            <small>Uploaded by the CI/BI during checklist processing</small>
+            <small>Page {{ loop.index }} of {{ ((ci_photos|length) + 3) // 4 }} — CI/BI</small>
         </div>
         <div class="card-body">
-            <div class="row g-3">
-                {% for photo in ci_photos %}
-                <div class="col-md-6 text-center">
-                    {% if photo.is_image %}
-                        <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank">
+            <div class="print-photo-grid" role="list">
+                {% for i in range(4) %}
+                {% set photo = photo_batch[i] if i < (photo_batch|length) else none %}
+                <div class="print-photo-grid__cell" role="listitem">
+                    {% if photo and photo.is_image %}
+                        <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
                             <img src="{{ url_for('serve_upload', filename=photo.filename) }}"
-                                 alt="{{ photo.file_name }}"
-                                 style="max-width: 100%; max-height: 520px; border: 1px solid #d0d7de; border-radius: 6px;">
+                                 alt="{{ photo.file_name }}">
                         </a>
-                        <div class="text-muted small mt-2">{{ photo.file_name }}</div>
-                    {% else %}
-                        <a class="btn btn-outline-primary" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank">
+                        <div class="text-muted small mt-1" style="font-size:7.5pt;">{{ photo.file_name }}</div>
+                    {% elif photo %}
+                        <a class="small" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
                             <i class="bi bi-file-earmark"></i> {{ photo.file_name }}
                         </a>
                     {% endif %}
                 </div>
                 {% endfor %}
             </div>
-            {{ formal_page_signoff() }}
         </div>
     </div>
+    {% endfor %}
     {% endif %}
 
-    {% if not checklist_data %}
+    {% if (not checklist_data) and (lps_photos or ci_photos) %}
     <div class="alert alert-info no-print">
         <i class="bi bi-info-circle"></i>
-        The CI/BI attached reference photos but did not fill the full checklist form. Only the photos and signature page will print.
+        CI/BI attached photos but the full checklist JSON is empty. All printable sections still appear below (blank where not filled), including the <strong>Recommendation / Action</strong> page for loan/credit use.
     </div>
     {% endif %}
 
-    <!-- PAGE 1: PERSONAL DATA -->
+    <!-- PAGE 1: PERSONAL DATA (DCCCO Form 086) -->
     <div class="card print-page">
         <div class="card-header bg-primary text-white text-center">
-            <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
-            <small>PERSONAL DATA</small>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0;">DCCCO MULTIPURPOSE COOPERATIVE</h4>
         </div>
-        <div class="card-body">
-            <div class="section-header">APPLICANT & SPOUSE INFORMATION</div>
-            <table class="view-table">
+        <div class="card-body" style="padding-top:0.5rem;">
+            <div class="print-dccco-meta" style="margin-top:0.25rem;">
+                <span>DCCCO Form No. 086</span>
+                <span>Revised October 2021</span>
+            </div>
+            <p class="print-section-dccco">PERSONAL DATA</p>
+            <table class="view-table" style="margin-top:0;">
                 <tr>
-                    <th width="25%">Field</th>
-                    <th width="37.5%">APPLICANT</th>
-                    <th width="37.5%">SPOUSE</th>
+                    <th width="16%"></th>
+                    <th width="42%">APPLICANT</th>
+                    <th width="42%">SPOUSE</th>
                 </tr>
                 <tr>
-                    <td><strong>Last Name</strong></td>
-                    <td>{{ checklist_data.get('applicant_last_name', 'N/A') }}</td>
-                    <td>{{ checklist_data.get('spouse_last_name', 'N/A') }}</td>
+                    <td>Last Name:</td>
+                    <td>{{ checklist_data.get('applicant_last_name', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_last_name', '') or '—' }}</td>
                 </tr>
                 <tr>
-                    <td><strong>First Name</strong></td>
-                    <td>{{ checklist_data.get('applicant_first_name', 'N/A') }}</td>
-                    <td>{{ checklist_data.get('spouse_first_name', 'N/A') }}</td>
+                    <td>First Name:</td>
+                    <td>{{ checklist_data.get('applicant_first_name', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_first_name', '') or '—' }}</td>
                 </tr>
                 <tr>
-                    <td><strong>Middle Name</strong></td>
-                    <td>{{ checklist_data.get('applicant_middle_name', 'N/A') }}</td>
-                    <td>{{ checklist_data.get('spouse_middle_name', 'N/A') }}</td>
+                    <td>Middle Name:</td>
+                    <td>{{ checklist_data.get('applicant_middle_name', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_middle_name', '') or '—' }}</td>
                 </tr>
                 <tr>
-                    <td><strong>Birthday</strong></td>
-                    <td>{{ checklist_data.get('applicant_birthday', 'N/A') }}</td>
-                    <td>{{ checklist_data.get('spouse_birthday', 'N/A') }}</td>
+                    <td>Birthday:</td>
+                    <td>{{ checklist_data.get('applicant_birthday', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_birthday', '') or '—' }}</td>
                 </tr>
                 <tr>
-                    <td><strong>Age</strong></td>
-                    <td>{{ checklist_data.get('applicant_age', 'N/A') }}</td>
-                    <td>{{ checklist_data.get('spouse_age', 'N/A') }}</td>
+                    <td>Age:</td>
+                    <td>{{ checklist_data.get('applicant_age', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_age', '') or '—' }}</td>
                 </tr>
             </table>
 
-            <div class="section-header">FAMILY BACKGROUND</div>
-            <table class="view-table">
+            <p class="print-section-dccco">FAMILY BACKGROUND</p>
+            <table class="view-table" style="margin-top:0;">
                 <tr>
-                    <th>NAME OF PARENTS AND CHILDREN</th>
-                    <th width="80px">AGE</th>
-                    <th width="150px">RELATIONSHIP</th>
-                    <th width="150px">MEMBER STATUS</th>
+                    <th>NAME OF PARENTS and CHILDREN</th>
+                    <th width="70px">AGE</th>
+                    <th width="120px">RELATIONSHIP</th>
+                    <th width="130px">MEMBER/NON-Member</th>
                 </tr>
-                {% for i in range(1, 5) %}
+                {% for i in range(1, 6) %}
                 <tr>
                     <td>{{ checklist_data.get('family_' ~ i ~ '_name', '') }}</td>
                     <td>{{ checklist_data.get('family_' ~ i ~ '_age', '') }}</td>
@@ -384,70 +665,114 @@
                 {% endfor %}
             </table>
 
-            <div class="section-header">RESIDENCE CHECKING</div>
-            <table class="view-table">
+            <p class="print-section-dccco">RESIDENCE CHECKING</p>
+            <table class="view-table" style="margin-top:0;">
+                <tr><td colspan="4"><strong>Present Address</strong> — <em>House No.</em> <strong>{{ checklist_data.get('house_no', '') or '—' }}</strong> &nbsp; <em>Street</em> <strong>{{ checklist_data.get('street', '') or '—' }}</strong> &nbsp; <em>Barangay</em> <strong>{{ checklist_data.get('barangay', '') or '—' }}</strong></td></tr>
+                <tr><td colspan="4"><em>City/Municipality</em> <strong>{{ checklist_data.get('city', '') or '—' }}</strong> &nbsp; <em>Province</em> <strong>{{ checklist_data.get('province', '') or '—' }}</strong></td></tr>
+                <tr><td colspan="4"><strong>Permanent Address</strong> (same as saved record) — <em>House No.</em> <strong>{{ checklist_data.get('house_no', '') or '—' }}</strong> &nbsp; <em>Street</em> <strong>{{ checklist_data.get('street', '') or '—' }}</strong> &nbsp; <em>Barangay</em> <strong>{{ checklist_data.get('barangay', '') or '—' }}</strong></td></tr>
+                <tr><td colspan="4"><em>City/Municipality</em> <strong>{{ checklist_data.get('city', '') or '—' }}</strong> &nbsp; <em>Province</em> <strong>{{ checklist_data.get('province', '') or '—' }}</strong></td></tr>
+            </table>
+            <p class="mb-0 small" style="font-size:8.5pt;">Residence Status:
+                <span class="ms-1">{% if checklist_data.get('res_owned') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Owned</span>
+                <span class="ms-1">{% if checklist_data.get('res_rented') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Rented</span>
+                <span class="ms-1">{% if checklist_data.get('res_living_parents') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Living with Parents</span>
+                <span class="ms-1">{% if checklist_data.get('res_mortgaged') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Mortgaged (please specify): {{ checklist_data.get('res_mortgaged_spec', '_________') }}</span>
+                <span class="ms-1">{% if checklist_data.get('res_others') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Others: {{ checklist_data.get('res_others_spec', '_________') }}</span>
+            </p>
+            <p class="mb-0 small" style="font-size:8.5pt;">If owned, Make/Materials:
+                <span class="ms-1">{% if checklist_data.get('house_concrete') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Concrete</span>
+                <span class="ms-1">{% if checklist_data.get('house_semi') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Semi-Concrete</span>
+                <span class="ms-1">{% if checklist_data.get('house_wood') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Wood</span>
+                <span class="ms-1">{% if checklist_data.get('house_shanty') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Shanty</span>
+                <span class="ms-1">{% if checklist_data.get('house_others') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Others: {{ checklist_data.get('house_others_spec', '_________') }}</span>
+            </p>
+            <p class="mb-0 small" style="font-size:8.5pt;">If owned, Type of House: (as recorded)
+                <span class="ms-1">{% if checklist_data.get('house_type_row') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Row House</span>
+                <span class="ms-1">{% if checklist_data.get('house_type_duplex') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Duplex</span>
+                <span class="ms-1">{% if checklist_data.get('house_type_detached') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Single-Detached</span>
+                <span class="ms-1">{% if checklist_data.get('house_type_split') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Split Type</span>
+                <span class="ms-1">{% if checklist_data.get('house_type_2storey') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Two-Storey</span>
+                <span class="ms-1">{% if checklist_data.get('house_type_condo') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Condo</span>
+            </p>
+            <p class="mb-0 small" style="font-size:8.5pt;">Length of stay: Years: {{ checklist_data.get('res_stay_years', '____') }} &nbsp; Months: {{ checklist_data.get('res_stay_months', '____') }}</p>
+            <p class="mb-2 small" style="font-size:8.5pt;">Remarks: <span style="display:inline-block; min-width:80%; border-bottom:1px solid #000;">{{ checklist_data.get('res_remarks', '') }}</span></p>
+
+            <p class="print-section-dccco">COURT AND OTHER GOVERNMENT AGENCY CHECKING (if applicable)</p>
+            <table class="view-table" style="margin-top:0;">
+                <tr><th class="text-center" style="width:8%">YES</th><th class="text-center" style="width:8%">NO</th><th>Description</th></tr>
                 <tr>
-                    <td colspan="2"><strong>Present Address:</strong></td>
+                    <td class="text-center">{% if checklist_data.get('court_1_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('court_1_no') %}X{% endif %}</td>
+                    <td>Has record of complaints regarding money or debt</td>
                 </tr>
                 <tr>
-                    <td width="30%">House No:</td>
-                    <td>{{ checklist_data.get('house_no', 'N/A') }}</td>
+                    <td class="text-center">{% if checklist_data.get('court_2_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('court_2_no') %}X{% endif %}</td>
+                    <td>Has pending case for money judgment or sum of money or replevin, foreclosure, garnishment, insolvency</td>
                 </tr>
                 <tr>
-                    <td>Street:</td>
-                    <td>{{ checklist_data.get('street', 'N/A') }}</td>
-                </tr>
-                <tr>
-                    <td>Barangay:</td>
-                    <td>{{ checklist_data.get('barangay', 'N/A') }}</td>
-                </tr>
-                <tr>
-                    <td>City/Municipality:</td>
-                    <td>{{ checklist_data.get('city', 'N/A') }}</td>
-                </tr>
-                <tr>
-                    <td>Province:</td>
-                    <td>{{ checklist_data.get('province', 'N/A') }}</td>
+                    <td class="text-center">{% if checklist_data.get('court_3_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('court_3_no') %}X{% endif %}</td>
+                    <td>Has criminal record (Police/NBI clearance)</td>
                 </tr>
             </table>
 
-            <p><strong>Residence Status:</strong>
-                {% if checklist_data.get('res_owned') %}✓ Owned {% endif %}
-                {% if checklist_data.get('res_rented') %}✓ Rented {% endif %}
-                {% if checklist_data.get('res_living_parents') %}✓ Living with Parents {% endif %}
-                {% if checklist_data.get('res_mortgaged') %}✓ Mortgaged {% endif %}
-                {% if checklist_data.get('res_others') %}✓ Others {% endif %}
-            </p>
-
-            <p><strong>Type of House:</strong>
-                {% if checklist_data.get('house_concrete') %}✓ Concrete {% endif %}
-                {% if checklist_data.get('house_semi') %}✓ Semi-Concrete {% endif %}
-                {% if checklist_data.get('house_wood') %}✓ Wood {% endif %}
-                {% if checklist_data.get('house_shanty') %}✓ Shanty {% endif %}
-                {% if checklist_data.get('house_others') %}✓ Others {% endif %}
-            </p>
-
-            <div class="section-header">EMPLOYMENT/BUSINESS CHECKING</div>
-            <table class="view-table">
+            <p class="print-section-dccco">EMPLOYMENT/BUSINESS CHECKING</p>
+            <table class="view-table" style="margin-top:0;">
                 <tr>
-                    <th width="25%">Field</th>
-                    <th width="37.5%">APPLICANT</th>
-                    <th width="37.5%">SPOUSE</th>
+                    <th width="20%"></th>
+                    <th width="40%">APPLICANT</th>
+                    <th width="40%">SPOUSE</th>
                 </tr>
                 <tr>
-                    <td><strong>Employer</strong></td>
-                    <td>{{ checklist_data.get('app_employer', 'N/A') }}</td>
-                    <td>{{ checklist_data.get('spouse_employer', 'N/A') }}</td>
+                    <td colspan="3"><strong>Employment Details</strong></td>
                 </tr>
                 <tr>
-                    <td><strong>Office Address</strong></td>
-                    <td>{{ checklist_data.get('app_office', 'N/A') }}</td>
-                    <td>{{ checklist_data.get('spouse_office', 'N/A') }}</td>
+                    <td>Employer:</td>
+                    <td>{{ checklist_data.get('app_employer', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_employer', '') or '—' }}</td>
                 </tr>
                 <tr>
-                    <td><strong>Contact Number</strong></td>
-                    <td>{{ checklist_data.get('app_contact', 'N/A') }}</td>
-                    <td>{{ checklist_data.get('spouse_contact', 'N/A') }}</td>
+                    <td>Office Address:</td>
+                    <td>{{ checklist_data.get('app_office', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_office', '') or '—' }}</td>
+                </tr>
+                <tr>
+                    <td>Date of Organization (employer's business):</td>
+                    <td>{{ checklist_data.get('app_employer_org_date', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_employer_org_date', '') or '—' }}</td>
+                </tr>
+                <tr>
+                    <td>Contact Number of Employer:</td>
+                    <td>{{ checklist_data.get('app_contact', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_contact', '') or '—' }}</td>
+                </tr>
+                <tr>
+                    <td>Position/Title:</td>
+                    <td>{{ checklist_data.get('app_position', '') or '—' }}</td>
+                    <td>{{ checklist_data.get('spouse_position', '') or '—' }}</td>
+                </tr>
+                <tr>
+                    <td>Status of Employment:</td>
+                    <td style="font-size:8.5pt; line-height:1.45;">
+                        {% if checklist_data.get('app_permanent') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Permanent
+                        {% if checklist_data.get('app_casual') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Casual
+                        {% if checklist_data.get('app_contractual') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Contractual
+                        {% if checklist_data.get('app_probationary') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Probationary
+                        {% if checklist_data.get('app_emp_others') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Others: {{ checklist_data.get('app_emp_others_spec', '_____') }}
+                    </td>
+                    <td style="font-size:8.5pt; line-height:1.45;">
+                        {% if checklist_data.get('spouse_permanent') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Permanent
+                        {% if checklist_data.get('spouse_casual') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Casual
+                        {% if checklist_data.get('spouse_contractual') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Contractual
+                        {% if checklist_data.get('spouse_probationary') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Probationary
+                        {% if checklist_data.get('spouse_emp_others') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Others: {{ checklist_data.get('spouse_emp_others_spec', '_____') }}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Length of Service:</td>
+                    <td>Years: {{ checklist_data.get('app_service_years', '') or '____' }} &nbsp; Months: {{ checklist_data.get('app_service_months', '') or '____' }}</td>
+                    <td>Years: {{ checklist_data.get('spouse_service_years', '') or '____' }} &nbsp; Months: {{ checklist_data.get('spouse_service_months', '') or '____' }}</td>
                 </tr>
             </table>
             {{ formal_page_signoff() }}
@@ -457,72 +782,152 @@
     <!-- PAGE 2: CREDIT CHECKING + MEMBERSHIP -->
     <div class="card print-page">
         <div class="card-header bg-primary text-white text-center">
-            <h4>CREDIT CHECKING & MEMBERSHIP STATUS</h4>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0;">DCCCO MULTIPURPOSE COOPERATIVE</h4>
         </div>
-        <div class="card-body">
-            <div class="section-header">BUSINESS INFORMATION</div>
-            <table class="view-table">
+        <div class="card-body" style="padding-top:0.4rem;">
+            {% set cd = checklist_data if (checklist_data is defined and checklist_data) else none %}
+            {% if cd is not mapping %}{% set cd = {} %}{% endif %}
+            <p class="print-section-dccco" style="margin-top:0;">Business information <span class="float-end" style="font-size:8.5pt; font-weight:600;">CONFIDENTIAL</span></p>
+            <table class="view-table" style="margin-top:0;">
                 <tr>
-                    <td width="30%"><strong>Business Name:</strong></td>
-                    <td>{{ checklist_data.get('business_name', 'N/A') }}</td>
+                    <td width="20%"><strong>Business Name:</strong></td>
+                    <td colspan="3">{{ cd.get('business_name', '') or '—' }}</td>
                 </tr>
                 <tr>
                     <td><strong>Address:</strong></td>
-                    <td>{{ checklist_data.get('business_address', 'N/A') }}</td>
+                    <td colspan="3">{{ cd.get('business_address', '') or '—' }}</td>
                 </tr>
                 <tr>
-                    <td><strong>Years in Business:</strong></td>
-                    <td>{{ checklist_data.get('years_business', 'N/A') }}</td>
+                    <td>Form</td>
+                    <td colspan="3" style="font-size:8.5pt;">
+                        {% if cd.get('nature_sole') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Sole &nbsp;
+                        {% if cd.get('nature_partnership') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Partnership &nbsp;
+                        {% if cd.get('nature_corp') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Corporation
+                    </td>
+                </tr>
+                <tr>
+                    <td>Nature</td>
+                    <td colspan="3" style="font-size:8.5pt;">
+                        {% if cd.get('nature_agri') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Agriculture &nbsp;
+                        {% if cd.get('nature_merch') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Merchandising &nbsp;
+                        {% if cd.get('nature_mfg') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Manufacturing &nbsp;
+                        {% if cd.get('nature_service') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Service &nbsp;
+                        {% if cd.get('nature_others') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Others: {{ cd.get('nature_others_spec', '_____') }}
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Years in Business</strong></td>
+                    <td>Years: {{ cd.get('years_business', '') or '—' }} &nbsp; Months: {{ cd.get('years_business_months', '') or '—' }}</td>
+                    <td colspan="2" style="font-size:7.5pt; vertical-align:middle;">* To be supported with Annual Income Tax Return and Audited Financial Statements.</td>
                 </tr>
             </table>
 
-            <div class="section-header">MEMBERSHIP STATUS WITH DCCCO</div>
-            <p><strong>Classification:</strong>
-                {% if checklist_data.get('member_new') %}✓ New Member {% endif %}
-                {% if checklist_data.get('member_nrcs') %}✓ NRCS {% endif %}
-                {% if checklist_data.get('member_non_nrcs') %}✓ Non-NRCS {% endif %}
-            </p>
-
-            <p><strong>Loan Accounts:</strong>
-                {% if checklist_data.get('loan_no_loan') %}✓ No Loan {% endif %}
-                {% if checklist_data.get('loan_1_2') %}✓ 1-2 Filers {% endif %}
-                {% if checklist_data.get('loan_more_2') %}✓ More than 2 Filers {% endif %}
-                {% if checklist_data.get('loan_past_due') %}✓ Past Due {% endif %}
-                {% if checklist_data.get('loan_restructured') %}✓ Restructured {% endif %}
-            </p>
-
-            <table class="view-table">
+            <p class="print-section-dccco text-center" style="text-align:center; text-decoration:underline; position:relative;">CREDIT CHECKING <span class="d-inline-block" style="position:absolute; right:0; top:0; font-size:8.5pt; font-weight:700; text-decoration:none;">CONFIDENTIAL</span></p>
+            <table class="view-table" style="margin-top:0;">
                 <tr>
-                    <td width="30%"><strong>Date Reported:</strong></td>
-                    <td>{{ checklist_data.get('date_reported', 'N/A') }}</td>
+                    <th width="32%"></th>
+                    <th class="text-center" width="18%">Updated/MIGS</th>
+                    <th class="text-center" width="18%">Delayed/Non-MIGS</th>
+                    <th width="32%">Remarks</th>
+                </tr>
+                {{ _cr3(cd, 'Electric Company', 'credit_electric') }}
+                {{ _cr3(cd, 'Water/Utility Company', 'credit_water') }}
+                {{ _cr3(cd, 'Other Cooperatives', 'credit_coop') }}
+                <tr>
+                    <td>{{ cd.get('credit_custom_1_type', '') or 'N/A' }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_custom_1_updated') }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_custom_1_delayed') }}</td>
+                    <td>{{ cd.get('credit_custom_1_remarks', '') }}</td>
                 </tr>
                 <tr>
-                    <td><strong>Date Investigated:</strong></td>
-                    <td>{{ checklist_data.get('date_investigated', 'N/A') }}</td>
+                    <td>Banks</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_banks_updated') }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_banks_delayed') }}</td>
+                    <td>{{ cd.get('credit_banks_remarks', '') }}</td>
                 </tr>
+                {{ _cr3(cd, 'Other Financial Institutions', 'credit_financial') }}
                 <tr>
-                    <td><strong>Prepared by:</strong></td>
-                    <td>{{ checklist_data.get('prepared_by', 'N/A') }}</td>
+                    <td>{{ cd.get('credit_custom_2_type', '') or 'N/A' }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_custom_2_updated') }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_custom_2_delayed') }}</td>
+                    <td>{{ cd.get('credit_custom_2_remarks', '') }}</td>
                 </tr>
+                {{ _cr3(cd, 'Sari-sari Store', 'credit_store') }}
                 <tr>
-                    <td><strong>Reviewed by:</strong></td>
-                    <td>{{ checklist_data.get('reviewed_by', 'N/A') }}</td>
+                    <td>{{ cd.get('credit_custom_3_type', '') or 'N/A' }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_custom_3_updated') }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_custom_3_delayed') }}</td>
+                    <td>{{ cd.get('credit_custom_3_remarks', '') }}</td>
+                </tr>
+                {{ _cr3(cd, 'Loans with Informal Lenders', 'credit_informal') }}
+                <tr>
+                    <td>{{ cd.get('credit_custom_4_type', '') or 'N/A' }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_custom_4_updated') }}</td>
+                    <td class="text-center">{{ _ckm(cd, 'credit_custom_4_delayed') }}</td>
+                    <td>{{ cd.get('credit_custom_4_remarks', '') }}</td>
                 </tr>
             </table>
-            {{ formal_page_signoff() }}
+
+            <p class="print-section-dccco">MEMBERSHIP STATUS WITH DCCCO</p>
+            <p class="mb-0 small" style="font-size:8.5pt; line-height:1.4;">Membership Classification:
+                {% if cd.get('member_new') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} New Member
+                {% if cd.get('member_migs') or cd.get('member_nrcs') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} MIGS / NRCS
+                {% if cd.get('member_non_migs') or cd.get('member_non_nrcs') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Non-MIGS
+                {% if cd.get('member_nqt') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} NQT
+                {% if cd.get('member_fines_1_2') or cd.get('member_1_2_fines') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} 1-2 Fines
+                {% if cd.get('member_fines_gt2') or cd.get('member_more_2_fines') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} More than 2 Fines
+            </p>
+            <p class="mb-0 small" style="font-size:8.5pt; line-height:1.4;">Category, if:
+                {% if cd.get('other_niskal') or cd.get('cat_nickel') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Nickel
+                {% if cd.get('other_bronze') or cd.get('cat_bronze') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Bronze
+                {% if cd.get('other_silver') or cd.get('cat_silver') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Silver
+                {% if cd.get('other_gold') or cd.get('cat_gold') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Gold
+                {% if cd.get('other_platinum') or cd.get('cat_platinum') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Platinum
+            </p>
+            <p class="print-section-dccco" style="font-style:italic; font-size:8.5pt; font-weight:600; border:0; padding:0.15rem 0;">Loan accounts with DCCCO (see attached SOA):</p>
+            <p class="mb-0 small" style="font-size:8.5pt;"><strong>Status of loan accounts within 12 months</strong> —
+                {% if cd.get('loan_no_loan') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} No fines
+                {% if cd.get('loan_1_2') or cd.get('loan_fines_1_2') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} 1-2 Fines
+                {% if cd.get('loan_more_2') or cd.get('loan_fines_gt2') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} More than 2 fines
+                {% if cd.get('loan_past_due') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Past Due
+                {% if cd.get('loan_restructured') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Restructured
+            </p>
+            <p class="mb-0 small" style="font-size:8.5pt;"><strong>Outstanding loan accounts</strong> —
+                {% if cd.get('outstanding_no') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} No fines
+                {% if cd.get('outstanding_1_2') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} 1-2 Fines
+                {% if cd.get('outstanding_more') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} More than 2 fines
+                {% if cd.get('outstanding_past') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Past Due
+                {% if cd.get('outstanding_restr') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Restructured
+            </p>
+            <p class="mb-0 small" style="font-size:8.5pt;"><strong>First loan</strong> — {% if cd.get('first_loan_yes') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Yes {% if cd.get('first_loan_no') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} No</p>
+
+            <table class="view-table" style="margin-top:0.4rem; font-size:8.5pt;">
+                <tr>
+                    <td><strong>Date Reported:</strong> {{ cd.get('date_reported', '') or '—' }}</td>
+                    <td><strong>Date Investigated:</strong> {{ cd.get('date_investigated', '') or '—' }}</td>
+                </tr>
+            </table>
+            {{ signoff_credit_investigation_3col() }}
         </div>
     </div>
 
-    <!-- PAGE 2.5: CASH FLOW STATEMENT (EXCEL SPREADSHEET) -->
+    <!-- PAGE 2.5: CASH FLOW STATEMENT (EXCEL SPREADSHEET) — one print page -->
     {% if checklist_data.get('excel_cashflow') %}
     <div class="card print-page print-cashflow-block">
         <div class="card-header bg-info text-white text-center">
-            <h4>CASH FLOW STATEMENT</h4>
-            <small>Excel Spreadsheet Data</small>
+            <div class="print-dccco-meta" style="color: rgba(255,255,255,0.95); font-size: 8.5pt;">
+                <span>DCCCO</span>
+                <span>Excel / Cash Flow</span>
+            </div>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0.15rem 0; font-size:1rem;">DCCCO MULTIPURPOSE COOPERATIVE</h4>
+            <p class="mb-0" style="font-size:0.8rem; letter-spacing:0.04em; text-transform:uppercase; font-weight:700;">CASH FLOW STATEMENT</p>
+            <small class="d-block" style="opacity:0.9;">(saved spreadsheet — same data as wizard)</small>
         </div>
-        <div class="card-body">
+        <div class="card-body" style="padding-top:0.4rem !important;">
             <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
+            <div class="print-cashflow-excel-tile" id="print-cf-excel-tile">
             <div id="excel-view-container"></div>
+            </div>
             
             <script>
                 // Load and display Excel data
@@ -747,7 +1152,17 @@
                     @page { size: auto; margin: 5mm; }
 
                     .print-cashflow-block {
-                        page-break-inside: auto !important;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                    }
+                    .print-cf-excel-tile,
+                    .print-cashflow-excel-tile {
+                        max-height: 220mm;
+                        overflow: hidden !important;
+                    }
+                    .print-cashflow-excel-tile .excel-container-view {
+                        max-height: 220mm;
+                        overflow: hidden !important;
                     }
 
                     html, body {
@@ -759,7 +1174,7 @@
                     .excel-container-view {
                         border: none !important;
                         background: #fff !important;
-                        overflow: visible !important;
+                        overflow: hidden !important;
                         width: 100% !important;
                         max-width: 100% !important;
                     }
@@ -834,12 +1249,32 @@
     {% endif %}
 
     <!-- PAGE 3: COMPUTATION (MOST IMPORTANT) -->
-    <div class="card print-page">
+    <div class="card print-page print-page--deir">
         <div class="card-header bg-success text-white text-center">
-            <h4>COMPUTATION OF DEBT AND EXPENSE-TO-INCOME RATIO</h4>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0;">DCCCO Multipurpose Cooperative</h4>
         </div>
-        <div class="card-body">
-            <div class="section-header">INCOME</div>
+        <div class="card-body" style="padding-top:0.4rem;">
+            <p class="text-center mb-0" style="font-size:9pt;">Branch: <span class="d-inline-block" style="min-width:12rem; border-bottom:1px solid #000;">{{ checklist_data.get('deir_branch', '') }}</span> &nbsp; Date: <span class="d-inline-block" style="min-width:8rem; border-bottom:1px solid #000;">{{ checklist_data.get('deir_date', '') }}</span></p>
+            <p class="print-section-dccco text-center" style="text-align:center; text-decoration:underline; border:0; margin:0.5rem 0 0.4rem 0;">COMPUTATION OF DEBT AND EXPENSE-TO-INCOME RATIO</p>
+            <table class="view-table" style="margin-top:0; font-size:8.5pt;">
+                <tr>
+                    <td width="14%"><strong>Name of Member</strong></td>
+                    <td width="36%">{{ checklist_data.get('comp_member_name', application.member_name) or '—' }}</td>
+                    <td width="20%"><strong>Applied Loan</strong></td>
+                    <td width="30%">{{ checklist_data.get('comp_loan_type', application.loan_type) or '—' }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Membership Classification</strong></td>
+                    <td>{{ checklist_data.get('comp_membership', '') or '—' }}</td>
+                    <td><strong>Applied Amount</strong></td>
+                    <td>₱ {{ '{:,.2f}'.format((checklist_data.get('comp_applied_amount', application.loan_amount or 0)|float)) }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Occupation</strong></td>
+                    <td colspan="3">{{ checklist_data.get('comp_occupation', '') or '—' }}</td>
+                </tr>
+            </table>
+            <p class="print-section-dccco" style="margin-top:0.6rem;">INCOME</p>
             <table class="view-table">
                 <tr>
                     <td width="60%">Gross Pay</td>
@@ -867,7 +1302,7 @@
                 </tr>
             </table>
 
-            <div class="section-header">OTHER INCOME</div>
+            <p class="print-section-dccco" style="margin-top:0.5rem;">OTHER INCOME (with proof)</p>
             <table class="view-table">
                 <tr>
                     <td width="60%">Income from Business</td>
@@ -891,7 +1326,47 @@
                 </tr>
             </table>
 
-            <div class="section-header">OTHER OBLIGATIONS/EXPENSES</div>
+            <p class="print-section-dccco">LOAN AMORTIZATIONS &amp; OTHER OBLIGATIONS/EXPENSES</p>
+            <p class="mb-0" style="font-size:8.5pt; font-weight:600;">From other institutions</p>
+            <table class="view-table" style="font-size:8.5pt;">
+                <tr>
+                    <th>Institution</th>
+                    <th class="text-end" style="width:18%;">Principal</th>
+                    <th class="text-end" style="width:18%;">Balance</th>
+                    <th class="text-end" style="width:18%;">Monthly Amortization</th>
+                </tr>
+                {% for li in [1,2,3,4,5,6,7] %}
+                {% if checklist_data.get('loan_' ~ li ~ '_inst') or checklist_data.get('loan_' ~ li ~ '_monthly') or checklist_data.get('loan_' ~ li ~ '_balance') or checklist_data.get('loan_' ~ li ~ '_principal') %}
+                <tr>
+                    <td>{{ checklist_data.get('loan_' ~ li ~ '_inst', '—') }}</td>
+                    <td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('loan_' ~ li ~ '_principal', 0)|float) }}</td>
+                    <td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('loan_' ~ li ~ '_balance', 0)|float) }}</td>
+                    <td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('loan_' ~ li ~ '_monthly', 0)|float) }}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+                <tr>
+                    <td><strong>Sub-total (other)</strong></td>
+                    <td class="text-end" colspan="3">₱ {{ '{:,.2f}'.format(checklist_data.get('total_loan_amortizations', 0)|float) }}</td>
+                </tr>
+            </table>
+            <p class="mb-0 mt-1" style="font-size:8.5pt; font-weight:600;">DCCCO loans (existing)</p>
+            <table class="view-table" style="font-size:8.5pt;">
+                <tr><td width="70%">Existing DCCCO loan 1</td><td class="text-end" width="30%">₱ {{ '{:,.2f}'.format(checklist_data.get('dccco_loan_1', 0)|float) }}</td></tr>
+                <tr><td>Existing DCCCO loan 2</td><td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('dccco_loan_2', 0)|float) }}</td></tr>
+                <tr>
+                    <td><strong>Total loans/amortizations before new loan</strong></td>
+                    <td class="text-end"><strong>₱ {{ '{:,.2f}'.format(checklist_data.get('total_before_new', 0)|float) }}</strong></td>
+                </tr>
+                <tr><td>Add: Loan applied for</td><td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('new_loan_amount', application.loan_amount or 0)|float) }}</td></tr>
+                <tr><td>Less: Loan/s deductible from proceeds</td><td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('loan_deductible', 0)|float) }}</td></tr>
+                <tr class="table-success">
+                    <td><strong>New loan</strong></td>
+                    <td class="text-end"><strong>₱ {{ '{:,.2f}'.format(checklist_data.get('new_loan_final', 0)|float) }}</strong></td>
+                </tr>
+            </table>
+
+            <p class="print-section-dccco">OTHER OBLIGATIONS/EXPENSES</p>
             <table class="view-table">
                 <tr>
                     <td width="60%">Household Expenses</td>
@@ -913,97 +1388,127 @@
                     <td>Internet/Cellphone</td>
                     <td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('internet', 0)|float) }}</td>
                 </tr>
+                <tr class="table-success">
+                    <td><strong>TOTAL LOAN AMORTIZATIONS &amp; OTHER OBLIGATIONS/EXPENSES</strong></td>
+                    <td class="text-end"><strong>₱ {{ '{:,.2f}'.format(checklist_data.get('total_other_obligations', 0)|float) }}</strong></td>
+                </tr>
+                <tr class="table-success">
+                    <td><strong>Net Disposable Income</strong></td>
+                    <td class="text-end"><strong>₱ {{ '{:,.2f}'.format(checklist_data.get('net_disposable_income', 0)|float) }}</strong></td>
+                </tr>
             </table>
 
-            <div class="section-header">FINAL CALCULATIONS</div>
-            <div class="highlight-value">
-                <div class="row">
-                    <div class="col-md-6">
-                        <strong>Net Disposable Income:</strong><br>
-                        <span class="text-success" style="font-size: 1.5em;">₱ {{ '{:,.2f}'.format(checklist_data.get('net_disposable_income', 0)|float) }}</span>
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Loan Amortization Limit (80%):</strong><br>
-                        <span class="text-info" style="font-size: 1.5em;">₱ {{ '{:,.2f}'.format(checklist_data.get('loan_amortization_limit', 0)|float) }}</span>
-                    </div>
-                </div>
-            </div>
+            <p class="print-section-dccco">FINAL CALCULATIONS</p>
+            <table class="view-table" style="font-size:8.5pt;">
+                <tr>
+                    <td><strong>Debt &amp; Expense to Income Ratio (80% maximum)</strong></td>
+                    <td class="text-end" width="22%"><strong>{{ '{:.2f}'.format((checklist_data.get('debt_expense_ratio', 0)|float)) }} %</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>Total Loan Amortization Limit (80% of total gross income)</strong></td>
+                    <td class="text-end"><strong>₱ {{ '{:,.2f}'.format(checklist_data.get('loan_amortization_limit', 0)|float) }}</strong></td>
+                </tr>
+            </table>
 
             {% set ratio = checklist_data.get('debt_expense_ratio', 0)|float %}
+            <p class="text-center" style="font-size:8.5pt; margin:0.35rem 0 0.15rem 0;">Risk band (reference): 
             {% if ratio > 80 %}
-            <div class="alert alert-danger alert-ratio">
-                <i class="bi bi-exclamation-triangle-fill"></i> 
-                <strong>DEBT & EXPENSE RATIO: {{ '{:.2f}'.format(ratio) }}%</strong><br>
-                <span style="font-size: 0.9em;">⚠️ EXCEEDS 80% LIMIT - HIGH RISK</span>
-            </div>
+            <strong>exceeds 80% (high risk)</strong>
             {% elif ratio > 60 %}
-            <div class="alert alert-warning alert-ratio">
-                <i class="bi bi-exclamation-circle-fill"></i> 
-                <strong>DEBT & EXPENSE RATIO: {{ '{:.2f}'.format(ratio) }}%</strong><br>
-                <span style="font-size: 0.9em;">⚠️ MODERATE RISK</span>
-            </div>
+            <strong>above 60% (moderate)</strong>
             {% else %}
-            <div class="alert alert-success alert-ratio">
-                <i class="bi bi-check-circle-fill"></i> 
-                <strong>DEBT & EXPENSE RATIO: {{ '{:.2f}'.format(ratio) }}%</strong><br>
-                <span style="font-size: 0.9em;">✓ WITHIN ACCEPTABLE LIMIT</span>
-            </div>
+            <strong>within common limit</strong>
             {% endif %}
-            {{ formal_page_signoff() }}
+            </p>
+            {{ signoff_deir() }}
         </div>
     </div>
 
     <!-- PAGE 4: CREDIT ASSESSMENT SUMMARY -->
-    <div class="card print-page">
+    <div class="card print-page print-page--cas">
         <div class="card-header bg-primary text-white text-center">
-            <h4>CREDIT ASSESSMENT SUMMARY</h4>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0;">DCCCO Multipurpose Cooperative</h4>
         </div>
-        <div class="card-body">
-            <div class="section-header">CAPACITY</div>
-            <table class="view-table">
+        <div class="card-body" style="padding-top:0.4rem;">
+            <p class="text-center mb-0" style="font-size:8.5pt;">Branch: <span style="border-bottom:1px solid #000; min-width:8rem; display:inline-block;">{{ checklist_data.get('assess_branch', '') }}</span> &nbsp; Date: <span style="border-bottom:1px solid #000; min-width:8rem; display:inline-block;">{{ checklist_data.get('assess_date', '') }}</span></p>
+            <p class="print-section-dccco text-center" style="text-align:center; text-decoration:underline; border:0;">CREDIT ASSESSMENT SUMMARY</p>
+            <table class="view-table" style="font-size:8.5pt; margin-top:0.25rem;">
                 <tr>
-                    <td width="70%">DEIR is within limit</td>
-                    <td width="30%" class="text-center">
-                        {% if checklist_data.get('capacity_deir_yes') %}<span class="badge bg-success">YES</span>{% endif %}
-                        {% if checklist_data.get('capacity_deir_no') %}<span class="badge bg-danger">NO</span>{% endif %}
-                    </td>
+                    <td width="20%"><strong>Name of Member</strong></td>
+                    <td width="30%">{{ checklist_data.get('assess_member_name', application.member_name) or '—' }}</td>
+                    <td width="18%"><strong>Type of Loan</strong></td>
+                    <td width="32%">{{ checklist_data.get('assess_loan_type', application.loan_type) or '—' }}</td>
                 </tr>
                 <tr>
-                    <td>Net Take Home Pay is within limit</td>
-                    <td class="text-center">
-                        {% if checklist_data.get('capacity_nthp_yes') %}<span class="badge bg-success">YES</span>{% endif %}
-                        {% if checklist_data.get('capacity_nthp_no') %}<span class="badge bg-danger">NO</span>{% endif %}
-                    </td>
+                    <td><strong>Age</strong></td>
+                    <td>{{ checklist_data.get('assess_age', '') or '—' }}</td>
+                    <td><strong>Loan Amount</strong></td>
+                    <td>₱ {{ '{:,.2f}'.format((checklist_data.get('assess_loan_amount', application.loan_amount or 0)|float)) }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Membership Classification</strong></td>
+                    <td>{{ checklist_data.get('assess_membership', '') or '—' }}</td>
+                    <td><strong>Purpose</strong></td>
+                    <td>{{ checklist_data.get('assess_purpose', '') or '—' }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Years of Membership</strong></td>
+                    <td>{{ checklist_data.get('assess_years_member', '') or '—' }}</td>
+                    <td><strong>Term</strong></td>
+                    <td>{{ checklist_data.get('assess_term', '') or '—' }}</td>
+                </tr>
+                <tr>
+                    <td colspan="2">Accounts with DCCCO (see Attachment 1 – SOA)</td>
+                    <td><strong>Amortization</strong></td>
+                    <td>₱ {{ '{:,.2f}'.format((checklist_data.get('assess_amortization', 0)|float)) }}</td>
+                </tr>
+            </table>
+            <p class="print-section-dccco" style="font-size:8.5pt; margin:0.5rem 0 0.2rem 0;">CREDIT AND BACKGROUND INVESTIGATION</p>
+            <p class="print-section-dccco" style="font-size:8pt; border:0; padding:0.1rem 0; margin:0; font-weight:600;">CAPACITY</p>
+            <table class="view-table" style="font-size:8.5pt;">
+                <tr>
+                    <th class="text-center" style="width:8%;">YES</th>
+                    <th class="text-center" style="width:8%;">NO</th>
+                    <th>Item</th>
+                </tr>
+                <tr>
+                    <td class="text-center">{% if checklist_data.get('capacity_deir_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('capacity_deir_no') %}X{% endif %}</td>
+                    <td>DEIR is within limit (see Attachment 2 – DEIR)</td>
+                </tr>
+                <tr>
+                    <td class="text-center">{% if checklist_data.get('capacity_nthp_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('capacity_nthp_no') %}X{% endif %}</td>
+                    <td>Net take home pay is within limit (see Attachment 3 – NTHP)</td>
                 </tr>
             </table>
 
-            <div class="section-header">CHARACTER</div>
-            <table class="view-table">
+            <p class="print-section-dccco" style="font-size:8pt; border:0; padding:0.1rem 0; margin:0.4rem 0 0.1rem; font-weight:600;">CHARACTER</p>
+            <table class="view-table" style="font-size:8.5pt;">
                 <tr>
-                    <td width="70%">Loans are current and never fined</td>
-                    <td width="30%" class="text-center">
-                        {% if checklist_data.get('character_current_yes') %}<span class="badge bg-success">YES</span>{% endif %}
-                        {% if checklist_data.get('character_current_no') %}<span class="badge bg-danger">NO</span>{% endif %}
-                    </td>
+                    <th class="text-center" style="width:8%;">YES</th>
+                    <th class="text-center" style="width:8%;">NO</th>
+                    <th>Item</th>
                 </tr>
                 <tr>
+                    <td class="text-center">{% if checklist_data.get('character_current_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('character_current_no') %}X{% endif %}</td>
+                    <td>Loans are current and never fined</td>
+                </tr>
+                <tr>
+                    <td class="text-center">{% if checklist_data.get('character_no_negative_inst_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('character_no_negative_inst_no') %}X{% endif %}</td>
                     <td>Without negative feedback from institutions</td>
-                    <td class="text-center">
-                        {% if checklist_data.get('character_no_negative_inst_yes') %}<span class="badge bg-success">YES</span>{% endif %}
-                        {% if checklist_data.get('character_no_negative_inst_no') %}<span class="badge bg-danger">NO</span>{% endif %}
-                    </td>
                 </tr>
                 <tr>
+                    <td class="text-center">{% if checklist_data.get('character_no_negative_neighbors_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('character_no_negative_neighbors_no') %}X{% endif %}</td>
                     <td>Without negative feedback from neighbors/community</td>
-                    <td class="text-center">
-                        {% if checklist_data.get('character_no_negative_neighbors_yes') %}<span class="badge bg-success">YES</span>{% endif %}
-                        {% if checklist_data.get('character_no_negative_neighbors_no') %}<span class="badge bg-danger">NO</span>{% endif %}
-                    </td>
                 </tr>
             </table>
 
-            <div class="section-header">COLLATERAL</div>
-            <table class="view-table">
+            <p class="print-section-dccco" style="font-size:8pt; border:0; padding:0.1rem 0; margin:0.4rem 0 0.1rem; font-weight:600;">COLLATERAL</p>
+            <table class="view-table" style="font-size:8.5pt;">
                 <tr>
                     <td width="30%"><strong>OCT No:</strong></td>
                     <td>{{ checklist_data.get('collateral_oct', 'N/A') }}</td>
@@ -1022,123 +1527,133 @@
                 </tr>
             </table>
 
-            <div class="section-header">CONDITION</div>
-            <table class="view-table">
+            <p class="print-section-dccco" style="font-size:8pt; border:0; padding:0.1rem 0; margin:0.4rem 0 0.1rem; font-weight:600;">CONDITION</p>
+            <table class="view-table" style="font-size:8.5pt;">
                 <tr>
-                    <td width="70%">Able to perform daily routine tasks</td>
-                    <td width="30%" class="text-center">
-                        {% if checklist_data.get('condition_health_able_yes') %}<span class="badge bg-success">YES</span>{% endif %}
-                        {% if checklist_data.get('condition_health_able_no') %}<span class="badge bg-danger">NO</span>{% endif %}
-                    </td>
+                    <th class="text-center" style="width:8%;">YES</th>
+                    <th class="text-center" style="width:8%;">NO</th>
+                    <th>Item</th>
                 </tr>
                 <tr>
+                    <td class="text-center">{% if checklist_data.get('condition_health_able_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('condition_health_able_no') %}X{% endif %}</td>
+                    <td>Able to perform daily routine tasks</td>
+                </tr>
+                <tr>
+                    <td class="text-center">{% if checklist_data.get('condition_business_permits_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('condition_business_permits_no') %}X{% endif %}</td>
                     <td>Business has updated permits</td>
-                    <td class="text-center">
-                        {% if checklist_data.get('condition_business_permits_yes') %}<span class="badge bg-success">YES</span>{% endif %}
-                        {% if checklist_data.get('condition_business_permits_no') %}<span class="badge bg-danger">NO</span>{% endif %}
-                    </td>
                 </tr>
                 <tr>
+                    <td class="text-center">{% if checklist_data.get('condition_business_legal_yes') %}X{% endif %}</td>
+                    <td class="text-center">{% if checklist_data.get('condition_business_legal_no') %}X{% endif %}</td>
                     <td>Nature of business is legal</td>
-                    <td class="text-center">
-                        {% if checklist_data.get('condition_business_legal_yes') %}<span class="badge bg-success">YES</span>{% endif %}
-                        {% if checklist_data.get('condition_business_legal_no') %}<span class="badge bg-danger">NO</span>{% endif %}
-                    </td>
                 </tr>
             </table>
 
-            {% if checklist_data.get('other_info') %}
-            <div class="section-header">OTHER INFORMATION</div>
-            <p>{{ checklist_data.get('other_info') }}</p>
-            {% endif %}
-            {{ formal_page_signoff() }}
+            <p class="print-section-dccco" style="font-size:8.5pt; margin-top:0.4rem;">OTHER INFORMATION</p>
+            <div class="view-table" style="border:1px solid #000; min-height:4.5rem; padding:0.35rem; font-size:8.5pt; white-space: pre-wrap;">{{ checklist_data.get('other_info', '') }}</div>
+            {{ signoff_cas_2col() }}
         </div>
     </div>
 
-    <!-- PAGE 5: RECOMMENDATION/ACTION -->
-    <div class="card print-page">
+    <!-- PAGE 5: RECOMMENDATION/ACTION (page 2 of 2 style) — for loan/credit & board; not filled by LPS/CI in the app -->
+    <div class="card print-page print-page--reco">
         <div class="card-header bg-warning text-dark text-center">
-            <h4>RECOMMENDATION/ACTION</h4>
+            <h4 class="print-dccco-title" style="margin:0; font-size:1rem;">RECOMMENDATION / ACTION &mdash; <span class="d-inline" style="font-size:0.9rem;">(Management &amp; Board)</span></h4>
         </div>
-        <div class="card-body">
-            <table class="view-table">
+        <div class="card-body" style="padding-top:0.4rem; font-size:8.5pt;">
+            <p class="small text-muted mb-2 no-print">Use this sheet for approvals in the office. It is not part of the LPS or CI/BI field checklist workflow.</p>
+            <table class="view-table" style="font-size:8.5pt;">
                 <tr>
-                    <th width="18%">POSITION</th>
-                    <th width="18%">ACTION</th>
-                    <th width="40%">REMARKS</th>
-                    <th width="24%">SIGNATURE / DATE</th>
+                    <th style="width:14%"></th>
+                    <th class="text-center" style="width:28%;">RECOMMENDATION/ACTION</th>
+                    <th style="width:30%;">Remark/s</th>
+                    <th class="text-end" style="width:28%;">SIGNATURE / DATE</th>
                 </tr>
-                <tr>
+                <tr class="recommend-action-row">
                     <td><strong>Credit Officer</strong></td>
-                    <td>
-                        {% if checklist_data.get('co_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
-                        {% if checklist_data.get('co_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
-                        {% if checklist_data.get('co_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
+                    <td class="recommend-action-acts">
+                        {% if checklist_data.get('co_approve') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Approve
+                        {% if checklist_data.get('co_disapprove') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Disapprove
+                        {% if checklist_data.get('co_defer') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Defer
                     </td>
-                    <td>{{ checklist_data.get('co_remarks', '') }}</td>
-                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('co_signature') %}{{ checklist_data.get('co_signature') }}{% else %}&nbsp;{% endif %}</div></td>
+                    <td class="recommend-remark-line">{{ checklist_data.get('co_remarks', '') }}</td>
+                    <td class="text-end" style="vertical-align:bottom;"><div class="formal-remarks-sig">{% if checklist_data.get('co_signature') %}{{ checklist_data.get('co_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
-                    <td><strong>CM (Credit Manager)</strong></td>
-                    <td>
-                        {% if checklist_data.get('cm_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
-                        {% if checklist_data.get('cm_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
-                        {% if checklist_data.get('cm_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
+                    <td><strong>CM</strong></td>
+                    <td class="recommend-action-acts">
+                        {% if checklist_data.get('cm_approve') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Approve
+                        {% if checklist_data.get('cm_disapprove') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Disapprove
+                        {% if checklist_data.get('cm_defer') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Defer
                     </td>
-                    <td>{{ checklist_data.get('cm_remarks', '') }}</td>
-                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('cm_signature') %}{{ checklist_data.get('cm_signature') }}{% else %}&nbsp;{% endif %}</div></td>
+                    <td class="recommend-remark-line">{{ checklist_data.get('cm_remarks', '') }}</td>
+                    <td class="text-end"><div class="formal-remarks-sig">{% if checklist_data.get('cm_signature') %}{{ checklist_data.get('cm_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
-                    <td><strong>OM (Operations Manager)</strong></td>
-                    <td>
-                        {% if checklist_data.get('om_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
-                        {% if checklist_data.get('om_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
-                        {% if checklist_data.get('om_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
+                    <td><strong>OM</strong></td>
+                    <td class="recommend-action-acts">
+                        {% if checklist_data.get('om_approve') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Approve
+                        {% if checklist_data.get('om_disapprove') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Disapprove
+                        {% if checklist_data.get('om_defer') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Defer
                     </td>
-                    <td>{{ checklist_data.get('om_remarks', '') }}</td>
-                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('om_signature') %}{{ checklist_data.get('om_signature') }}{% else %}&nbsp;{% endif %}</div></td>
+                    <td class="recommend-remark-line">{{ checklist_data.get('om_remarks', '') }}</td>
+                    <td class="text-end"><div class="formal-remarks-sig">{% if checklist_data.get('om_signature') %}{{ checklist_data.get('om_signature') }}{% else %}&nbsp;{% endif %}</div></td>
+                </tr>
+                <tr>
+                    <td colspan="4" class="reco-mcc-bar">Management Credit Committee</td>
                 </tr>
                 <tr>
                     <td><strong>Management Credit Committee</strong></td>
-                    <td>
-                        {% if checklist_data.get('mcc_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
-                        {% if checklist_data.get('mcc_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
-                        {% if checklist_data.get('mcc_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
+                    <td class="recommend-action-acts">
+                        {% if checklist_data.get('mcc_approve') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Approve
+                        {% if checklist_data.get('mcc_disapprove') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Disapprove
+                        {% if checklist_data.get('mcc_defer') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Defer
                     </td>
-                    <td>{{ checklist_data.get('mcc_remarks', '') }}</td>
-                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('mcc_signature') %}{{ checklist_data.get('mcc_signature') }}{% else %}&nbsp;{% endif %}</div></td>
+                    <td class="recommend-remark-line">{{ checklist_data.get('mcc_remarks', '') }}</td>
+                    <td class="text-end"><div class="formal-remarks-sig">{% if checklist_data.get('mcc_signature') %}{{ checklist_data.get('mcc_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
-                    <td><strong>FTM (Finance &amp; Treasury Manager)</strong></td>
-                    <td>
-                        {% if checklist_data.get('ftm_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
-                        {% if checklist_data.get('ftm_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
-                        {% if checklist_data.get('ftm_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
+                    <td><strong>FTM</strong></td>
+                    <td class="recommend-action-acts">
+                        {% if checklist_data.get('ftm_approve') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Approve
+                        {% if checklist_data.get('ftm_disapprove') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Disapprove
+                        {% if checklist_data.get('ftm_defer') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Defer
                     </td>
-                    <td>{{ checklist_data.get('ftm_remarks', '') }}</td>
-                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('ftm_signature') %}{{ checklist_data.get('ftm_signature') }}{% else %}&nbsp;{% endif %}</div></td>
+                    <td class="recommend-remark-line">{{ checklist_data.get('ftm_remarks', '') }}</td>
+                    <td class="text-end"><div class="formal-remarks-sig">{% if checklist_data.get('ftm_signature') %}{{ checklist_data.get('ftm_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
                     <td><strong>CEO</strong></td>
-                    <td>
-                        {% if checklist_data.get('ceo_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
-                        {% if checklist_data.get('ceo_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
-                        {% if checklist_data.get('ceo_defer') %}<span class="badge bg-warning">DEFER</span>{% endif %}
+                    <td class="recommend-action-acts">
+                        {% if checklist_data.get('ceo_approve') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Approve
+                        {% if checklist_data.get('ceo_disapprove') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Disapprove
+                        {% if checklist_data.get('ceo_defer') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Defer
                     </td>
-                    <td>{{ checklist_data.get('ceo_remarks', '') }}</td>
-                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('ceo_signature') %}{{ checklist_data.get('ceo_signature') }}{% else %}&nbsp;{% endif %}</div></td>
+                    <td class="recommend-remark-line">{{ checklist_data.get('ceo_remarks', '') }}</td>
+                    <td class="text-end"><div class="formal-remarks-sig">{% if checklist_data.get('ceo_signature') %}{{ checklist_data.get('ceo_signature') }}{% else %}&nbsp;{% endif %}</div></td>
                 </tr>
                 <tr>
-                    <td><strong>Board of Directors</strong></td>
-                    <td>
-                        {% if checklist_data.get('bod_approve') %}<span class="badge bg-success">APPROVE</span>{% endif %}
-                        {% if checklist_data.get('bod_disapprove') %}<span class="badge bg-danger">DISAPPROVE</span>{% endif %}
+                    <td colspan="4" class="reco-bod-bar">Board of Directors</td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td class="recommend-action-acts" colspan="1">
+                        {% if checklist_data.get('bod_approve') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Approve
+                        {% if checklist_data.get('bod_disapprove') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Disapprove
                     </td>
-                    <td>{{ checklist_data.get('bod_remarks', '') }}</td>
-                    <td class="signature-cell"><div class="formal-remarks-sig">{% if checklist_data.get('bod_signature') %}{{ checklist_data.get('bod_signature') }}{% else %}&nbsp;{% endif %}</div></td>
+                    <td class="recommend-remark-line" style="min-height:2rem;">{{ checklist_data.get('bod_remarks', '') }}</td>
+                    <td class="text-end bod-sig-stack" style="padding-top:0.2rem;" rowspan="1">
+                        {% for i in range(8) %}
+                        <div class="bod-sig-line">{% if i == 0 and checklist_data.get('bod_signature') %}{{ checklist_data.get('bod_signature') }}{% endif %}</div>
+                        {% endfor %}
+                    </td>
                 </tr>
             </table>
-            {{ formal_page_signoff() }}
+            <p class="reco-legend"><strong>Legend:</strong> DEIR = Debt and Expense to Income Ratio. NTHP = Net Take Home Pay computation.</p>
+            <p class="reco-legend" style="margin:0.15rem 0 0 0;">BOD Res. No. 187, s. 2022 (March 21, 2022)</p>
+            <p class="reco-page2-hint">page 2 of 2</p>
         </div>
     </div>
 
@@ -1177,7 +1692,6 @@
         </div>
     </div>
 
-    {% endif %}
 </div>
 
 {% endblock %}
