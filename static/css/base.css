@@ -766,10 +766,27 @@ body.dark-mode .bottom-nav a.active {
     .bi-bell, .bi-geo-alt, .bi-people {
         display: none !important;
     }
+
+    /* Allow long pages to paginate (avoid single-page / clipped print in Chrome) */
+    html, body {
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    .dashboard-container {
+        display: block !important;
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
     
     .main-content {
         margin-left: 0 !important;
         width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
     }
 }
 

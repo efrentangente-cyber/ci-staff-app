@@ -24,7 +24,7 @@
       <div class="formal-page-signoff__sigspace{% if ci_signature_url %} formal-page-signoff__sigspace--with-img{% endif %}"{% if not ci_signature_url %} aria-hidden="true"{% endif %}>
         {% if ci_signature_url %}
         <div class="formal-page-signoff__imgbox">
-          <img src="{{ ci_signature_url }}" alt="CI/BI digital signature" class="formal-page-signoff__img" loading="lazy" decoding="async">
+          <img src="{{ ci_signature_url }}" alt="CI/BI digital signature" class="formal-page-signoff__img" loading="eager" decoding="async" fetchpriority="high">
         </div>
         {% endif %}
       </div>
@@ -415,15 +415,32 @@
 
 @media print {
     @page { size: auto; margin: 6mm; }
-    /* Filled form look: black ink on white (no screen blues/greens) */
-    html {
-        filter: grayscale(100%) contrast(1.05);
-        -webkit-filter: grayscale(100%) contrast(1.05);
+    /*
+     * Do NOT set filter on html/body in print: Chromium often rasterizes the whole
+     * document to a single page (only 1 page prints). Grayscale is optional; clarity wins.
+     */
+    html, body {
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    .dashboard-container {
+        display: block !important;
+        min-height: 0 !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+    .main-content {
+        overflow: visible !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
     }
     .no-print { display: none !important; }
     .print-page--photos { page-break-inside: avoid !important; }
     .print-page {
-        page-break-after: always;
+        page-break-after: always !important;
         page-break-inside: auto !important;
         break-inside: auto !important;
         margin-bottom: 0 !important;
@@ -435,25 +452,24 @@
         break-inside: avoid !important;
         page-break-inside: avoid !important;
     }
-    /* Cash flow: dedicated single sheet, keep block together (data / script unchanged). */
-    .card.print-page.print-cashflow-block {
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-        display: flex;
-        flex-direction: column;
+    .formal-page-signoff__img,
+    .formal-page-signoff__imgbox img {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        display: block !important;
     }
+    /* Cash flow: use normal block flow in print (flex+avoid can confuse pagination) */
+    .card.print-page.print-cashflow-block,
     .card.print-page.print-cashflow-block .card-body {
-        flex: 1 1 auto;
-        min-height: 0;
-        display: flex;
-        flex-direction: column;
+        display: block !important;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
     }
     .print-cashflow-excel-tile {
-        flex: 1 1 auto;
         min-height: 0;
     }
     .card.print-page.print-cashflow-block .formal-page-signoff {
-        flex-shrink: 0;
+        margin-top: 0.5rem;
     }
     .print-photo-grid, .print-photo-grid__cell { break-inside: avoid !important; page-break-inside: avoid !important; }
     .reco-mcc-bar, .reco-bod-bar {
@@ -499,7 +515,13 @@
     }
     .print-page h4, .print-page h5 { margin: 4px 0 !important; font-size: 1rem !important; }
     .print-page [class*="text-white"] { color: #000 !important; }
-    .container-fluid { padding: 0 !important; margin: 0 !important; }
+    .container-fluid {
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        max-height: none !important;
+        height: auto !important;
+    }
     .view-table td, .view-table th {
         padding: 5px 7px !important;
         border-color: #000 !important;
@@ -526,20 +548,22 @@
         </div>
     </div>
 
-    {% if (not checklist_data) and (not lps_photos) and (not ci_photos) %}
+    {% set all_checklist_photos = (lps_photos or []) + (ci_photos or []) %}
+
+    {% if (not checklist_data) and (not all_checklist_photos) %}
     <div class="alert alert-warning no-print">
         <i class="bi bi-exclamation-triangle"></i> <strong>No CI checklist or photos yet</strong>
         <p class="mb-0">LPS/CI/BI have not attached anything. You can still print the forms below—use the <strong>Recommendation / Action</strong> page for management/board signatures when ready.</p>
     </div>
     {% endif %}
 
-    <!-- PAGE 0: APPLICATION REFERENCE PHOTOS (from LPS) — 4 per page, 2×2 -->
-    {% if lps_photos %}
-    {% for photo_batch in lps_photos|batch(4) %}
+    <!-- PAGE 0: LPS + CI/BI photos packed together — 4 per page (2×2), order: all LPS first, then all CI/BI (same as upload buckets) -->
+    {% if all_checklist_photos %}
+    {% for photo_batch in all_checklist_photos|batch(4) %}
     <div class="card print-page print-page--photos">
-        <div class="card-header bg-info text-white text-center">
-            <h4>APPLICATION REFERENCE PHOTOS</h4>
-            <small>Page {{ loop.index }} of {{ ((lps_photos|length) + 3) // 4 }} — from LPS</small>
+        <div class="card-header bg-primary text-white text-center print-photos-combined-header">
+            <h4 class="mb-0">APPLICATION PHOTOS — LPS + CI/BI</h4>
+            <small>Page {{ loop.index }} of {{ (all_checklist_photos|length + 3) // 4 }} (packed: 4 per page, LPS then CI/BI in one run)</small>
         </div>
         <div class="card-body">
             <div class="print-photo-grid" role="list">
@@ -547,12 +571,18 @@
                 {% set photo = photo_batch[i] if i < (photo_batch|length) else none %}
                 <div class="print-photo-grid__cell" role="listitem">
                     {% if photo and photo.is_image %}
+                        <div class="text-center mb-0" style="font-size:7pt; font-weight:700; letter-spacing:0.04em;">
+                            {% if application.assigned_ci_staff and (photo.uploaded_by == application.assigned_ci_staff) %}CI/BI{% else %}LPS{% endif %}
+                        </div>
                         <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
                             <img src="{{ url_for('serve_upload', filename=photo.filename) }}"
                                  alt="{{ photo.file_name }}">
                         </a>
                         <div class="text-muted small mt-1" style="font-size:7.5pt;">{{ photo.file_name }}</div>
                     {% elif photo %}
+                        <div class="text-center mb-0" style="font-size:7pt; font-weight:700;">
+                            {% if application.assigned_ci_staff and (photo.uploaded_by == application.assigned_ci_staff) %}CI/BI{% else %}LPS{% endif %}
+                        </div>
                         <a class="small" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
                             <i class="bi bi-file-earmark"></i> {{ photo.file_name }}
                         </a>
@@ -565,38 +595,7 @@
     {% endfor %}
     {% endif %}
 
-    {% if ci_photos %}
-    {% for photo_batch in ci_photos|batch(4) %}
-    <div class="card print-page print-page--photos">
-        <div class="card-header bg-secondary text-white text-center">
-            <h4>CI/BI FIELD PHOTOS</h4>
-            <small>Page {{ loop.index }} of {{ ((ci_photos|length) + 3) // 4 }} — CI/BI</small>
-        </div>
-        <div class="card-body">
-            <div class="print-photo-grid" role="list">
-                {% for i in range(4) %}
-                {% set photo = photo_batch[i] if i < (photo_batch|length) else none %}
-                <div class="print-photo-grid__cell" role="listitem">
-                    {% if photo and photo.is_image %}
-                        <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
-                            <img src="{{ url_for('serve_upload', filename=photo.filename) }}"
-                                 alt="{{ photo.file_name }}">
-                        </a>
-                        <div class="text-muted small mt-1" style="font-size:7.5pt;">{{ photo.file_name }}</div>
-                    {% elif photo %}
-                        <a class="small" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
-                            <i class="bi bi-file-earmark"></i> {{ photo.file_name }}
-                        </a>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-    {% endif %}
-
-    {% if (not checklist_data) and (lps_photos or ci_photos) %}
+    {% if (not checklist_data) and all_checklist_photos %}
     <div class="alert alert-info no-print">
         <i class="bi bi-info-circle"></i>
         CI/BI attached photos but the full checklist JSON is empty. All printable sections still appear below (blank where not filled), including the <strong>Recommendation / Action</strong> page for loan/credit use.
@@ -775,7 +774,7 @@
                     <td>Years: {{ checklist_data.get('spouse_service_years', '') or '____' }} &nbsp; Months: {{ checklist_data.get('spouse_service_months', '') or '____' }}</td>
                 </tr>
             </table>
-            {{ formal_page_signoff() }}
+            {{ formal_page_signoff(application.ci_signature) }}
         </div>
     </div>
 
@@ -1151,9 +1150,10 @@
                 @media print {
                     @page { size: auto; margin: 5mm; }
 
+                    /* allow pagination; avoid was fighting multi-page output */
                     .print-cashflow-block {
-                        page-break-inside: avoid !important;
-                        break-inside: avoid !important;
+                        page-break-inside: auto !important;
+                        break-inside: auto !important;
                     }
                     .print-cf-excel-tile,
                     .print-cashflow-excel-tile {
@@ -1169,6 +1169,8 @@
                         margin: 0 !important;
                         padding: 0 !important;
                         width: 100% !important;
+                        height: auto !important;
+                        overflow: visible !important;
                     }
 
                     .excel-container-view {
@@ -1243,7 +1245,7 @@
                     }
                 }
             </style>
-            {{ formal_page_signoff() }}
+            {{ formal_page_signoff(application.ci_signature) }}
         </div>
     </div>
     {% endif %}
