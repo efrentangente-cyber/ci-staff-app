@@ -1,8 +1,5 @@
 """
-Database Connection Manager
-Supports both SQLite (local) and PostgreSQL (Render production)
-Automatically detects which to use based on DATABASE_URL environment variable
-Updated: 2026-04-23 - Fixed PostgreSQL compatibility
+Database connection layer: SQLite locally, PostgreSQL when DATABASE_URL is set.
 """
 
 import os
@@ -281,10 +278,6 @@ def is_postgresql():
     """Check if using PostgreSQL"""
     return get_database_type() == 'postgresql'
 
-def is_sqlite():
-    """Check if using SQLite"""
-    return get_database_type() == 'sqlite'
-
 
 _pg_pool = None
 _pg_pool_lock = threading.Lock()
@@ -326,11 +319,10 @@ def _release_postgresql_connection(conn):
         except Exception:
             pass
 
-# Print database info on import (helpful for debugging)
-if __name__ != '__main__':
-    db_type = get_database_type()
-    print(f"📊 Database: {db_type.upper()}")
-    if db_type == 'postgresql':
+if __name__ == '__main__':
+    _t = get_database_type()
+    print(f"📊 Database: {_t.upper()}")
+    if _t == 'postgresql':
         print("   ✓ Using PostgreSQL (production mode)")
     else:
         print("   ✓ Using SQLite (development mode)")

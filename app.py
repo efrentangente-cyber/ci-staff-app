@@ -2,6 +2,15 @@
 import eventlet
 eventlet.monkey_patch()
 
+import sys
+
+# Avoid UnicodeEncodeError on Windows consoles when printing diagnostic messages.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 from flask import Flask, g, has_request_context, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory, session
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_socketio import SocketIO, emit, join_room, disconnect
@@ -79,7 +88,10 @@ app.config['WTF_CSRF_CHECK_DEFAULT'] = os.getenv('WTF_CSRF_CHECK_DEFAULT', 'True
 app.config['REMEMBER_COOKIE_DURATION'] = __import__('datetime').timedelta(days=30)
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=2)  # Session expires after 2 hours of inactivity
 app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
-app.config['SESSION_COOKIE_SECURE'] = True  # Only send cookie over HTTPS
+# Only send cookies over HTTPS in production by default; allow local HTTP dev unless overridden.
+_is_production = (os.getenv('FLASK_ENV', '').lower() == 'production') or (os.getenv('RENDER', '').lower() == 'true')
+_default_secure_cookie = _is_production
+app.config['SESSION_COOKIE_SECURE'] = (os.getenv('SESSION_COOKIE_SECURE', str(_default_secure_cookie))).lower() == 'true'
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
 
@@ -506,11 +518,54 @@ def _is_path_within_directory(directory, candidate_path):
     return p == d or p.startswith(d_prefix)
 
 
+def _upload_relpath_for_serve(file_path_stored):
+    """
+    Build the relative path under UPLOAD_FOLDER for use with serve_upload <path:filename>.
+    The DB may store a Windows path, a relative path, or 'uploads/...' — only using basename
+    was wrong for subfolders and sometimes failed when cwd differed from where files live.
+    """
+    if not file_path_stored or not str(file_path_stored).strip():
+        return ''
+    s = str(file_path_stored).replace('\\', '/').strip()
+    s = s.split('?')[0].split('#')[0]
+    parts = [p for p in s.split('/') if p]
+    if not parts:
+        return ''
+    for j, seg in enumerate(parts):
+        if seg.lower() == 'uploads' and j < len(parts) - 1:
+            sub = '/'.join(parts[j + 1 :])
+            if '..' in sub.split('/'):
+                return os.path.basename(s.replace('/', os.sep) or s)
+            return sub
+    return parts[-1]
+
+
+# Optional: set HSTS_ENABLE=false to disable (e.g. split HTTP/HTTPS in odd setups).
+_hsts_header_enabled = (os.getenv('HSTS_ENABLE', 'true' if _is_production else 'false')).lower() == 'true'
+
+
+def _client_request_is_https():
+    """True when the public URL is HTTPS (proxy-friendly; does not change app logic)."""
+    if request.is_secure:
+        return True
+    return (request.headers.get('X-Forwarded-Proto', '') or '').lower().split(',')[0].strip() == 'https'
+
+
 @app.after_request
 def _add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # Legacy plugins / cross-domain policy files; does not affect normal HTML/JS.
+    response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
+    if _hsts_header_enabled and _client_request_is_https():
+        try:
+            max_age = int((os.getenv('HSTS_MAX_AGE') or '15552000').strip())  # default 180 days
+        except ValueError:
+            max_age = 15552000
+        if max_age > 0:
+            # Subresource behavior unchanged; this only hardens the HTTPS channel after first visit.
+            response.headers.setdefault('Strict-Transport-Security', f'max-age={max_age}; includeSubDomains')
     return response
 
 
@@ -1105,18 +1160,33 @@ def setup_production_users():
                     ('Incentive Loan', 'Incentive loan', 1)
                 ]
                 
+                inserted = 0
                 for loan_name, description, is_active in loan_types:
                     try:
-                        conn.execute('''
-                            INSERT INTO loan_types (loan_name, description, is_active)
-                            VALUES (?, ?, ?)
-                        ''', (loan_name, description, is_active))
+                        # SQLite schema uses name; older/PostgreSQL variants may use loan_name.
+                        try:
+                            conn.execute(
+                                '''
+                                INSERT INTO loan_types (name, description, is_active)
+                                VALUES (?, ?, ?)
+                                ''',
+                                (loan_name, description, is_active),
+                            )
+                        except Exception:
+                            conn.execute(
+                                '''
+                                INSERT INTO loan_types (loan_name, description, is_active)
+                                VALUES (?, ?, ?)
+                                ''',
+                                (loan_name, description, is_active),
+                            )
+                        inserted += 1
                     except Exception as loan_error:
                         print(f"⚠️  Loan type warning for {loan_name}: {loan_error}")
                         continue
                 
                 conn.commit()
-                print(f"✓ Created {len(loan_types)} default loan types")
+                print(f"✓ Created {inserted} default loan types")
         except Exception as loan_types_error:
             print(f"⚠️  Loan types setup warning: {loan_types_error}")
         
@@ -1439,12 +1509,11 @@ def _build_semaphore_sender_candidates(api_key):
         p = part.strip()
         if p:
             _add(p)
-    # Dashboard / org sender (DCCCO on Semaphore matches most deployments; override with SEMAPHORE_DASHBOARD_SENDER)
-    org_sender = (os.getenv('SEMAPHORE_DASHBOARD_SENDER') or 'DCCCO').strip()
-    if org_sender:
-        _add(org_sender)
     for n in _fetch_semaphore_account_sender_names(api_key):
         _add(n)
+    dash = (os.getenv('SEMAPHORE_DASHBOARD_SENDER') or '').strip()
+    if dash:
+        _add(dash)
     # API docs: omitting sendername defaults to branded "Semaphore"; explicit sometimes matches account
     _add('SEMAPHORE')
     _add('')
@@ -1498,20 +1567,9 @@ def _send_sms_semaphore(phone_09, send_body_for_log):
     try:
         timeout = float(os.getenv('SEMAPHORE_TIMEOUT_SECONDS', '10'))
 
-        def _post_semaphore(url_to_use, send_payload):
-            """POST form body; on connection failure to api.semaphore.co, retry once on legacy host."""
-            try:
-                return requests.post(url_to_use, data=send_payload, timeout=timeout)
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as ex:
-                if 'api.semaphore.co' in (url_to_use or ''):
-                    legacy = 'https://semaphore.co/api/v4/messages'
-                    print(f"[SMS] Semaphore connection issue ({ex}); retrying {legacy}")
-                    return requests.post(legacy, data=send_payload, timeout=timeout)
-                raise
-
         def _attempt(send_payload, label):
             print(f"[SMS] Semaphore → {phone_09} ({label})")
-            response = _post_semaphore(url, send_payload)
+            response = requests.post(url, data=send_payload, timeout=timeout)
             text = (response.text or '').strip()
             try:
                 data = response.json()
@@ -1800,9 +1858,9 @@ def build_system_context():
 Flask-based loan management system for DCCCO Multipurpose Cooperative with real-time features using Socket.IO.
 
 ## User Roles
-1. **admin**: Full system access, approves/rejects loans, manages users
-2. **loan_staff**: Submits loan applications, assigns to CI staff
-3. **ci_staff**: Conducts credit investigations, completes checklists
+1. *admin*: Full system access, approves/rejects loans, manages users
+2. *loan_staff*: Submits loan applications, assigns to CI staff
+3. *ci_staff*: Conducts credit investigations, completes checklists
 
 ## Database Schema
 
@@ -1863,19 +1921,19 @@ Flask-based loan management system for DCCCO Multipurpose Cooperative with real-
 ## Common Issues & Solutions
 
 ### Issue: User not approved
-**Solution**: Admin must approve via /manage_users
+*Solution*: Admin must approve via /manage_users
 
 ### Issue: CI staff not receiving assignments
-**Solution**: Check current_workload in users table, verify is_approved=1
+*Solution*: Check current_workload in users table, verify is_approved=1
 
 ### Issue: SMS not sending
-**Solution**: Check SEMAPHORE_API_KEY or TEXTBELT_API_KEY in .env
+*Solution*: Check SEMAPHORE_API_KEY or TEXTBELT_API_KEY in .env
 
 ### Issue: Real-time features not working
-**Solution**: Verify Socket.IO connection, check browser console for errors
+*Solution*: Verify Socket.IO connection, check browser console for errors
 
 ### Issue: File upload failing
-**Solution**: Check UPLOAD_FOLDER permissions, verify file extension in ALLOWED_EXTENSIONS
+*Solution*: Check UPLOAD_FOLDER permissions, verify file extension in ALLOWED_EXTENSIONS
 
 ## File Structure
 - app.py: Main Flask application
@@ -2057,7 +2115,7 @@ def handle_internal_server_error(e):
     except Exception:
         return 'Temporary server issue. Please reload.', 500
 
-# Add security headers to prevent caching of authenticated *pages* (not /static/ JS/CSS)
+# Add security headers to prevent caching of authenticated pages (not /static/ JS/CSS)
 @app.after_request
 def add_security_headers(response):
     p = request.path or ''
@@ -3216,6 +3274,51 @@ def ci_review_application(id):
                          unread_count=unread_count)
 
 
+def _resolve_ci_signature_for_print(app_data):
+    """
+    Build a same-origin /signatures/<file> URL or pass through data:image/* for <img src>.
+    Submit may store an absolute _external URL; that breaks if host or scheme differs from
+    the current app. Fall back to the assigned CI user signature_path.
+    """
+    from urllib.parse import unquote, urlparse
+
+    raw = (app_data.get('ci_signature') or '').strip()
+    prof = (app_data.get('ci_signature_path') or '').strip().replace('\\', '/')
+
+    if raw.lower().startswith('data:image/'):
+        return raw
+
+    def _extract_filename(s):
+        if not s or s.lower().startswith('data:') or '..' in s:
+            return None
+        s = s.replace('\\', '/').strip()
+        is_http = s.startswith('http://') or s.startswith('https://')
+        if is_http:
+            s = (urlparse(s).path or '')
+            if '/signatures/' not in s:
+                return None
+        if '/signatures/' in s:
+            fn = unquote(s.split('/signatures/', 1)[-1].split('?')[0].split('#')[0])
+        else:
+            parts = s.rstrip('/').split('/')
+            fn = unquote(parts[-1]) if parts and parts[-1] else None
+        if not fn or '..' in fn or '/' in fn or '\\' in fn:
+            return None
+        return fn
+
+    for src in (raw, prof):
+        if not src:
+            continue
+        fn = _extract_filename(src)
+        if (not fn and src and not src.startswith('http') and '/signatures/' not in src
+                and '/' not in src and '\\' not in src
+                and re.search(r'\.(png|jpe?g|gif|webp|bmp|svg)$', src, re.I)):
+            fn = src
+        if fn:
+            return url_for('serve_signature', filename=fn)
+    return None
+
+
 @app.route('/view/checklist/<int:id>')
 @login_required
 def view_ci_checklist(id):
@@ -3243,14 +3346,7 @@ def view_ci_checklist(id):
 
         app_data = dict(app_row)
 
-        # Make sure printing the checklist always has a CI signature available.
-        if not app_data.get('ci_signature') and app_data.get('ci_signature_path'):
-            try:
-                sig_file = (app_data['ci_signature_path'] or '').replace('\\', '/').split('/')[-1]
-                if sig_file:
-                    app_data['ci_signature'] = url_for('serve_signature', filename=sig_file)
-            except Exception:
-                pass
+        app_data['ci_signature'] = _resolve_ci_signature_for_print(app_data)
 
         # Ensure completed timestamp is a plain string for the template.
         if app_data.get('ci_completed_at') and not isinstance(app_data['ci_completed_at'], str):
@@ -3288,19 +3384,26 @@ def view_ci_checklist(id):
         lps_photos = []
         ci_photos = []
         image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')
+        _asg = app_data.get('assigned_ci_staff')
         for doc in docs:
             d = dict(doc)
             path = (d.get('file_path') or '').replace('\\', '/')
-            filename = path.split('/')[-1] if path else ''
-            is_image = filename.lower().endswith(image_exts)
+            serve_key = (_upload_relpath_for_serve(d.get('file_path')) or (path.split('/')[-1] if path else '')).strip()
+            is_image = serve_key.lower().endswith(image_exts)
+            ub = d.get('uploaded_by')
+            try:
+                is_ci_doc = int(_asg) == int(ub) if _asg is not None and ub is not None else False
+            except (TypeError, ValueError):
+                is_ci_doc = str(_asg) == str(ub) if _asg is not None and ub is not None else False
             entry = {
-                'file_name': d.get('file_name') or filename,
-                'filename': filename,
+                'file_name': d.get('file_name') or (serve_key.rsplit('/', 1)[-1] if serve_key else ''),
+                'filename': serve_key,
                 'is_image': is_image,
                 'uploaded_by': d.get('uploaded_by'),
                 'uploaded_at': d.get('uploaded_at'),
+                'is_ci_upload': is_ci_doc,
             }
-            if d.get('uploaded_by') == app_data.get('assigned_ci_staff'):
+            if is_ci_doc:
                 ci_photos.append(entry)
             else:
                 lps_photos.append(entry)
@@ -5405,7 +5508,7 @@ def signup():
             import base64
             signature_base64 = signature_data.split(',')[1]
             signature_bytes = base64.b64decode(signature_base64)
-            signature_filename = f"signature_{email.replace('@', '_').replace('.', '_')}_{uuid.uuid4().hex[:8]}.png"
+            signature_filename = f"signature_{email.replace('@', '').replace('.', '')}_{uuid.uuid4().hex[:8]}.png"
             signature_path = os.path.join(app.config['SIGNATURE_FOLDER'], signature_filename)
             with open(signature_path, 'wb') as f:
                 f.write(signature_bytes)
@@ -6183,7 +6286,7 @@ def generate_report(report_type):
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
         ]))
         elements.append(table)
         elements.append(Spacer(1, 0.3*inch))
@@ -6249,7 +6352,7 @@ def generate_report(report_type):
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
         ]))
         elements.append(table)
         elements.append(Spacer(1, 0.3*inch))
@@ -6309,7 +6412,7 @@ def generate_report(report_type):
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
         ]))
         elements.append(table)
         elements.append(Spacer(1, 0.3*inch))
@@ -6532,7 +6635,7 @@ def update_signature():
         # Save new signature
         signature_base64 = signature_data.split(',')[1]
         signature_bytes = base64.b64decode(signature_base64)
-        signature_filename = f"signature_{current_user.email.replace('@', '_').replace('.', '_')}_{uuid.uuid4().hex[:8]}.png"
+        signature_filename = f"signature_{current_user.email.replace('@', '').replace('.', '')}_{uuid.uuid4().hex[:8]}.png"
         signature_path = os.path.join(app.config['SIGNATURE_FOLDER'], signature_filename)
         with open(signature_path, 'wb') as f:
             f.write(signature_bytes)

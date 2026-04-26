@@ -24,7 +24,7 @@
       <div class="formal-page-signoff__sigspace{% if ci_signature_url %} formal-page-signoff__sigspace--with-img{% endif %}"{% if not ci_signature_url %} aria-hidden="true"{% endif %}>
         {% if ci_signature_url %}
         <div class="formal-page-signoff__imgbox">
-          <img src="{{ ci_signature_url }}" alt="CI/BI digital signature" class="formal-page-signoff__img" loading="eager" decoding="async" fetchpriority="high">
+          <img src="{{ ci_signature_url|e }}" alt="" class="formal-page-signoff__img" loading="eager" decoding="async" fetchpriority="high" onerror="this.remove()">
         </div>
         {% endif %}
       </div>
@@ -572,16 +572,23 @@
                 <div class="print-photo-grid__cell" role="listitem">
                     {% if photo and photo.is_image %}
                         <div class="text-center mb-0" style="font-size:7pt; font-weight:700; letter-spacing:0.04em;">
-                            {% if application.assigned_ci_staff and (photo.uploaded_by == application.assigned_ci_staff) %}CI/BI{% else %}LPS{% endif %}
+                            {% if photo.is_ci_upload %}CI/BI{% else %}LPS{% endif %}
                         </div>
+                        {% if photo.filename %}
+                        <div class="print-doc-slot w-100">
                         <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
                             <img src="{{ url_for('serve_upload', filename=photo.filename) }}"
-                                 alt="{{ photo.file_name }}">
+                                 alt="" loading="eager" class="print-doc-photo" onerror="var s=this.closest(&quot;.print-doc-slot&quot;); this.remove(); if(s){ var b=s.querySelector(&quot;.print-doc-photo-missing&quot;); if(b) b.classList.remove(&quot;d-none&quot;); }">
                         </a>
+                        <p class="small text-danger d-none print-doc-photo-missing mb-0 text-center" style="font-size:7.5pt;">File missing on this server. Restore the <code>uploads</code> folder or re-upload. ({{ photo.file_name }})</p>
+                        </div>
+                        {% else %}
+                        <p class="small text-muted mb-0" style="font-size:7.5pt;">No path in database</p>
+                        {% endif %}
                         <div class="text-muted small mt-1" style="font-size:7.5pt;">{{ photo.file_name }}</div>
                     {% elif photo %}
                         <div class="text-center mb-0" style="font-size:7pt; font-weight:700;">
-                            {% if application.assigned_ci_staff and (photo.uploaded_by == application.assigned_ci_staff) %}CI/BI{% else %}LPS{% endif %}
+                            {% if photo.is_ci_upload %}CI/BI{% else %}LPS{% endif %}
                         </div>
                         <a class="small" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
                             <i class="bi bi-file-earmark"></i> {{ photo.file_name }}
@@ -1157,12 +1164,12 @@
                     }
                     .print-cf-excel-tile,
                     .print-cashflow-excel-tile {
-                        max-height: 220mm;
-                        overflow: hidden !important;
+                        max-height: none !important;
+                        overflow: visible !important;
                     }
                     .print-cashflow-excel-tile .excel-container-view {
-                        max-height: 220mm;
-                        overflow: hidden !important;
+                        max-height: none !important;
+                        overflow: visible !important;
                     }
 
                     html, body {
@@ -1202,12 +1209,12 @@
                     /* Clean professional print: no grid lines */
                     #excel-view-container .excel-table-view td {
                         border: none !important;
-                        font-size: 8.5px !important;
-                        padding: 1px 2px !important;
+                        font-size: 10pt !important;
+                        padding: 4px 5px !important;
                         background: transparent !important;
                         color: #000 !important;
                         min-width: 0 !important;
-                        line-height: 1.2 !important;
+                        line-height: 1.4 !important;
                         white-space: normal !important;
                         word-break: break-word !important;
                         overflow-wrap: anywhere !important;
