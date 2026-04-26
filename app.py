@@ -269,6 +269,34 @@ def utc_iso_z_filter(value):
     """Naive DB UTC datetimes as ISO+Z for data attributes / JSON."""
     return naive_utc_iso_z(value)
 
+
+@app.template_filter('route_tokens')
+def route_tokens_filter(value):
+    """Split users.assigned_route (comma-separated route ids) for templates."""
+    if not value:
+        return []
+    return [x.strip() for x in str(value).split(',') if x.strip()]
+
+
+_CI_ROUTE_LABELS = {
+    'route_1_bayawan_kalumboyan': 'Bayawan → Kalumboyan',
+    'route_2_bayawan_basay': 'Bayawan → Basay',
+    'route_3_bayawan_sipalay': 'Bayawan → Sipalay',
+    'route_4_bayawan_santa_catalina': 'Bayawan → Santa Catalina',
+    'route_5_bayawan_center': 'Bayawan City Center',
+    'route_6_bayawan_omod': 'Bayawan → Omod',
+    'route_7_bayawan_tayawan': 'Bayawan → Tayawan',
+    'route_8_bayawan_mabinay': 'Bayawan → Mabinay',
+}
+
+
+@app.template_filter('ci_route_label')
+def ci_route_label_filter(rid):
+    if not rid:
+        return ''
+    return _CI_ROUTE_LABELS.get(str(rid).strip(), str(rid))
+
+
 # Allowed file extensions for uploads
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm', 'mp3', 'wav'}
 
@@ -6193,7 +6221,8 @@ def approve_user(user_id):
         if not user['role']:
             flash(f'Cannot approve {user["name"]} - Please assign a role first!', 'warning')
             return redirect(url_for('manage_users'))
-        if user['role'] == 'ci_staff' and not user['assigned_route']:
+        _ar = (user['assigned_route'] or '').strip() if user.get('assigned_route') else ''
+        if user['role'] == 'ci_staff' and not _ar:
             flash(f'Cannot approve {user["name"]} - CI staff must have a route assigned!', 'warning')
             return redirect(url_for('manage_users'))
 
@@ -6385,15 +6414,46 @@ def update_ci_route():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     
+    def _normalize_assigned_route_from_request():
+        """Support one route, comma-separated string, JSON list, or multi-select form."""
+        parts = []
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            if isinstance(data.get('assigned_routes'), list):
+                parts = [str(x).strip() for x in data['assigned_routes'] if str(x).strip()]
+            else:
+                raw = data.get('assigned_route')
+                if raw is None:
+                    parts = []
+                elif isinstance(raw, list):
+                    parts = [str(x).strip() for x in raw if str(x).strip()]
+                else:
+                    parts = [p.strip() for p in str(raw).split(',') if p.strip()]
+        else:
+            parts = request.form.getlist('assigned_route')
+            if not parts:
+                single = request.form.get('assigned_route')
+                if single:
+                    parts = [p.strip() for p in str(single).split(',') if p.strip()]
+            else:
+                parts = [p.strip() for p in parts if p.strip()]
+        seen = set()
+        ordered = []
+        for p in parts:
+            if p and p not in seen:
+                seen.add(p)
+                ordered.append(p)
+        return ','.join(ordered) if ordered else None
+
     # Handle both JSON and form data
     if request.is_json:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         user_id = data.get('user_id')
-        assigned_route = data.get('assigned_route')
     else:
         user_id = request.form.get('user_id')
-        assigned_route = request.form.get('assigned_route')
-    
+
+    assigned_route = _normalize_assigned_route_from_request()
+
     if not user_id:
         if request.is_json:
             return jsonify({'success': False, 'error': 'User ID required'}), 400

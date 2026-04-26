@@ -78,20 +78,22 @@
                         </td>
                         <td>
                             {% if user.role == 'ci_staff' or not user.role %}
-                            <!-- Route Assignment Dropdown (shown for CI staff or unassigned) -->
-                            <select class="form-select form-select-sm route-select-{{ user.id }}" 
-                                    onchange="assignRoute({{ user.id }}, this.value)"
+                            <!-- Route assignment: hold Ctrl (Windows) or ⌘ (Mac) to pick more than one -->
+                            <select class="form-select form-select-sm route-select-{{ user.id }}"
+                                    multiple
+                                    size="5"
+                                    onchange="assignRouteMulti({{ user.id }}, this)"
                                     style="width: auto; min-width: 180px; {% if user.role and user.role != 'ci_staff' %}display:none;{% endif %}"
+                                    title="Hold Ctrl/⌘ and click to select multiple routes"
                                     {% if user.role != 'ci_staff' %}disabled{% endif %}>
-                                <option value="">Select Route...</option>
-                                <option value="route_1_bayawan_kalumboyan" {% if user.assigned_route == 'route_1_bayawan_kalumboyan' %}selected{% endif %}>Route 1: Bayawan → Kalumboyan</option>
-                                <option value="route_2_bayawan_basay" {% if user.assigned_route == 'route_2_bayawan_basay' %}selected{% endif %}>Route 2: Bayawan → Basay</option>
-                                <option value="route_3_bayawan_sipalay" {% if user.assigned_route == 'route_3_bayawan_sipalay' %}selected{% endif %}>Route 3: Bayawan → Sipalay</option>
-                                <option value="route_4_bayawan_santa_catalina" {% if user.assigned_route == 'route_4_bayawan_santa_catalina' %}selected{% endif %}>Route 4: Bayawan → Santa Catalina</option>
-                                <option value="route_5_bayawan_center" {% if user.assigned_route == 'route_5_bayawan_center' %}selected{% endif %}>Route 5: Bayawan City Center</option>
-                                <option value="route_6_bayawan_omod" {% if user.assigned_route == 'route_6_bayawan_omod' %}selected{% endif %}>Route 6: Bayawan → Omod</option>
-                                <option value="route_7_bayawan_tayawan" {% if user.assigned_route == 'route_7_bayawan_tayawan' %}selected{% endif %}>Route 7: Bayawan → Tayawan</option>
-                                <option value="route_8_bayawan_mabinay" {% if user.assigned_route == 'route_8_bayawan_mabinay' %}selected{% endif %}>Route 8: Bayawan → Mabinay</option>
+                                <option value="route_1_bayawan_kalumboyan" {% if 'route_1_bayawan_kalumboyan' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 1: Bayawan → Kalumboyan</option>
+                                <option value="route_2_bayawan_basay" {% if 'route_2_bayawan_basay' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 2: Bayawan → Basay</option>
+                                <option value="route_3_bayawan_sipalay" {% if 'route_3_bayawan_sipalay' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 3: Bayawan → Sipalay</option>
+                                <option value="route_4_bayawan_santa_catalina" {% if 'route_4_bayawan_santa_catalina' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 4: Bayawan → Santa Catalina</option>
+                                <option value="route_5_bayawan_center" {% if 'route_5_bayawan_center' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 5: Bayawan City Center</option>
+                                <option value="route_6_bayawan_omod" {% if 'route_6_bayawan_omod' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 6: Bayawan → Omod</option>
+                                <option value="route_7_bayawan_tayawan" {% if 'route_7_bayawan_tayawan' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 7: Bayawan → Tayawan</option>
+                                <option value="route_8_bayawan_mabinay" {% if 'route_8_bayawan_mabinay' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 8: Bayawan → Mabinay</option>
                             </select>
                             {% else %}
                             <small class="text-muted">N/A</small>
@@ -188,22 +190,12 @@
                         <td>
                             {% if user.role == 'ci_staff' %}
                                 {% if user.assigned_route %}
-                                <small class="text-success">
-                                    {% if user.assigned_route == 'route_1_bayawan_kalumboyan' %}Bayawan → Kalumboyan
-                                    {% elif user.assigned_route == 'route_2_bayawan_basay' %}Bayawan → Basay
-                                    {% elif user.assigned_route == 'route_3_bayawan_sipalay' %}Bayawan → Sipalay
-                                    {% elif user.assigned_route == 'route_4_bayawan_santa_catalina' %}Bayawan → Santa Catalina
-                                    {% elif user.assigned_route == 'route_5_bayawan_center' %}Bayawan Center
-                                    {% elif user.assigned_route == 'route_6_bayawan_omod' %}Bayawan → Omod
-                                    {% elif user.assigned_route == 'route_7_bayawan_tayawan' %}Bayawan → Tayawan
-                                    {% elif user.assigned_route == 'route_8_bayawan_mabinay' %}Bayawan → Mabinay
-                                    {% else %}{{ user.assigned_route }}{% endif %}
-                                </small>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="editRoute({{ user.id }}, '{{ user.assigned_route or '' }}', '{{ user.name }}')">
+                                <small class="text-success">{% for t in (user.assigned_route|route_tokens) %}{{ t|ci_route_label }}{% if not loop.last %}, {% endif %}{% endfor %}</small>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="editRoute({{ user.id }}, {{ (user.assigned_route or '')|tojson }}, {{ user.name|tojson }})">
                                     <i class="bi bi-pencil"></i>
                                 </button>
                                 {% else %}
-                                <a href="javascript:void(0)" class="text-primary" onclick="editRoute({{ user.id }}, '', '{{ user.name }}')">
+                                <a href="javascript:void(0)" class="text-primary" onclick="editRoute({{ user.id }}, '', {{ user.name|tojson }})">
                                     <i class="bi bi-plus-circle"></i> Add Route
                                 </a>
                                 {% endif %}
@@ -243,18 +235,21 @@
             </div>
             <form method="POST" action="/update_ci_route">
                 <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="user_id" id="edit_user_id">
                     <p>Assign route for: <strong id="edit_user_name"></strong></p>
+                    <p class="small text-muted">Hold <kbd>Ctrl</kbd> / <kbd>⌘</kbd> to select more than one route.</p>
                     <div class="mb-3">
-                        <label class="form-label">Select Route</label>
-                        <select class="form-select" name="assigned_route" id="edit_assigned_route" required>
-                            <option value="">-- Select Route --</option>
-                            <option value="route_1_bayawan_kalumboyan">Bayawan → Kalumboyan → Border</option>
-                            <option value="route_2_bayawan_basay">Bayawan → Candumao → Basay → Border</option>
-                            <option value="route_3_bayawan_sipalay">Bayawan → Sipalay</option>
-                            <option value="route_4_bayawan_santa_catalina">Bayawan → Santa Catalina</option>
-                            <option value="route_5_bayawan_center">Bayawan City Center</option>
-                            <option value="route_6_bayawan_omod">Bayawan → Omod → Border</option>
+                        <label class="form-label">Routes</label>
+                        <select class="form-select" name="assigned_route" id="edit_assigned_route" multiple size="7" required aria-required="true">
+                            <option value="route_1_bayawan_kalumboyan">Route 1: Bayawan → Kalumboyan</option>
+                            <option value="route_2_bayawan_basay">Route 2: Bayawan → Basay</option>
+                            <option value="route_3_bayawan_sipalay">Route 3: Bayawan → Sipalay</option>
+                            <option value="route_4_bayawan_santa_catalina">Route 4: Bayawan → Santa Catalina</option>
+                            <option value="route_5_bayawan_center">Route 5: Bayawan City Center</option>
+                            <option value="route_6_bayawan_omod">Route 6: Bayawan → Omod</option>
+                            <option value="route_7_bayawan_tayawan">Route 7: Bayawan → Tayawan</option>
+                            <option value="route_8_bayawan_mabinay">Route 8: Bayawan → Mabinay</option>
                         </select>
                     </div>
                 </div>
@@ -309,7 +304,12 @@ function searchUsers(tableType) {
 function editRoute(userId, currentRoute, userName) {
     document.getElementById('edit_user_id').value = userId;
     document.getElementById('edit_user_name').textContent = userName;
-    document.getElementById('edit_assigned_route').value = currentRoute;
+    const sel = document.getElementById('edit_assigned_route');
+    const parts = (currentRoute && typeof currentRoute === 'string' ? currentRoute : '')
+        .split(',')
+        .map(function (s) { return s.trim(); })
+        .filter(Boolean);
+    Array.from(sel.options).forEach(function (o) { o.selected = parts.indexOf(o.value) >= 0; });
     const modal = new bootstrap.Modal(document.getElementById('routeModal'));
     modal.show();
 }
@@ -412,40 +412,37 @@ function changeUserRole(userId, newRole, userName) {
     });
 }
 
-// Assign route to pending CI staff
-function assignRoute(userId, route) {
-    if (!route) {
-        return; // Allow empty selection
+// Assign one or more routes to pending CI staff (comma-separated on server)
+function assignRouteMulti(userId, selectEl) {
+    const values = Array.from(selectEl.selectedOptions)
+        .map(function (o) { return o.value; })
+        .filter(Boolean);
+    if (!values.length) {
+        return;
     }
-    
-    fetch(`/update_ci_route`, {
+    const route = values.join(',');
+    fetch('/update_ci_route', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
             user_id: userId,
-            assigned_route: route 
+            assigned_route: route
         })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Show success message
-            const alert = document.createElement('div');
-            alert.className = 'alert alert-success alert-dismissible fade show';
-            alert.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
-            alert.innerHTML = `
-                <strong>Success!</strong> Route assigned successfully.
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            document.body.appendChild(alert);
-            setTimeout(() => alert.remove(), 3000);
+            const al = document.createElement('div');
+            al.className = 'alert alert-success alert-dismissible fade show';
+            al.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+            al.innerHTML = '<strong>Success!</strong> Route(s) saved. <button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+            document.body.appendChild(al);
+            setTimeout(function () { al.remove(); }, 3000);
         } else {
-            alert('Error: ' + data.error);
+            alert('Error: ' + (data.error || 'unknown'));
         }
     })
-    .catch(error => {
+    .catch(function (error) {
         console.error('Error:', error);
         alert('Failed to assign route');
     });

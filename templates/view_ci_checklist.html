@@ -128,7 +128,7 @@
     <p class="cas-2col-signoff__title">Head, CIBI</p>
   </div>
 </div>
-<p class="cas-page-hint">page 1 of 2</p>
+<p class="cas-page-hint">Page 4 of 7</p>
 {%- endmacro %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
 
@@ -484,6 +484,7 @@
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
+    .print-page--p7 { page-break-after: auto !important; }
     .print-page:last-of-type { page-break-after: auto; }
     .print-page .card {
         border: 1px solid #000 !important;
@@ -540,15 +541,24 @@
         print-color-adjust: economy !important;
         -webkit-print-color-adjust: economy !important;
     }
+    .print-checklist-pagenum {
+        text-align: right;
+        font-size: 8pt;
+        color: #333;
+        margin: 0.35rem 0 0 0;
+    }
 }
 </style>
 
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-4 no-print">
-        <h2><i class="bi bi-clipboard-check"></i> CI Assessment Checklist - {{ application.member_name }}</h2>
+        <div>
+        <h2 class="mb-1"><i class="bi bi-clipboard-check"></i> CI Assessment Checklist - {{ application.member_name }}</h2>
+        <p class="text-muted small mb-0">Loan-officer print package is <strong>7 pages</strong>: DCCCO forms 1–5, cash flow (page 6), evidence photos (page 7). Use <kbd>Ctrl</kbd>+<kbd>P</kbd> / Print to PDF.</p>
+        </div>
         <div class="d-flex gap-2">
             <button onclick="window.print()" class="btn btn-primary btn-lg">
-                <i class="bi bi-printer"></i> Print checklist
+                <i class="bi bi-printer"></i> Print 7 pages
             </button>
             <button type="button" class="btn btn-secondary" onclick="history.back()">
                 <i class="bi bi-arrow-left"></i> Back
@@ -565,51 +575,6 @@
     </div>
     {% endif %}
 
-    <!-- PAGE 0: LPS + CI/BI photos packed together — 4 per page (2×2), order: all LPS first, then all CI/BI (same as upload buckets) -->
-    {% if all_checklist_photos %}
-    {% for photo_batch in all_checklist_photos|batch(4) %}
-    <div class="card print-page print-page--photos">
-        <div class="card-header bg-primary text-white text-center print-photos-combined-header">
-            <h4 class="mb-0">APPLICATION PHOTOS — LPS + CI/BI</h4>
-            <small>Page {{ loop.index }} of {{ (all_checklist_photos|length + 3) // 4 }} (packed: 4 per page, LPS then CI/BI in one run)</small>
-        </div>
-        <div class="card-body">
-            <div class="print-photo-grid" role="list">
-                {% for i in range(4) %}
-                {% set photo = photo_batch[i] if i < (photo_batch|length) else none %}
-                <div class="print-photo-grid__cell" role="listitem">
-                    {% if photo and photo.is_image %}
-                        <div class="text-center mb-0" style="font-size:7pt; font-weight:700; letter-spacing:0.04em;">
-                            {% if photo.is_ci_upload %}CI/BI{% else %}LPS{% endif %}
-                        </div>
-                        {% if photo.filename %}
-                        <div class="print-doc-slot w-100">
-                        <a href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
-                            <img src="{{ url_for('serve_upload', filename=photo.filename) }}"
-                                 alt="" loading="eager" class="print-doc-photo" onerror="var s=this.closest(&quot;.print-doc-slot&quot;); this.remove(); if(s){ var b=s.querySelector(&quot;.print-doc-photo-missing&quot;); if(b) b.classList.remove(&quot;d-none&quot;); }">
-                        </a>
-                        <p class="small text-danger d-none print-doc-photo-missing mb-0 text-center" style="font-size:7.5pt;">File missing on this server. Restore the <code>uploads</code> folder or re-upload. ({{ photo.file_name }})</p>
-                        </div>
-                        {% else %}
-                        <p class="small text-muted mb-0" style="font-size:7.5pt;">No path in database</p>
-                        {% endif %}
-                        <div class="text-muted small mt-1" style="font-size:7.5pt;">{{ photo.file_name }}</div>
-                    {% elif photo %}
-                        <div class="text-center mb-0" style="font-size:7pt; font-weight:700;">
-                            {% if photo.is_ci_upload %}CI/BI{% else %}LPS{% endif %}
-                        </div>
-                        <a class="small" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener">
-                            <i class="bi bi-file-earmark"></i> {{ photo.file_name }}
-                        </a>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-    {% endif %}
-
     {% if (not checklist_data) and all_checklist_photos %}
     <div class="alert alert-info no-print">
         <i class="bi bi-info-circle"></i>
@@ -624,7 +589,7 @@
         </div>
         <div class="card-body" style="padding-top:0.5rem;">
             <div class="print-dccco-meta" style="margin-top:0.25rem;">
-                <span>DCCCO Form No. 086</span>
+                <span>DCCCO Form No. 056</span>
                 <span>Revised October 2021</span>
             </div>
             <p class="print-section-dccco">PERSONAL DATA</p>
@@ -790,6 +755,7 @@
                 </tr>
             </table>
             {{ formal_page_signoff(application.ci_signature) }}
+            <p class="print-checklist-pagenum">Page 1 of 7</p>
         </div>
     </div>
 
@@ -922,349 +888,11 @@
                 </tr>
             </table>
             {{ signoff_credit_investigation_3col(application.ci_signature) }}
+            <p class="print-checklist-pagenum">Page 2 of 7</p>
         </div>
     </div>
 
-    <!-- PAGE 2.5: CASH FLOW STATEMENT (EXCEL SPREADSHEET) — one print page -->
-    {% if checklist_data.get('excel_cashflow') %}
-    <div class="card print-page print-cashflow-block">
-        <div class="card-header bg-info text-white text-center">
-            <div class="print-dccco-meta" style="color: rgba(255,255,255,0.95); font-size: 8.5pt;">
-                <span>DCCCO</span>
-                <span>Excel / Cash Flow</span>
-            </div>
-            <h4 class="print-dccco-title" style="color:#fff; margin:0.15rem 0; font-size:1rem;">DCCCO MULTIPURPOSE COOPERATIVE</h4>
-            <p class="mb-0" style="font-size:0.8rem; letter-spacing:0.04em; text-transform:uppercase; font-weight:700;">CASH FLOW STATEMENT</p>
-            <small class="d-block" style="opacity:0.9;">(saved spreadsheet — same data as wizard)</small>
-        </div>
-        <div class="card-body" style="padding-top:0.4rem !important;">
-            <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
-            <div class="print-cashflow-excel-tile" id="print-cf-excel-tile">
-            <div id="excel-view-container"></div>
-            </div>
-            
-            <script>
-                // Load and display Excel data
-                document.addEventListener('DOMContentLoaded', function() {
-                    const excelData = {{ checklist_data.get('excel_cashflow', '{}')|tojson }};
-                    
-                    if (excelData && excelData.cells) {
-                        displayExcelData(excelData);
-                    }
-                });
-                
-                function displayExcelData(data) {
-                    const container = document.getElementById('excel-view-container');
-                    const rows = data.rows || 30;
-                    const cols = data.cols || 15;
-                    const cells = data.cells || {};
-                    const mergedCells = data.mergedCells || {};
-                    const usedRange = getUsedRange(cells, mergedCells, rows, cols);
-                    const startRow = usedRange.startRow;
-                    const endRow = usedRange.endRow;
-                    const startCol = usedRange.startCol;
-                    const endCol = usedRange.endCol;
-                    
-                    let html = '<div class="excel-container-view">';
-                    html += '<table class="excel-table-view">';
-                    
-                    // Header row
-                    html += '<thead><tr><th class="excel-corner"></th>';
-                    for (let col = startCol; col <= endCol; col++) {
-                        html += `<th class="excel-col-header">${getColumnName(col)}</th>`;
-                    }
-                    html += '</tr></thead>';
-                    
-                    // Body rows
-                    html += '<tbody>';
-                    for (let row = startRow; row <= endRow; row++) {
-                        html += '<tr>';
-                        html += `<th class="excel-row-header">${row + 1}</th>`;
-                        
-                        for (let col = startCol; col <= endCol; col++) {
-                            const cellRef = getCellReference(row, col);
-                            
-                            // Check if cell is hidden by merge
-                            if (isCellHidden(cellRef, mergedCells)) {
-                                continue;
-                            }
-                            
-                            const cell = cells[cellRef];
-                            let value = '';
-                            let hasFormula = false;
-                            
-                            if (cell) {
-                                value = cell.display || cell.value || '';
-                                hasFormula = !!cell.formula;
-                            }
-                            
-                            const formulaClass = hasFormula ? 'has-formula' : '';
-                            const title = hasFormula ? `Formula: ${cell.formula}` : '';
-                            
-                            // Check for merge
-                            let colspan = 1;
-                            let rowspan = 1;
-                            let mergedClass = '';
-                            if (mergedCells[cellRef]) {
-                                colspan = mergedCells[cellRef].colspan || 1;
-                                rowspan = mergedCells[cellRef].rowspan || 1;
-                                mergedClass = 'merged-cell-view';
-                            }
-                            
-                            html += `<td class="excel-cell-view ${formulaClass} ${mergedClass}" colspan="${colspan}" rowspan="${rowspan}" title="${title}">${value}</td>`;
-                        }
-                        html += '</tr>';
-                    }
-                    html += '</tbody></table></div>';
-                    
-                    container.innerHTML = html;
-                }
-                
-                function isCellHidden(cellRef, mergedCells) {
-                    const row = parseInt(cellRef.match(/\d+/)[0]) - 1;
-                    const col = getColumnIndex(cellRef.match(/[A-Z]+/)[0]);
-
-                    for (const [mergedRef, merge] of Object.entries(mergedCells)) {
-                        const mergedRow = parseInt(mergedRef.match(/\d+/)[0]) - 1;
-                        const mergedCol = getColumnIndex(mergedRef.match(/[A-Z]+/)[0]);
-
-                        const rowspan = merge.rowspan || 1;
-                        const colspan = merge.colspan || 1;
-
-                        if (row >= mergedRow && row < mergedRow + rowspan &&
-                            col >= mergedCol && col < mergedCol + colspan &&
-                            cellRef !== mergedRef) {
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-
-                function getUsedRange(cells, mergedCells, maxRows, maxCols) {
-                    let minRow = maxRows - 1;
-                    let maxRow = 0;
-                    let minCol = maxCols - 1;
-                    let maxCol = 0;
-                    let found = false;
-
-                    for (const [cellRef, cell] of Object.entries(cells || {})) {
-                        const content = String((cell && (cell.display || cell.value || '')) || '').trim();
-                        if (!content) continue;
-                        const row = parseInt(cellRef.match(/\d+/)[0], 10) - 1;
-                        const col = getColumnIndex(cellRef.match(/[A-Z]+/)[0]);
-                        minRow = Math.min(minRow, row);
-                        maxRow = Math.max(maxRow, row);
-                        minCol = Math.min(minCol, col);
-                        maxCol = Math.max(maxCol, col);
-                        found = true;
-                    }
-
-                    for (const [cellRef, merge] of Object.entries(mergedCells || {})) {
-                        const row = parseInt(cellRef.match(/\d+/)[0], 10) - 1;
-                        const col = getColumnIndex(cellRef.match(/[A-Z]+/)[0]);
-                        const rowspan = (merge && merge.rowspan) || 1;
-                        const colspan = (merge && merge.colspan) || 1;
-                        minRow = Math.min(minRow, row);
-                        maxRow = Math.max(maxRow, row + rowspan - 1);
-                        minCol = Math.min(minCol, col);
-                        maxCol = Math.max(maxCol, col + colspan - 1);
-                        found = true;
-                    }
-
-                    if (!found) {
-                        return {
-                            startRow: 0,
-                            endRow: Math.min(maxRows - 1, 11),
-                            startCol: 0,
-                            endCol: Math.min(maxCols - 1, 7),
-                        };
-                    }
-
-                    // Small breathing room around used content
-                    return {
-                        startRow: Math.max(0, minRow - 1),
-                        endRow: Math.min(maxRows - 1, maxRow + 1),
-                        startCol: Math.max(0, minCol),
-                        endCol: Math.min(maxCols - 1, maxCol),
-                    };
-                }
-                
-                function getColumnName(index) {
-                    let name = '';
-                    while (index >= 0) {
-                        name = String.fromCharCode(65 + (index % 26)) + name;
-                        index = Math.floor(index / 26) - 1;
-                    }
-                    return name;
-                }
-                
-                function getColumnIndex(name) {
-                    let index = 0;
-                    for (let i = 0; i < name.length; i++) {
-                        index = index * 26 + (name.charCodeAt(i) - 64);
-                    }
-                    return index - 1;
-                }
-                
-                function getCellReference(row, col) {
-                    return getColumnName(col) + (row + 1);
-                }
-            </script>
-            
-            <style>
-                .excel-container-view {
-                    overflow-x: auto;
-                    border: 1px solid #c0c0c0;
-                    background: #f0f0f0;
-                }
-                
-                .excel-table-view {
-                    border-collapse: collapse;
-                    width: 100%;
-                    background: white;
-                }
-                
-                .excel-table-view th,
-                .excel-table-view td {
-                    border: 1px solid #d0d0d0;
-                    padding: 8px;
-                    font-size: 12px;
-                }
-                
-                .excel-col-header,
-                .excel-row-header {
-                    background: #e0e0e0;
-                    font-weight: 600;
-                    text-align: center;
-                    min-width: 80px;
-                }
-                
-                .excel-corner {
-                    background: #e0e0e0;
-                    width: 40px;
-                }
-                
-                .excel-cell-view {
-                    background: white;
-                    min-width: 80px;
-                }
-                
-                .excel-cell-view.has-formula {
-                    background: #f8f9fa;
-                    font-weight: 500;
-                    color: #000;
-                }
-                
-                .excel-cell-view.merged-cell-view {
-                    background: #f8f9fa;
-                    text-align: center;
-                    font-weight: 600;
-                    color: #000;
-                }
-                
-                @media print {
-                    @page { size: auto; margin: 5mm; }
-
-                    /* allow pagination; avoid was fighting multi-page output */
-                    .print-cashflow-block {
-                        page-break-inside: auto !important;
-                        break-inside: auto !important;
-                    }
-                    .print-cf-excel-tile,
-                    .print-cashflow-excel-tile {
-                        max-height: none !important;
-                        overflow: visible !important;
-                    }
-                    .print-cashflow-excel-tile .excel-container-view {
-                        max-height: none !important;
-                        overflow: visible !important;
-                    }
-
-                    html, body {
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        width: 100% !important;
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-
-                    .excel-container-view {
-                        border: none !important;
-                        background: #fff !important;
-                        overflow: hidden !important;
-                        width: 100% !important;
-                        max-width: 100% !important;
-                    }
-
-                    /* Text only: hide A–D / 1–N chrome (view checklist cash flow) */
-                    #excel-view-container .excel-table-view thead,
-                    #excel-view-container .excel-corner,
-                    #excel-view-container .excel-col-header,
-                    #excel-view-container .excel-row-header,
-                    #excel-view-container .excel-table-view tbody tr > th {
-                        display: none !important;
-                        width: 0 !important;
-                        height: 0 !important;
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        border: 0 !important;
-                        font-size: 0 !important;
-                        line-height: 0 !important;
-                        overflow: hidden !important;
-                        visibility: hidden !important;
-                    }
-
-                    /* Clean professional print: no grid lines */
-                    #excel-view-container .excel-table-view td {
-                        border: none !important;
-                        font-size: 10pt !important;
-                        padding: 4px 5px !important;
-                        background: transparent !important;
-                        color: #000 !important;
-                        min-width: 0 !important;
-                        line-height: 1.4 !important;
-                        white-space: normal !important;
-                        word-break: break-word !important;
-                        overflow-wrap: anywhere !important;
-                    }
-
-                    #excel-view-container .excel-table-view {
-                        border: none !important;
-                        width: 100% !important;
-                        table-layout: auto !important;
-                        border-collapse: collapse !important;
-                    }
-
-                    #excel-view-container .excel-cell-view {
-                        border: none !important;
-                        background: transparent !important;
-                        box-shadow: none !important;
-                    }
-
-                    #excel-view-container .excel-cell-view.has-formula {
-                        background: transparent !important;
-                        color: #000 !important;
-                        -webkit-print-color-adjust: economy;
-                        print-color-adjust: economy;
-                    }
-
-                    #excel-view-container .excel-cell-view.merged-cell-view {
-                        background: transparent !important;
-                    }
-
-                    /* Allow natural row breaks so the browser does not insert huge blank gaps
-                       (avoid on every row forces each row to its own "chunk" in many engines). */
-                    #excel-view-container .excel-table-view tr {
-                        page-break-inside: auto !important;
-                        break-inside: auto !important;
-                    }
-                }
-            </style>
-            {{ formal_page_signoff(application.ci_signature) }}
-        </div>
-    </div>
-    {% endif %}
-
+    <!-- PAGE 3: COMPUTATION (DEIR) — pages 1–2 = Form 056 + credit; pages 4–5 = CAS + recommendation; 6–7 = cashflow + photos -->
     <!-- PAGE 3: COMPUTATION (MOST IMPORTANT) -->
     <div class="card print-page print-page--deir">
         <div class="card-header bg-success text-white text-center">
@@ -1438,6 +1066,7 @@
             {% endif %}
             </p>
             {{ signoff_deir(application.ci_signature) }}
+            <p class="print-checklist-pagenum">Page 3 of 7</p>
         </div>
     </div>
 
@@ -1670,12 +1299,218 @@
             </table>
             <p class="reco-legend"><strong>Legend:</strong> DEIR = Debt and Expense to Income Ratio. NTHP = Net Take Home Pay computation.</p>
             <p class="reco-legend" style="margin:0.15rem 0 0 0;">BOD Res. No. 187, s. 2022 (March 21, 2022)</p>
-            <p class="reco-page2-hint">page 2 of 2</p>
+            <p class="reco-page2-hint">Page 5 of 7</p>
         </div>
     </div>
 
-    <!-- CI SIGNATURE & GPS -->
-    <div class="card print-page">
+    {% set _excel_cf = (checklist_data or {}).get('excel_cashflow') %}
+    <!-- PAGE 6: CASH FLOW (Excel) -->
+    <div class="card print-page print-cashflow-block">
+        <div class="card-header bg-info text-white text-center">
+            <div class="print-dccco-meta" style="color: rgba(255,255,255,0.95); font-size: 8.5pt;">
+                <span>DCCCO</span>
+                <span>Excel / Cash Flow</span>
+            </div>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0.15rem 0; font-size:1rem;">DCCCO MULTIPURPOSE COOPERATIVE</h4>
+            <p class="mb-0" style="font-size:0.8rem; letter-spacing:0.04em; text-transform:uppercase; font-weight:700;">CASH FLOW STATEMENT</p>
+            <small class="d-block" style="opacity:0.9;">(saved spreadsheet from CI wizard — same as data entry)</small>
+        </div>
+        <div class="card-body" style="padding-top:0.4rem !important;">
+            <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
+            <div class="print-cashflow-excel-tile" id="print-cf-excel-tile-p6">
+                <div id="excel-view-container"></div>
+            </div>
+            {% if not _excel_cf or not _excel_cf.get('cells') %}
+            <p class="text-muted text-center small py-3 mb-0">No Excel cash flow spreadsheet was saved for this application.</p>
+            {% endif %}
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const excelData = {{ (_excel_cf or {})|tojson }};
+                    if (excelData && excelData.cells) {
+                        dcccoPrintCashflowRender(excelData);
+                    }
+                });
+                function dcccoPrintCashflowRender(data) {
+                    const container = document.getElementById('excel-view-container');
+                    if (!container) return;
+                    const rows = data.rows || 30;
+                    const cols = data.cols || 15;
+                    const cells = data.cells || {};
+                    const mergedCells = data.mergedCells || {};
+                    const usedRange = dcccoCFGetUsedRange(cells, mergedCells, rows, cols);
+                    const startRow = usedRange.startRow;
+                    const endRow = usedRange.endRow;
+                    const startCol = usedRange.startCol;
+                    const endCol = usedRange.endCol;
+                    let html = '<div class="excel-container-view"><table class="excel-table-view">';
+                    html += '<thead><tr><th class="excel-corner"></th>';
+                    for (let col = startCol; col <= endCol; col++) {
+                        html += '<th class="excel-col-header">' + dcccoCFGetColumnName(col) + '</th>';
+                    }
+                    html += '</tr></thead><tbody>';
+                    for (let row = startRow; row <= endRow; row++) {
+                        html += '<tr><th class="excel-row-header">' + (row + 1) + '</th>';
+                        for (let col = startCol; col <= endCol; col++) {
+                            const cellRef = dcccoCFGetCellRef(row, col);
+                            if (dcccoCFIsHidden(cellRef, mergedCells)) continue;
+                            const cell = cells[cellRef];
+                            let value = '';
+                            let hasFormula = false;
+                            if (cell) {
+                                value = cell.display || cell.value || '';
+                                hasFormula = !!cell.formula;
+                            }
+                            const formulaClass = hasFormula ? 'has-formula' : '';
+                            const title = hasFormula && cell ? ('Formula: ' + cell.formula) : '';
+                            let colspan = 1, rowspan = 1, mergedClass = '';
+                            if (mergedCells[cellRef]) {
+                                colspan = mergedCells[cellRef].colspan || 1;
+                                rowspan = mergedCells[cellRef].rowspan || 1;
+                                mergedClass = 'merged-cell-view';
+                            }
+                            html += '<td class="excel-cell-view ' + formulaClass + ' ' + mergedClass + '" colspan="' + colspan + '" rowspan="' + rowspan + '" title="' + title + '">' + value + '</td>';
+                        }
+                        html += '</tr>';
+                    }
+                    html += '</tbody></table></div>';
+                    container.innerHTML = html;
+                }
+                function dcccoCFIsHidden(cellRef, mergedCells) {
+                    const row = parseInt(cellRef.match(/\d+/)[0], 10) - 1;
+                    const col = dcccoCFGetColIdx(cellRef.match(/[A-Z]+/)[0]);
+                    for (const [mergedRef, merge] of Object.entries(mergedCells || {})) {
+                        const mergedRow = parseInt(mergedRef.match(/\d+/)[0], 10) - 1;
+                        const mergedCol = dcccoCFGetColIdx(mergedRef.match(/[A-Z]+/)[0]);
+                        const rowspan = merge.rowspan || 1;
+                        const colspan = merge.colspan || 1;
+                        if (row >= mergedRow && row < mergedRow + rowspan &&
+                            col >= mergedCol && col < mergedCol + colspan && cellRef !== mergedRef) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                function dcccoCFGetUsedRange(cells, mergedCells, maxRows, maxCols) {
+                    let minRow = maxRows - 1, maxRow = 0, minCol = maxCols - 1, maxCol = 0, found = false;
+                    for (const [cellRef, cell] of Object.entries(cells || {})) {
+                        const content = String((cell && (cell.display || cell.value || '')) || '').trim();
+                        if (!content) continue;
+                        const row = parseInt(cellRef.match(/\d+/)[0], 10) - 1;
+                        const col = dcccoCFGetColIdx(cellRef.match(/[A-Z]+/)[0]);
+                        minRow = Math.min(minRow, row);
+                        maxRow = Math.max(maxRow, row);
+                        minCol = Math.min(minCol, col);
+                        maxCol = Math.max(maxCol, col);
+                        found = true;
+                    }
+                    for (const [cellRef, merge] of Object.entries(mergedCells || {})) {
+                        const row = parseInt(cellRef.match(/\d+/)[0], 10) - 1;
+                        const col = dcccoCFGetColIdx(cellRef.match(/[A-Z]+/)[0]);
+                        const rowspan = (merge && merge.rowspan) || 1;
+                        const colspan = (merge && merge.colspan) || 1;
+                        minRow = Math.min(minRow, row);
+                        maxRow = Math.max(maxRow, row + rowspan - 1);
+                        minCol = Math.min(minCol, col);
+                        maxCol = Math.max(maxCol, col + colspan - 1);
+                        found = true;
+                    }
+                    if (!found) {
+                        return { startRow: 0, endRow: Math.min(maxRows - 1, 11), startCol: 0, endCol: Math.min(maxCols - 1, 7) };
+                    }
+                    return {
+                        startRow: Math.max(0, minRow - 1),
+                        endRow: Math.min(maxRows - 1, maxRow + 1),
+                        startCol: Math.max(0, minCol),
+                        endCol: Math.min(maxCols - 1, maxCol)
+                    };
+                }
+                function dcccoCFGetColumnName(index) {
+                    let name = '';
+                    let i = index;
+                    while (i >= 0) {
+                        name = String.fromCharCode(65 + (i % 26)) + name;
+                        i = Math.floor(i / 26) - 1;
+                    }
+                    return name;
+                }
+                function dcccoCFGetColIdx(name) {
+                    let index = 0;
+                    for (let j = 0; j < name.length; j++) {
+                        index = index * 26 + (name.charCodeAt(j) - 64);
+                    }
+                    return index - 1;
+                }
+                function dcccoCFGetCellRef(row, col) {
+                    return dcccoCFGetColumnName(col) + (row + 1);
+                }
+            </script>
+            <style>
+                .excel-container-view { overflow-x: auto; border: 1px solid #c0c0c0; background: #f0f0f0; }
+                .excel-table-view { border-collapse: collapse; width: 100%; background: #fff; }
+                .excel-table-view th, .excel-table-view td { border: 1px solid #d0d0d0; padding: 8px; font-size: 12px; }
+                .excel-col-header, .excel-row-header { background: #e0e0e0; font-weight: 600; text-align: center; min-width: 80px; }
+                .excel-corner { background: #e0e0e0; width: 40px; }
+                .excel-cell-view { background: #fff; min-width: 80px; }
+                .excel-cell-view.has-formula { background: #f8f9fa; font-weight: 500; }
+                .excel-cell-view.merged-cell-view { background: #f8f9fa; text-align: center; font-weight: 600; }
+                @media print {
+                    @page { size: auto; margin: 5mm; }
+                    .print-cashflow-block { page-break-inside: auto !important; }
+                    .print-cashflow-excel-tile, .print-cashflow-excel-tile .excel-container-view { max-height: none !important; overflow: visible !important; }
+                    #excel-view-container .excel-table-view thead,
+                    #excel-view-container .excel-corner,
+                    #excel-view-container .excel-col-header,
+                    #excel-view-container .excel-row-header,
+                    #excel-view-container .excel-table-view tbody tr > th {
+                        display: none !important; width: 0 !important; height: 0 !important; padding: 0 !important; border: 0 !important; font-size: 0 !important; visibility: hidden !important;
+                    }
+                    #excel-view-container .excel-table-view td {
+                        border: none !important; font-size: 10pt !important; padding: 4px 5px !important; background: transparent !important; color: #000 !important;
+                    }
+                    #excel-view-container .excel-table-view { border: none !important; width: 100% !important; }
+                }
+            </style>
+            {{ formal_page_signoff(application.ci_signature) }}
+            <p class="print-checklist-pagenum">Page 6 of 7</p>
+        </div>
+    </div>
+
+    <!-- PAGE 7: EVIDENCE PHOTOS (LPS + CI/BI) -->
+    <div class="card print-page print-page--photos print-page--p7">
+        <div class="card-header bg-primary text-white text-center print-photos-combined-header">
+            <h4 class="mb-0">EVIDENCE PHOTOS (LPS + CI/BI)</h4>
+            <small>Up to four (4) images on this page; see application record for any additional files.</small>
+        </div>
+        <div class="card-body d-flex flex-column" style="min-height:0;">
+            {% if all_checklist_photos %}
+            <div class="print-photo-grid" role="list">
+                {% for photo in all_checklist_photos[:4] %}
+                <div class="print-photo-grid__cell" role="listitem">
+                    {% if photo and photo.is_image and photo.filename %}
+                    <div class="text-center mb-0" style="font-size:7pt; font-weight:700;">{% if photo.is_ci_upload %}CI/BI{% else %}LPS{% endif %}</div>
+                    <div class="print-doc-slot w-100 text-center">
+                        <img src="{{ url_for('serve_upload', filename=photo.filename) }}" alt="" class="print-doc-photo" loading="eager"
+                             onerror="this.remove();">
+                    </div>
+                    <div class="text-muted small mt-1" style="font-size:7.5pt;">{{ photo.file_name }}</div>
+                    {% elif photo and photo.filename %}
+                    <a class="small" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener"><i class="bi bi-file-earmark"></i> {{ photo.file_name }}</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% if all_checklist_photos|length > 4 %}
+            <p class="small text-center mt-1 mb-0" style="font-size:8pt;">+ {{ all_checklist_photos|length - 4 }} more file(s) in the application; open digitally for full set.</p>
+            {% endif %}
+            {% else %}
+            <p class="text-muted text-center py-4 mb-0">No LPS or CI/BI photos attached to this package.</p>
+            {% endif %}
+            <p class="print-checklist-pagenum">Page 7 of 7</p>
+        </div>
+    </div>
+
+    <!-- CI SIGNATURE & GPS (on-screen only — not part of the 7 formal LO print pages) -->
+    <div class="card no-print">
         <div class="card-header bg-success text-white text-center">
             <h4>CI/BI SIGNATURE & VERIFICATION</h4>
         </div>
