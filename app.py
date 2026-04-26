@@ -6024,6 +6024,8 @@ def _prepare_signup_hand_captcha():
     return {
         'hand_sign_prompt': expected[1],
         'hand_choices': order,
+        'captcha_expected_id': expected[0],
+        'captcha_target_emoji': expected[2],
     }
 
 

@@ -93,6 +93,9 @@
             box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.2);
         }
         .hp-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+        .gc-target-big { font-size: 3.25rem; line-height: 1; }
+        .gc-preview-wrap { max-height: 280px; background: #0f172a; }
+        .gc-preview-wrap video { min-height: 200px; object-fit: cover; vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -155,17 +158,43 @@
                 </div>
             </div>
 
-            <div class="mb-4 hand-sign-captcha" id="handSignCaptcha">
-                <label class="form-label"><i class="bi bi-shield-check"></i> Hand sign (human check)</label>
-                <p class="small text-muted mb-2">This blocks automated sign-ups. <strong>Tap the emoji</strong> that matches:</p>
-                <p class="mb-3 fw-semibold" style="color: #1e3a5f;">{{ hand_sign_prompt }}</p>
-                <input type="hidden" name="hand_sign" id="hand_sign" value="" autocomplete="off">
-                <div class="d-flex flex-wrap gap-2 justify-content-center" role="group" aria-label="Hand sign choices">
-                    {% for row in hand_choices %}
-                    <button type="button" class="btn hand-btn hand-btn-choice" data-hand="{{ row[0] }}" title="{{ row[1] }}">{{ row[2] }}</button>
-                    {% endfor %}
+            <div
+                class="mb-4 hand-sign-captcha"
+                id="gestureRoot"
+                data-expected-id="{{ captcha_expected_id|e }}"
+                data-target-emoji="{{ captcha_target_emoji|e }}"
+                data-prompt-hint="{{ hand_sign_prompt|e }}"
+            >
+                <label class="form-label"><i class="bi bi-shield-check"></i> Hand sign (camera check)</label>
+                <p class="small text-muted mb-2">Use your <strong>camera</strong> and match the hand pose below. This blocks bot sign-ups.</p>
+                <p class="mb-2 small fw-semibold" style="color: #1e3a5f;">{{ hand_sign_prompt }}</p>
+                <div class="text-center py-2 mb-3">
+                    <span class="d-inline-block gc-target-big" id="gcTargetEmoji" title="Match this in front of the camera" aria-hidden="true">{{ captcha_target_emoji }}</span>
                 </div>
-                <p class="text-danger small mt-2 d-none" id="handSignError">Please select the hand that matches the description above.</p>
+                <input type="hidden" name="hand_sign" id="hand_sign" value="" autocomplete="off">
+                <div class="position-relative rounded overflow-hidden border gc-preview-wrap mb-2">
+                    <video id="gcVideo" class="w-100" playsinline muted style="object-fit: cover;" aria-label="Camera preview for hand check"></video>
+                    <canvas id="gcCanvas" class="position-absolute top-0 start-0 w-100 h-100" style="pointer-events: none;" aria-hidden="true"></canvas>
+                </div>
+                <div class="d-flex flex-wrap gap-2 justify-content-center mb-2">
+                    <button type="button" class="btn btn-primary btn-sm" id="gcStart"><i class="bi bi-camera-video"></i> Start camera</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="gcStop" disabled>Stop</button>
+                    <button type="button" class="btn btn-success btn-sm" id="gcVerify" disabled><i class="bi bi-check2-circle"></i> Verify gesture</button>
+                </div>
+                <p class="small mb-1" id="gcStatus" style="min-height: 1.2em; color: #4b5563;">Allow camera, then make the same gesture as the large emoji above and tap <strong>Verify gesture</strong>.</p>
+                <div class="alert alert-success small py-2 d-none" id="gcMatched"><i class="bi bi-check-circle-fill me-1"></i> Matched. You can register below.</div>
+                <p class="text-center small text-muted my-1">
+                    <button type="button" class="btn btn-link btn-sm p-0" id="gcShowFallback">Can’t use camera? Tap the emoji</button>
+                </p>
+                <div id="gcFallback" class="d-none border-top pt-3 mt-2">
+                    <p class="small text-muted">Pick the matching emoji (same as before):</p>
+                    <div class="d-flex flex-wrap gap-2 justify-content-center" role="group" aria-label="Hand sign fallback">
+                        {% for row in hand_choices %}
+                        <button type="button" class="btn hand-btn hand-btn-choice" data-hand="{{ row[0] }}" title="{{ row[1] }}">{{ row[2] }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                <p class="text-danger small mt-2 d-none" id="handSignError">Complete the hand check above, then try Register again.</p>
             </div>
             
             <button type="submit" class="btn btn-primary w-100" id="btnRegister">
@@ -180,18 +209,22 @@
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
+    <script src="{{ url_for('static', filename='gesture-captcha.js') }}?v=2"></script>
     <script>
     (function () {
         const hidden = document.getElementById('hand_sign');
         const err = document.getElementById('handSignError');
-        document.querySelectorAll('.hand-btn-choice').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                document.querySelectorAll('.hand-btn-choice').forEach(function (b) { b.classList.remove('selected'); });
-                btn.classList.add('selected');
-                hidden.value = btn.getAttribute('data-hand') || '';
-                if (err) { err.classList.add('d-none'); }
+        function bindHandChoices(container) {
+            (container || document).querySelectorAll('.hand-btn-choice').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    document.querySelectorAll('.hand-btn-choice').forEach(function (b) { b.classList.remove('selected'); });
+                    btn.classList.add('selected');
+                    if (hidden) { hidden.value = btn.getAttribute('data-hand') || ''; }
+                    if (err) { err.classList.add('d-none'); }
+                });
             });
-        });
+        }
+        bindHandChoices();
     })();
     function validateSignup() {
         const signatureInput = document.getElementById('signature_data');
@@ -203,7 +236,7 @@
         if (!hand || !hand.value) {
             const e = document.getElementById('handSignError');
             if (e) e.classList.remove('d-none');
-            const box = document.getElementById('handSignCaptcha');
+            const box = document.getElementById('gestureRoot');
             if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
             return false;
         }
