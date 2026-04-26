@@ -1,6 +1,10 @@
-# IMPORTANT: eventlet monkey_patch must be called FIRST before any other imports
+# IMPORTANT: eventlet monkey_patch must be called FIRST before any other imports.
+# Guard: gunicorn's eventlet worker (geventlet.py) already calls monkey_patch() at module
+# level in the master process. Re-patching in the worker triggers "N RLock(s) were not
+# greened" warnings about locks created by gunicorn before the first patch. Skip if already done.
 import eventlet
-eventlet.monkey_patch()
+if not eventlet.patcher.is_monkey_patched('os'):
+    eventlet.monkey_patch()
 
 import sys
 

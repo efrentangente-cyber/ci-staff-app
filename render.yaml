@@ -12,6 +12,10 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      # Belt-and-suspenders: Gunicorn always merges GUNICORN_CMD_ARGS even when the dashboard
+      # overrides the start command. This guarantees --no-control-socket and --timeout 0.
+      - key: GUNICORN_CMD_ARGS
+        value: "--no-control-socket --timeout 0 --worker-connections 1000 --graceful-timeout 120"
       - key: FLASK_ENV
         value: production
       - key: FLASK_DEBUG
