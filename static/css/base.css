@@ -8,6 +8,10 @@
     --text-secondary: #6b7280;
     --bg-white: #ffffff;
     --border-color: #e5e7eb;
+    --table-stripe: #f7f9fc;
+    --table-row-hover: #edf4ff;
+    --table-cell-line: #eef1f5;
+    --table-edge: #e1e5eb;
 }
 
 /* Dark Mode Variables */
@@ -39,18 +43,39 @@ body.dark-mode .top-bar {
     color: var(--text-primary);
 }
 
+body.dark-mode .content-card .table-responsive,
+body.dark-mode .table-responsive.table-scroll-5 {
+    background: var(--bg-white);
+    border-color: var(--border-color);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
 body.dark-mode .table {
     color: var(--text-primary);
 }
 
 body.dark-mode .table thead th {
-    background-color: #1a1a1a;
-    color: var(--text-primary);
+    background: linear-gradient(180deg, #2d3f56 0%, #1a2332 100%);
+    color: #f1f5f9;
+    border-bottom-color: #d4a017;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 body.dark-mode .table tbody td {
     color: var(--text-primary);
-    border-color: var(--border-color);
+    border-color: #334155;
+}
+
+body.dark-mode .table tbody tr:nth-child(even) td {
+    background: #222832;
+}
+
+body.dark-mode .table tbody tr:hover td {
+    background: #1a252f !important;
+}
+
+body.dark-mode .table tbody tr {
+    background: var(--bg-white);
 }
 
 body.dark-mode .form-control,
@@ -519,22 +544,102 @@ body.dark-mode .bottom-nav a.active {
     overflow: hidden;
 }
 
-/* Table Styling */
+/* Table styling — all app tables (dashboard, forms, management) */
+.content-card .table-responsive,
+.table-responsive.table-scroll-5 {
+    border: 1px solid var(--table-edge);
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    overflow: auto;
+    position: relative;
+}
+
 .table {
     margin: 0;
+    width: 100%;
+    font-size: 0.875rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #1a202c;
 }
 
 .table thead th {
-    background: var(--light-bg);
-    color: var(--primary-blue);
+    background: linear-gradient(180deg, #2c4f73 0%, #1e3a5f 100%);
+    color: #fff;
     font-weight: 600;
+    font-size: 0.8125rem;
+    letter-spacing: 0.03em;
     border: none;
-    padding: 15px;
+    border-bottom: 3px solid #f5c14d;
+    padding: 0.9rem 1rem;
+    vertical-align: middle;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.table thead th:not(:last-child) {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset -1px 0 0 rgba(255, 255, 255, 0.1);
 }
 
 .table tbody td {
-    padding: 15px;
+    padding: 0.75rem 1rem;
     vertical-align: middle;
+    border-bottom: 1px solid var(--table-cell-line);
+}
+
+.table tbody tr {
+    background: #fff;
+    transition: background-color 0.15s ease;
+}
+
+.table tbody tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+
+.table tbody tr:hover td {
+    background: var(--table-row-hover) !important;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table-responsive .table tbody td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.table .badge {
+    font-size: 0.75rem;
+    padding: 0.35em 0.6em;
+    font-weight: 500;
+    border-radius: 6px;
+}
+
+.table .btn-sm {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.8rem;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.table-responsive::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.table-responsive::-webkit-scrollbar-track {
+    background: #f1f3f5;
+    border-radius: 4px;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #b8c0cc;
+    border-radius: 4px;
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #8b95a5;
 }
 
 /* Buttons */
@@ -607,7 +712,7 @@ body.dark-mode .bottom-nav a.active {
     background-color: #f8f9fa; 
 }
 
-/* CI Checklist Table Styles */
+/* CI Checklist table — same system as .table */
 .checklist-form {
     background: white;
     padding: 20px;
@@ -615,19 +720,57 @@ body.dark-mode .bottom-nav a.active {
 
 .checklist-table {
     font-size: 0.9rem;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--table-edge);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .checklist-table th {
-    background-color: #f8f9fa;
+    background: linear-gradient(180deg, #2c4f73 0%, #1e3a5f 100%);
+    color: #fff;
     font-weight: 600;
     text-align: center;
     vertical-align: middle;
-    padding: 12px 8px;
+    padding: 0.7rem 0.65rem;
+    border-bottom: 3px solid #f5c14d;
 }
 
 .checklist-table td {
     vertical-align: middle;
-    padding: 10px 8px;
+    padding: 0.65rem 0.5rem;
+    background: #fff;
+    border-bottom: 1px solid var(--table-cell-line);
+}
+
+.checklist-table tbody tr:nth-child(even) td {
+    background: var(--table-stripe);
+}
+
+.checklist-table tbody tr:hover td {
+    background: var(--table-row-hover) !important;
+}
+
+body.dark-mode .checklist-table th {
+    background: linear-gradient(180deg, #2d3f56 0%, #1a2332 100%);
+    color: #f1f5f9;
+    border-bottom-color: #d4a017;
+}
+
+body.dark-mode .checklist-table td {
+    background: var(--bg-white);
+    border-color: #334155;
+}
+
+body.dark-mode .checklist-table tbody tr:nth-child(even) td {
+    background: #222832;
+}
+
+body.dark-mode .checklist-table tbody tr:hover td {
+    background: #1a252f !important;
 }
 
 .checklist-table input[type="radio"] {
@@ -637,7 +780,48 @@ body.dark-mode .bottom-nav a.active {
 }
 
 .checklist-table .bg-light {
-    background-color: #e9ecef !important;
+    background-color: #e2e8f0 !important;
+}
+
+/* CI checklist on-screen tables (class view-table; print view overrides in template @media print) */
+.view-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 15px 0;
+    border: 1px solid var(--table-edge);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.view-table td,
+.view-table th {
+    border: 1px solid var(--table-cell-line);
+    padding: 0.65rem 0.75rem;
+}
+
+.view-table th {
+    background: linear-gradient(180deg, #2c4f73 0%, #1e3a5f 100%);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.88rem;
+}
+
+.view-table .signature-cell {
+    min-height: 2.75rem;
+    vertical-align: bottom;
+    white-space: pre-wrap;
+}
+
+body.dark-mode .view-table th {
+    background: linear-gradient(180deg, #2d3f56 0%, #1a2332 100%);
+    color: #f1f5f9;
+}
+
+body.dark-mode .view-table td,
+body.dark-mode .view-table th {
+    border-color: #334155;
 }
 
 
