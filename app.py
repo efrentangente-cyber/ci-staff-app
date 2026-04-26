@@ -919,6 +919,25 @@ def ensure_performance_indexes():
             "CREATE INDEX IF NOT EXISTS idx_loan_app_ci_status ON loan_applications(assigned_ci_staff, status, submitted_at)",
             # ── loan_applications submitted_by + status (loan_dashboard) ───────
             "CREATE INDEX IF NOT EXISTS idx_loan_app_by_status ON loan_applications(submitted_by, status, submitted_at)",
+            # ── system_activity_log (system_settings page) ────────────────────
+            # Primary sort column; makes LIMIT 50/200 ORDER BY fast.
+            "CREATE INDEX IF NOT EXISTS idx_sys_log_created ON system_activity_log(created_at DESC)",
+            # Covering index for the 3 DISTINCT filter-dropdown queries.
+            "CREATE INDEX IF NOT EXISTS idx_sys_log_role ON system_activity_log(role)",
+            "CREATE INDEX IF NOT EXISTS idx_sys_log_full_name ON system_activity_log(full_name)",
+            "CREATE INDEX IF NOT EXISTS idx_sys_log_action ON system_activity_log(action)",
+            # ── sms_sent_log (manage_sms_templates page) ──────────────────────
+            "CREATE INDEX IF NOT EXISTS idx_sms_log_sent_at ON sms_sent_log(sent_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_sms_log_sent_by ON sms_sent_log(sent_by_user_id)",
+            # ── sms_templates ────────────────────────────────────────────────
+            "CREATE INDEX IF NOT EXISTS idx_sms_tpl_category ON sms_templates(category)",
+            "CREATE INDEX IF NOT EXISTS idx_sms_tpl_active ON sms_templates(is_active)",
+            # ── user_login_sessions ──────────────────────────────────────────
+            # Already has user_id as PRIMARY KEY (PK lookup is O(1)); no extra index needed.
+            # Composite for the session-enforce SELECT that filters on session_token too.
+            "CREATE INDEX IF NOT EXISTS idx_sessions_user_token ON user_login_sessions(user_id, session_token)",
+            # ── notifications additional covering indexes ───────────────────
+            "CREATE INDEX IF NOT EXISTS idx_notif_user_created ON notifications(user_id, created_at DESC)",
         ]
         for statement in statements:
             conn.execute(statement)
@@ -1005,8 +1024,14 @@ def ensure_users_columns():
         print(f"⚠️  users columns migration warning: {e}")
 
 
+_sms_templates_table_ready = False
+
+
 def ensure_sms_templates_table():
     """Create sms_templates table in a DB-compatible way."""
+    global _sms_templates_table_ready
+    if _sms_templates_table_ready:
+        return
     try:
         conn = get_db()
         db_type = get_database_type()
@@ -1040,6 +1065,7 @@ def ensure_sms_templates_table():
                 conn.execute('ALTER TABLE sms_templates ADD COLUMN is_active INTEGER DEFAULT 1')
         conn.commit()
         conn.close()
+        _sms_templates_table_ready = True
         print("✓ sms_templates table ensured")
     except Exception as e:
         print(f"⚠️  sms_templates migration warning: {e}")
@@ -2304,7 +2330,28 @@ def add_security_headers(response):
                 session['_session_touch_ts'] = now_ts
         except Exception:
             pass
+
+    # ── Global slow-request logger ──────────────────────────────────────────
+    # Logs any HTML page that takes over 1 s so we can pinpoint bottlenecks.
+    try:
+        _start = getattr(g, '_req_start', None)
+        if _start is not None and not static_asset:
+            _elapsed = time.monotonic() - _start
+            if _elapsed >= 1.0:
+                _perf_logger.warning(
+                    'SLOW %s %s → %s  %.3fs',
+                    request.method, p, response.status_code, _elapsed,
+                )
+    except Exception:
+        pass
+
     return response
+
+
+@app.before_request
+def _record_request_start():
+    """Stamp every request so after_request can log slow ones."""
+    g._req_start = time.monotonic()
 
 
 @app.before_request
@@ -4424,18 +4471,20 @@ def loan_application(id):
 @app.route('/messages')
 @login_required
 def messages():
+    import time as _time
+    _t0 = _time.monotonic()
     conn = get_db()
     try:
-        # Get all staff members for chat
         staff = conn.execute('''
-            SELECT id, name, email, role, profile_photo 
-            FROM users 
+            SELECT id, name, email, role, profile_photo
+            FROM users
             WHERE id != ?
               AND is_approved = 1
               AND role IN ('admin', 'loan_officer', 'loan_staff', 'ci_staff')
             ORDER BY name
         ''', (current_user.id,)).fetchall()
-        
+        _t_q1 = _time.monotonic()
+
         conversations = []
         latest_rows = conn.execute('''
             SELECT other_id, message, sent_at
@@ -4506,6 +4555,13 @@ def messages():
                     'unread_count': unread_map.get(other_id, 0)
                 })
         
+        _total = _time.monotonic() - _t0
+        if _total > 0.5:
+            _perf_logger.warning(
+                'messages slow %.3fs | staff_list=%.0fms window_cte=%.0fms',
+                _total, (_t_q1 - _t0) * 1000, (_time.monotonic() - _t_q1) * 1000,
+            )
+
         return render_template('messages_dark.html', staff=staff, conversations=conversations, unread_count=0)
     except Exception as e:
         print(f"ERROR loading messages page: {e}")
@@ -6181,41 +6237,51 @@ def reports():
 @login_required
 def system_settings():
     """System configuration page (admin only or loan officer with permission)"""
-    # Check if user has permission
+    import time as _time
+    _t0 = _time.monotonic()
+
     if current_user.role == 'admin':
-        # Super admin always has access
         pass
     elif current_user.role == 'loan_officer':
-        # Check if loan officer has system_settings permission
         if not has_permission(current_user, 'system_settings'):
             flash('Access Denied - You do not have permission to access system settings. Contact super admin.', 'danger')
             return redirect(url_for('admin_dashboard'))
     else:
         flash('Unauthorized - Admin access required', 'danger')
         return redirect(url_for('index'))
-    
+
     ensure_system_activity_log_table()
     conn = get_db()
-    
-    # Get all system settings
-    settings = conn.execute('SELECT * FROM system_settings ORDER BY setting_key').fetchall()
-    
-    # Get system statistics
-    row1 = conn.execute('SELECT COUNT(*) as count FROM users WHERE is_approved=1').fetchone()
-    row2 = conn.execute('SELECT COUNT(*) as count FROM loan_applications').fetchone()
-    row3 = conn.execute("SELECT COUNT(*) as count FROM loan_applications WHERE status='assigned_to_ci'").fetchone()
-    row4 = conn.execute("SELECT COUNT(*) as count FROM loan_applications WHERE status='approved'").fetchone()
-    row5 = conn.execute("SELECT COALESCE(SUM(loan_amount), 0) as total FROM loan_applications WHERE status='approved'").fetchone()
-    
+
+    settings = conn.execute(
+        'SELECT setting_key, setting_value, description FROM system_settings ORDER BY setting_key'
+    ).fetchall()
+    _t_q1 = _time.monotonic()
+
+    # Run all 5 stats counts in one round-trip using conditional aggregation.
+    stats_row = conn.execute('''
+        SELECT
+            SUM(CASE WHEN is_approved=1 THEN 1 ELSE 0 END) AS total_users
+        FROM users
+    ''').fetchone()
+    app_stats = conn.execute('''
+        SELECT
+            COUNT(*) AS total_applications,
+            SUM(CASE WHEN status='assigned_to_ci' THEN 1 ELSE 0 END) AS pending_ci,
+            SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved_loans,
+            COALESCE(SUM(CASE WHEN status='approved' THEN loan_amount ELSE 0 END), 0) AS total_loan_amount
+        FROM loan_applications
+    ''').fetchone()
+    _t_q2 = _time.monotonic()
+
     stats = {
-        'total_users': row1['count'] if row1 else 0,
-        'total_applications': row2['count'] if row2 else 0,
-        'pending_ci': row3['count'] if row3 else 0,
-        'approved_loans': row4['count'] if row4 else 0,
-        'total_loan_amount': row5['total'] if row5 else 0
+        'total_users': (stats_row['total_users'] or 0) if stats_row else 0,
+        'total_applications': (app_stats['total_applications'] or 0) if app_stats else 0,
+        'pending_ci': (app_stats['pending_ci'] or 0) if app_stats else 0,
+        'approved_loans': (app_stats['approved_loans'] or 0) if app_stats else 0,
+        'total_loan_amount': (app_stats['total_loan_amount'] or 0) if app_stats else 0,
     }
 
-    # Recent activity logs with filters (role, name, action, date range)
     log_role = (request.args.get('log_role') or '').strip()
     log_name = (request.args.get('log_name') or '').strip()
     log_action = (request.args.get('log_action') or '').strip()
@@ -6256,23 +6322,44 @@ def system_settings():
         where.append('created_at < ?')
         params.append(dt_to.strftime('%Y-%m-%d %H:%M:%S'))
 
+    # Default limit 50; filtered views allow up to 200.
+    _log_limit = 200 if any([log_role, log_name, log_action, log_from, log_to]) else 50
     sql_logs = 'SELECT id, role, full_name, action, created_at FROM system_activity_log'
     if where:
         sql_logs += ' WHERE ' + ' AND '.join(where)
-    sql_logs += ' ORDER BY created_at DESC LIMIT 250'
+    sql_logs += f' ORDER BY created_at DESC LIMIT {_log_limit}'
     recent_logs = conn.execute(sql_logs, tuple(params)).fetchall()
+    _t_q3 = _time.monotonic()
 
+    # Filter-dropdown options: fetch from a small materialized subquery so we
+    # don't do three full-table scans on a potentially large log table.
+    # Capped at 100 distinct values each — more than enough for dropdowns.
     role_options = conn.execute(
-        "SELECT DISTINCT role FROM system_activity_log WHERE COALESCE(TRIM(role), '') <> '' ORDER BY role"
+        "SELECT DISTINCT role FROM system_activity_log"
+        " WHERE COALESCE(TRIM(role), '') <> '' ORDER BY role LIMIT 100"
     ).fetchall()
     name_options = conn.execute(
-        "SELECT DISTINCT full_name FROM system_activity_log WHERE COALESCE(TRIM(full_name), '') <> '' ORDER BY full_name LIMIT 250"
+        "SELECT DISTINCT full_name FROM system_activity_log"
+        " WHERE COALESCE(TRIM(full_name), '') <> '' ORDER BY full_name LIMIT 100"
     ).fetchall()
     action_options = conn.execute(
-        "SELECT DISTINCT action FROM system_activity_log WHERE COALESCE(TRIM(action), '') <> '' ORDER BY action"
+        "SELECT DISTINCT action FROM system_activity_log"
+        " WHERE COALESCE(TRIM(action), '') <> '' ORDER BY action LIMIT 100"
     ).fetchall()
-    
+    _t_q4 = _time.monotonic()
+
     conn.close()
+
+    _total = _time.monotonic() - _t0
+    if _total > 0.5:
+        _perf_logger.warning(
+            'system_settings slow %.3fs | settings=%.0fms stats=%.0fms logs=%.0fms opts=%.0fms',
+            _total,
+            (_t_q1 - _t0) * 1000,
+            (_t_q2 - _t_q1) * 1000,
+            (_t_q3 - _t_q2) * 1000,
+            (_t_q4 - _t_q3) * 1000,
+        )
     
     return render_template(
         'system_settings.html',
@@ -6880,6 +6967,8 @@ def generate_report(report_type):
 @app.route('/change_password', methods=['GET', 'POST'])
 @login_required
 def change_password():
+    import time as _time
+    _t0 = _time.monotonic()
     if request.method == 'POST':
         current_password = request.form.get('current_password')
         new_password = request.form.get('new_password')
@@ -6919,10 +7008,23 @@ def change_password():
         return redirect(url_for('index'))
     
     conn = get_db()
-    row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
+    _t_q0 = _time.monotonic()
+    row = conn.execute(
+        "SELECT COUNT(*) as count FROM notifications"
+        " WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
+        (current_user.id,)
+    ).fetchone()
     unread_count = row['count'] if row else 0
     conn.close()
+
+    _total = _time.monotonic() - _t0
+    if _total > 0.3:
+        _perf_logger.warning(
+            'change_password GET slow %.3fs | notif_count=%.0fms'
+            ' — if this is slow, check before_request / context_processor',
+            _total, (_time.monotonic() - _t_q0) * 1000,
+        )
+
     return render_template('change_password.html', unread_count=unread_count)
 
 @app.route('/update_backup_email', methods=['POST'])
@@ -7728,38 +7830,44 @@ def autocomplete_provinces():
 @login_required
 def manage_sms_templates():
     """Manage SMS templates page"""
+    import time as _time
+    _t0 = _time.monotonic()
+
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
+
     try:
         ensure_sms_templates_table()
         ensure_sms_sent_log_table()
         conn = get_db()
-        # Get all templates
-        templates = conn.execute('''
-            SELECT * FROM sms_templates 
-            ORDER BY category, name
-        ''').fetchall()
-        
-        # Categorize templates
+
+        # Fetch only the columns the template renders; avoids pulling large message bodies for all rows.
+        templates = conn.execute(
+            'SELECT id, name, category, message, is_active, created_at'
+            ' FROM sms_templates ORDER BY category, name'
+        ).fetchall()
+        _t_q1 = _time.monotonic()
+
         approved_templates = [t for t in templates if t['category'] == 'approved']
         disapproved_templates = [t for t in templates if t['category'] == 'disapproved']
         deferred_templates = [t for t in templates if t['category'] == 'deferred']
         custom_templates = [t for t in templates if t['category'] == 'custom']
-        
-        # Get counts
+
         approved_count = len(approved_templates)
         disapproved_count = len(disapproved_templates)
         deferred_count = len(deferred_templates)
         custom_count = len(custom_templates)
 
+        # SMS sent-log: limit initial load to 50 rows. Search still allows up to 200.
         search_q = (request.args.get('q') or '').strip()
+        _log_limit = 200 if search_q else 50
         if search_q:
             like = f'%{search_q}%'
             sent_rows = conn.execute(
                 '''
-                SELECT s.*, u.name AS sent_by_name
+                SELECT s.id, s.phone_number, s.message_body, s.member_name,
+                       s.category, s.status, s.sent_at, u.name AS sent_by_name
                 FROM sms_sent_log s
                 LEFT JOIN users u ON s.sent_by_user_id = u.id
                 WHERE (
@@ -7770,33 +7878,43 @@ def manage_sms_templates():
                     LOWER(COALESCE(s.status, '')) LIKE LOWER(?)
                 )
                 ORDER BY s.sent_at DESC
-                LIMIT 500
+                LIMIT 200
                 ''',
                 (like, like, like, like, like),
             ).fetchall()
         else:
             sent_rows = conn.execute(
                 '''
-                SELECT s.*, u.name AS sent_by_name
+                SELECT s.id, s.phone_number, s.message_body, s.member_name,
+                       s.category, s.status, s.sent_at, u.name AS sent_by_name
                 FROM sms_sent_log s
                 LEFT JOIN users u ON s.sent_by_user_id = u.id
                 ORDER BY s.sent_at DESC
-                LIMIT 500
+                LIMIT 50
                 '''
             ).fetchall()
+        _t_q2 = _time.monotonic()
 
         sent_log_count = conn.execute('SELECT COUNT(*) AS c FROM sms_sent_log').fetchone()
         total_sent_ever = sent_log_count['c'] if sent_log_count else 0
 
         sent_messages = [dict(r) for r in sent_rows]
-        
-        row = conn.execute('''
-            SELECT COUNT(*) as count FROM notifications 
-            WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'
-        ''', (current_user.id,)).fetchone()
+
+        row = conn.execute(
+            "SELECT COUNT(*) as count FROM notifications"
+            " WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
+            (current_user.id,)
+        ).fetchone()
         unread_count = row['count'] if row else 0
-        
+
         conn.close()
+
+        _total = _time.monotonic() - _t0
+        if _total > 0.5:
+            _perf_logger.warning(
+                'manage_sms_templates slow %.3fs | templates=%.0fms sent_log=%.0fms',
+                _total, (_t_q1 - _t0) * 1000, (_t_q2 - _t_q1) * 1000,
+            )
         
         return render_template('manage_sms_templates.html', 
                              templates=templates,
