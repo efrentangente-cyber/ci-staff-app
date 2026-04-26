@@ -328,33 +328,7 @@
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
-        
-        {% if current_user.role == 'ci_staff' %}
-        // Auto-track CI staff location with lightweight background request
-        function updateLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 4000);
-                    fetch('/api/update_location', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        signal: controller.signal,
-                        keepalive: true,
-                        body: JSON.stringify({
-                            latitude: position.coords.latitude,
-                            longitude: position.coords.longitude,
-                            activity: 'Active'
-                        })
-                    }).catch(() => {}).finally(() => clearTimeout(timeout));
-                });
-            }
-        }
-        
-        // Update location on page load and every 5 minutes
-        updateLocation();
-        setInterval(updateLocation, 300000); // 5 minutes
-        {% endif %}
+        {# CI location: do not POST /api/update_location on every page — use ci-location-tracker.js on CI wizard only. #}
     </script>
     {% endif %}
     

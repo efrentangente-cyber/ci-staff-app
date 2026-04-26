@@ -1,9 +1,14 @@
+# Persistent disk: mount ONLY a subdirectory so deploys always get fresh code from
+# the repo root. Uploads/signatures/message media go under RENDER_PERSISTENT_DIR.
+# (If you previously mounted over /opt/render/project/src, copy files into .../data/
+# after changing the mount, or attach a new disk.)
 services:
   - type: web
     name: dccco-ci-system
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT app:app --timeout 120 --graceful-timeout 30
+    # Use the script so Render dashboard "gunicorn app:app" overrides cannot drop --no-control-socket / --timeout 0.
+    startCommand: bash scripts/start_gunicorn.sh
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -11,7 +16,11 @@ services:
         value: production
       - key: FLASK_DEBUG
         value: False
+      - key: ON_RENDER
+        value: "true"
+      - key: RENDER_PERSISTENT_DIR
+        value: /opt/render/project/src/data
     disk:
       name: data
-      mountPath: /opt/render/project/src
+      mountPath: /opt/render/project/src/data
       sizeGB: 1

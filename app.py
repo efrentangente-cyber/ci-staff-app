@@ -80,6 +80,25 @@ if not _secret_key:
 app.secret_key = _secret_key
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['SIGNATURE_FOLDER'] = 'signatures'
+# Render (or any host): optional root for durable files only — never mount disk over repo src.
+_persist_root = (os.getenv('RENDER_PERSISTENT_DIR') or os.getenv('PERSISTENT_DATA_DIR') or '').strip()
+if _persist_root:
+    _persist_root = os.path.abspath(_persist_root)
+    os.makedirs(_persist_root, exist_ok=True)
+    app.config['UPLOAD_FOLDER'] = os.path.join(_persist_root, 'uploads')
+    app.config['SIGNATURE_FOLDER'] = os.path.join(_persist_root, 'signatures')
+    app.config['MESSAGE_ATTACHMENTS_FOLDER'] = os.path.join(_persist_root, 'message_attachments')
+    app.config['VOICE_MESSAGES_FOLDER'] = os.path.join(_persist_root, 'voice_messages')
+else:
+    app.config['MESSAGE_ATTACHMENTS_FOLDER'] = 'message_attachments'
+    app.config['VOICE_MESSAGES_FOLDER'] = 'voice_messages'
+for _fd in (
+    app.config['UPLOAD_FOLDER'],
+    app.config['SIGNATURE_FOLDER'],
+    app.config['MESSAGE_ATTACHMENTS_FOLDER'],
+    app.config['VOICE_MESSAGES_FOLDER'],
+):
+    os.makedirs(_fd, exist_ok=True)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 app.config['WTF_CSRF_ENABLED'] = os.getenv('WTF_CSRF_ENABLED', 'True').lower() == 'true'
@@ -465,16 +484,23 @@ if _socketio_origins_raw:
 else:
     _socketio_origins = None
 
+# Must match Gunicorn: `-k eventlet` requires async_mode='eventlet' (see gunicorn.conf.py).
+# Using 'threading' here breaks WebSockets under eventlet. Production uses control_socket_disable
+# so Gunicorn 25's arbiter asyncio control socket is not broken by eventlet's monkey_patch.
+_socket_async_mode = (os.getenv('SOCKETIO_ASYNC_MODE') or 'eventlet').strip().lower()
+if _socket_async_mode not in ('eventlet', 'threading', 'gevent'):
+    _socket_async_mode = 'eventlet'
+
 socketio = SocketIO(
     app,
     cors_allowed_origins=_socketio_origins,
-    async_mode='threading',   # Use threading for instant emit
+    async_mode=_socket_async_mode,
     ping_timeout=60,
-    ping_interval=10,  # Faster ping (was 25) for quicker detection
+    ping_interval=10,
     logger=False,
     engineio_logger=False,
-    always_connect=True,  # Maintain persistent connections
-    manage_session=False  # Let Flask-Login handle sessions
+    always_connect=True,
+    manage_session=False,
 )
 
 # Track online users
@@ -548,6 +574,41 @@ def _is_path_within_directory(directory, candidate_path):
     p = os.path.abspath(candidate_path)
     d_prefix = d if d.endswith(os.sep) else d + os.sep
     return p == d or p.startswith(d_prefix)
+
+
+def _message_media_roots():
+    return (
+        os.path.abspath(app.config['MESSAGE_ATTACHMENTS_FOLDER']),
+        os.path.abspath(app.config['VOICE_MESSAGES_FOLDER']),
+    )
+
+
+def _resolve_stored_message_media_path(stored_path):
+    """
+    Map DB file_path to a real file under configured attachment roots.
+    Supports legacy values like message_attachments/... after moving to RENDER_PERSISTENT_DIR.
+    """
+    if not stored_path:
+        return None
+    roots = _message_media_roots()
+    raw = str(stored_path).strip()
+    s_abs = os.path.abspath(raw.replace('\\', os.sep))
+    if os.path.isfile(s_abs) and any(_is_path_within_directory(r, s_abs) for r in roots):
+        return s_abs
+    norm = raw.replace('\\', '/')
+    for prefix, root in (('message_attachments', roots[0]), ('voice_messages', roots[1])):
+        if norm == prefix or norm.startswith(prefix + '/'):
+            tail = norm[len(prefix) :].lstrip('/')
+            candidate = os.path.normpath(os.path.join(root, tail))
+            if os.path.isfile(candidate) and _is_path_within_directory(root, candidate):
+                return candidate
+    bn = os.path.basename(norm)
+    if bn:
+        for root in roots:
+            candidate = os.path.normpath(os.path.join(root, bn))
+            if os.path.isfile(candidate) and _is_path_within_directory(root, candidate):
+                return candidate
+    return None
 
 
 def _upload_relpath_for_serve(file_path_stored):
@@ -1996,34 +2057,21 @@ def call_ai_engine(query, history, context):
     Call AI API with system context and conversation history
     Supports OpenAI and Anthropic APIs
     """
-    # Get API key from environment
-    openai_key = os.getenv('OPENAI_API_KEY')
-    anthropic_key = os.getenv('ANTHROPIC_API_KEY')
-    
-    if not openai_key and not anthropic_key:
-        raise Exception('No AI API key configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env file.')
-    
-    # Build messages array
-    messages = []
-    
-    # Add conversation history
-    for msg in history:
-        messages.append({
-            'role': msg['role'],
-            'content': msg['content']
-        })
-    
-    # Add current query
-    messages.append({'role': 'user', 'content': query})
-    
-    # Call OpenAI API (preferred)
-    if openai_key:
-        try:
-            import openai
-            client = openai.OpenAI(api_key=openai_key)
-            
-            # Build system message with context
-            system_message = f"""You are DaisyandCoco, an AI assistant for the DCCCO Multipurpose Cooperative loan management system.
+    def _sync_ai_call():
+        openai_key = os.getenv('OPENAI_API_KEY')
+        anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+
+        if not openai_key and not anthropic_key:
+            raise Exception(
+                'No AI API key configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env file.'
+            )
+
+        messages = []
+        for msg in history:
+            messages.append({'role': msg['role'], 'content': msg['content']})
+        messages.append({'role': 'user', 'content': query})
+
+        system_message = f"""You are DaisyandCoco, an AI assistant for the DCCCO Multipurpose Cooperative loan management system.
 
 You help administrators understand and troubleshoot the system.
 
@@ -2033,48 +2081,41 @@ SYSTEM KNOWLEDGE:
 Provide clear, accurate, and helpful responses. Use bullet points and code examples when appropriate.
 Reference specific file paths, database tables, and functions when relevant.
 Be friendly and conversational while maintaining professionalism."""
-            
-            response = client.chat.completions.create(
-                model='gpt-3.5-turbo',
-                messages=[
-                    {'role': 'system', 'content': system_message}
-                ] + messages,
-                max_tokens=1000,
-                temperature=0.7
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            app.logger.error(f"OpenAI API error: {str(e)}")
-            raise Exception(f"AI service error: {str(e)}")
-    
-    # Fallback to Anthropic API
-    elif anthropic_key:
+
+        if openai_key:
+            try:
+                import openai
+
+                client = openai.OpenAI(api_key=openai_key)
+                response = client.chat.completions.create(
+                    model='gpt-3.5-turbo',
+                    messages=[{'role': 'system', 'content': system_message}] + messages,
+                    max_tokens=1000,
+                    temperature=0.7,
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                app.logger.error(f"OpenAI API error: {str(e)}")
+                raise Exception(f"AI service error: {str(e)}") from e
+
         try:
             import anthropic
+
             client = anthropic.Anthropic(api_key=anthropic_key)
-            
-            # Build system message with context
-            system_message = f"""You are DaisyandCoco, an AI assistant for the DCCCO Multipurpose Cooperative loan management system.
-
-You help administrators understand and troubleshoot the system.
-
-SYSTEM KNOWLEDGE:
-{context}
-
-Provide clear, accurate, and helpful responses. Use bullet points and code examples when appropriate.
-Reference specific file paths, database tables, and functions when relevant.
-Be friendly and conversational while maintaining professionalism."""
-            
             response = client.messages.create(
                 model='claude-3-haiku-20240307',
                 max_tokens=1000,
                 system=system_message,
-                messages=messages
+                messages=messages,
             )
             return response.content[0].text
         except Exception as e:
             app.logger.error(f"Anthropic API error: {str(e)}")
-            raise Exception(f"AI service error: {str(e)}")
+            raise Exception(f"AI service error: {str(e)}") from e
+
+    # OpenAI/Anthropic httpx stacks use asyncio; eventlet monkey-patching conflicts with asyncio.run().
+    # Run the blocking SDK in a real OS thread via eventlet's thread pool.
+    return eventlet.tpool.execute(_sync_ai_call)
 
 
 @login_manager.user_loader
@@ -3322,6 +3363,38 @@ def ci_review_application(id):
                          unread_count=unread_count)
 
 
+def _coalesce_ci_staff_display(app_data, checklist_data):
+    """
+    When saved checklist JSON still has generic wizard placeholders, show the
+    assigned CI from loan_applications (authoritative) instead.
+    """
+    if not isinstance(checklist_data, dict):
+        return
+    name = (app_data.get('ci_staff_name') or '').strip()
+    if not name:
+        return
+    generic = {
+        'ci staff',
+        'ci/bi',
+        'ci / bi',
+        'ci-bi',
+        'ci staff name',
+        'credit investigator',
+        'cibi / lps / flms',
+        'cibi',
+        'lps',
+        'flms',
+        'n/a',
+        '—',
+        '-',
+        'tbd',
+    }
+    for key in ('prepared_by', 'assess_prepared_by'):
+        raw = (checklist_data.get(key) or '').strip()
+        if not raw or raw.lower() in generic:
+            checklist_data[key] = name
+
+
 def _resolve_ci_signature_for_print(app_data):
     """
     Build a same-origin /signatures/<file> URL or pass through data:image/* for <img src>.
@@ -3342,9 +3415,14 @@ def _resolve_ci_signature_for_print(app_data):
         s = s.replace('\\', '/').strip()
         is_http = s.startswith('http://') or s.startswith('https://')
         if is_http:
-            s = (urlparse(s).path or '')
-            if '/signatures/' not in s:
+            path = (urlparse(s).path or '')
+            if '/signatures/' not in path:
+                segs = [x for x in path.split('/') if x]
+                last = unquote(segs[-1]) if segs else ''
+                if last and re.search(r'\.(png|jpe?g|gif|webp|bmp|svg)$', last, re.I) and '..' not in last:
+                    return last
                 return None
+            s = path
         if '/signatures/' in s:
             fn = unquote(s.split('/signatures/', 1)[-1].split('?')[0].split('#')[0])
         else:
@@ -3414,6 +3492,8 @@ def view_ci_checklist(id):
                     checklist_data = parsed
             except Exception:
                 checklist_data = {}
+
+        _coalesce_ci_staff_display(app_data, checklist_data)
 
         # Prefill commonly referenced identity fields from the loan application
         # so the printed page is never empty when CI just uploaded photos.

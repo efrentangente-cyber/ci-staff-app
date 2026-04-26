@@ -41,7 +41,7 @@
   </div>
 </div>
 {%- endmacro %}
-{% macro signoff_deir() -%}
+{% macro signoff_deir(ci_signature_url=none) -%}
   {% set _cd = (checklist_data if (checklist_data is defined and checklist_data) else None) or {} %}
   {% if _cd is not mapping %}{% set _cd = {} %}{% endif %}
   {% set _prep0 = (application.ci_staff_name or _cd.get('prepared_by', '') or '')|trim %}
@@ -51,6 +51,11 @@
 <div class="deir-2col-signoff" aria-label="DEIR sign-off">
   <div class="deir-2col-signoff__col">
     <p class="deir-2col-signoff__label">Prepared by:</p>
+    {% if ci_signature_url %}
+    <div class="deir-2col-signoff__imgwrap">
+      <img src="{{ ci_signature_url|e }}" alt="" class="deir-2col-signoff__img" loading="eager" decoding="async" fetchpriority="high">
+    </div>
+    {% endif %}
     <p class="deir-2col-signoff__name">{{ _prep }}</p>
     <p class="deir-2col-signoff__title">CIBI / LPS / FLMS</p>
   </div>
@@ -62,10 +67,10 @@
 </div>
 <p class="deir-footnote-ref">BOD Res. No. 183, s. 2022 (March 21, 2022)</p>
 {%- endmacro %}
-{% macro signoff_credit_investigation_3col() -%}
+{% macro signoff_credit_investigation_3col(ci_signature_url=none) -%}
   {% set _cd = (checklist_data if (checklist_data is defined and checklist_data) else None) or {} %}
   {% if _cd is not mapping %}{% set _cd = {} %}{% endif %}
-  {% set _p = (_cd.get('prepared_by', '') or application.ci_staff_name or '')|trim %}
+  {% set _p = (application.ci_staff_name or _cd.get('prepared_by', '') or '')|trim %}
   {% set _r = (_cd.get('reviewed_by', '') or '')|trim %}
   {% set _p2 = _p|upper if _p else '______________________________' %}
   {% set _r2 = _r|upper if _r else '______________________________' %}
@@ -74,7 +79,11 @@
   <div class="formal-3col-signoff__row">
     <div class="formal-3col-signoff__col">
       <p class="formal-3col-signoff__label">Prepared by:</p>
-      <div class="formal-3col-signoff__line" aria-hidden="true"></div>
+      <div class="formal-3col-signoff__ink{% if ci_signature_url %} formal-3col-signoff__ink--hasimg{% endif %}" aria-hidden="true">
+        {% if ci_signature_url %}
+        <img src="{{ ci_signature_url|e }}" alt="" class="formal-3col-signoff__img" loading="eager" decoding="async" fetchpriority="high">
+        {% endif %}
+      </div>
       <p class="formal-3col-signoff__name">{{ _p2 }}</p>
       <p class="formal-3col-signoff__title">Credit Investigator</p>
     </div>
@@ -94,17 +103,21 @@
   <p class="credit-check-confidential-foot">*This document is <strong>CONFIDENTIAL</strong>. The information contained herein has been obtained with the express permission of the applicant for the exclusive use of DCCCO Multipurpose Cooperative (DCCCO) officers/staff as basis for credit decision.</p>
 </div>
 {%- endmacro %}
-{% macro signoff_cas_2col() -%}
+{% macro signoff_cas_2col(ci_signature_url=none) -%}
   {% set _cd = (checklist_data if (checklist_data is defined and checklist_data) else None) or {} %}
   {% if _cd is not mapping %}{% set _cd = {} %}{% endif %}
-  {% set _p0 = (_cd.get('assess_prepared_by', '') or application.ci_staff_name or _cd.get('prepared_by', '') or '')|trim %}
+  {% set _p0 = (application.ci_staff_name or _cd.get('assess_prepared_by', '') or _cd.get('prepared_by', '') or '')|trim %}
   {% set _r0 = (_cd.get('assess_reviewed_by', '') or _cd.get('reviewed_by', '') or '')|trim %}
   {% set _p = _p0|upper if _p0 else '______________________________' %}
   {% set _r = _r0|upper if _r0 else '______________________________' %}
 <div class="cas-2col-signoff" aria-label="Credit assessment sign-off">
   <div class="cas-2col-signoff__col">
     <p class="cas-2col-signoff__label">Prepared</p>
-    <div class="cas-2col-signoff__line" aria-hidden="true"></div>
+    <div class="cas-2col-signoff__ink{% if ci_signature_url %} cas-2col-signoff__ink--hasimg{% endif %}" aria-hidden="true">
+      {% if ci_signature_url %}
+      <img src="{{ ci_signature_url|e }}" alt="" class="cas-2col-signoff__img" loading="eager" decoding="async" fetchpriority="high">
+      {% endif %}
+    </div>
     <p class="cas-2col-signoff__name">{{ _p }}</p>
     <p class="cas-2col-signoff__title">CIBI / FLMS</p>
   </div>
@@ -200,6 +213,8 @@
 .deir-2col-signoff__col { flex: 1; min-width: 0; }
 .deir-2col-signoff__col--right { text-align: right; }
 .deir-2col-signoff__label, .deir-2col-signoff__title { font-size: 9.5pt; margin: 0; }
+.deir-2col-signoff__imgwrap { margin: 0.1rem 0 0.35rem 0; max-width: 240px; }
+.deir-2col-signoff__img { display: block; max-width: 100%; max-height: 120px; width: auto; height: auto; object-fit: contain; }
 .deir-2col-signoff__name {
   font-size: 11pt;
   font-weight: 700;
@@ -218,6 +233,16 @@
   border-bottom: 1px solid #000;
   margin: 0.2rem 0 0.35rem 0;
 }
+.formal-3col-signoff__ink {
+  min-height: 1.1rem;
+  border-bottom: 1px solid #000;
+  margin: 0.2rem 0 0.35rem 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.formal-3col-signoff__ink--hasimg { min-height: 0; border-bottom: 0; padding-bottom: 0.1rem; }
+.formal-3col-signoff__img { display: block; max-width: 100%; max-height: 130px; width: auto; height: auto; object-fit: contain; margin: 0 auto; }
 .formal-3col-signoff__name { font-size: 9.5pt; font-weight: 700; text-transform: uppercase; margin: 0; }
 .formal-3col-signoff__name--muted { font-weight: 400; color: #000; }
 .formal-3col-signoff__title { font-size: 8.5pt; margin: 0.15rem 0 0 0; font-weight: 600; }
@@ -242,6 +267,9 @@
 .cas-2col-signoff__col--right { text-align: right; }
 .cas-2col-signoff__label { font-size: 9.5pt; margin: 0; }
 .cas-2col-signoff__line { min-height: 2.5rem; border-bottom: 1pt solid #000; margin: 0.2rem 0; }
+.cas-2col-signoff__ink { min-height: 2.5rem; border-bottom: 1pt solid #000; margin: 0.2rem 0; display: flex; align-items: flex-end; justify-content: flex-start; }
+.cas-2col-signoff__ink--hasimg { min-height: 0; border-bottom: 0; margin-bottom: 0.3rem; }
+.cas-2col-signoff__img { display: block; max-width: 100%; max-height: 120px; width: auto; height: auto; object-fit: contain; }
 .cas-2col-signoff__name { font-size: 10.5pt; font-weight: 700; text-transform: uppercase; margin: 0; }
 .cas-2col-signoff__title { font-size: 9pt; margin: 0.2rem 0 0 0; }
 .cas-page-hint { text-align: right; font-size: 8.5pt; margin: 0.5rem 0 0 0; }
@@ -893,7 +921,7 @@
                     <td><strong>Date Investigated:</strong> {{ cd.get('date_investigated', '') or '—' }}</td>
                 </tr>
             </table>
-            {{ signoff_credit_investigation_3col() }}
+            {{ signoff_credit_investigation_3col(application.ci_signature) }}
         </div>
     </div>
 
@@ -1409,7 +1437,7 @@
             <strong>within common limit</strong>
             {% endif %}
             </p>
-            {{ signoff_deir() }}
+            {{ signoff_deir(application.ci_signature) }}
         </div>
     </div>
 
@@ -1542,7 +1570,7 @@
 
             <p class="print-section-dccco" style="font-size:8.5pt; margin-top:0.4rem;">OTHER INFORMATION</p>
             <div class="view-table" style="border:1px solid #000; min-height:4.5rem; padding:0.35rem; font-size:8.5pt; white-space: pre-wrap;">{{ checklist_data.get('other_info', '') }}</div>
-            {{ signoff_cas_2col() }}
+            {{ signoff_cas_2col(application.ci_signature) }}
         </div>
     </div>
 
