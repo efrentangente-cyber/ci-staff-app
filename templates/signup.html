@@ -208,8 +208,11 @@
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    {# MediaPipe: pinned versions (wrong hands version = 404 and “Could not load hand detection”) #}
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
-    <script src="{{ url_for('static', filename='gesture-captcha.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='gesture-captcha.js') }}?v=4"></script>
     <script>
     (function () {
         const hidden = document.getElementById('hand_sign');

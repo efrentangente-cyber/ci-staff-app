@@ -59,6 +59,8 @@
 
     function initGestureCaptcha(root) {
         if (!root) return;
+        /** Must match cdn jsDelivr published build (typos 404; breaks whole captcha). */
+        var MP_HANDS_VERSION = '0.4.1675469240';
         const expectedId = (root.getAttribute('data-expected-id') || '').trim();
         const promptHint = (root.getAttribute('data-prompt-hint') || '').trim();
         const hidden = document.getElementById('hand_sign');
@@ -92,7 +94,8 @@
             if (btnStart) { btnStart.classList.add('d-none'); }
             if (btnStop) { btnStop.classList.add('d-none'); }
             if (btnVerify) { btnVerify.classList.add('d-none'); }
-            if (previewWrap) { previewWrap.classList.add('d-none'); }
+            const pw = root.querySelector('.gc-preview-wrap');
+            if (pw) { pw.classList.add('d-none'); }
         }
 
         function onMatched() {
@@ -152,10 +155,10 @@
                 next();
                 return;
             }
+            setStatus('Loading hand detection…', false);
             const list = [
-                'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
-                'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js',
-                'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469404/hands.js'
+                'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js',
+                'https://cdn.jsdelivr.net/npm/@mediapipe/hands@' + MP_HANDS_VERSION + '/hands.js'
             ];
             var u = 0;
             (function go() {
@@ -166,7 +169,7 @@
                 s.crossOrigin = 'anonymous';
                 s.onload = function () { u += 1; go(); };
                 s.onerror = function () {
-                    setStatus('Could not load hand detection. Use “Can’t use camera?” below.', true);
+                    setStatus('Could not load hand detection. Check network, refresh, or use “Can’t use camera?” below.', true);
                     showFallbackMode();
                 };
                 document.head.appendChild(s);
@@ -176,9 +179,9 @@
         function startCamera() {
             if (!video) return;
             setStatus('Starting camera and hand model…', false);
-            loadScripts(function () {
+            function beginHandsSetup() {
                 if (typeof window.Hands !== 'function' || typeof window.Camera !== 'function') {
-                    setStatus('Hand detection is unavailable. Use emoji option below.', true);
+                    setStatus('Hand detection is unavailable. Use emoji option below or refresh the page.', true);
                     showFallbackMode();
                     return;
                 }
@@ -188,7 +191,7 @@
 
                     hands = new window.Hands({
                         locateFile: function (f) {
-                            return 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469404/' + f;
+                            return 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@' + MP_HANDS_VERSION + '/' + f;
                         }
                     });
                     hands.setOptions({
@@ -213,7 +216,8 @@
                     setStatus('Camera or detection failed. Use emoji option below.', true);
                     showFallbackMode();
                 }
-            });
+            }
+            loadScripts(beginHandsSetup);
         }
 
         function stopCamera() {
