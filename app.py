@@ -296,7 +296,9 @@ def utility_processor():
         """Generate CSRF token for forms"""
         return generate_csrf()
 
-    # Inject unread message count into every template automatically
+    # Inject unread message count into every template automatically.
+    # get_unread_message_count() has a 60 s in-process cache; on cache-miss it
+    # calls get_db() which reuses the request-scoped connection (no extra round-trip).
     message_unread_count = 0
     try:
         from flask_login import current_user as _cu
@@ -306,10 +308,10 @@ def utility_processor():
         pass
 
     return dict(
-        get_user_by_id=get_user_by_id, 
+        get_user_by_id=get_user_by_id,
         message_unread_count=message_unread_count,
         secure_token=secure_token,
-        csrf_token=csrf_token
+        csrf_token=csrf_token,
     )
 
 
@@ -832,7 +834,22 @@ def ensure_performance_indexes():
             "CREATE INDEX IF NOT EXISTS idx_messages_app_sent ON messages(loan_application_id, sent_at)",
             "CREATE INDEX IF NOT EXISTS idx_direct_messages_receiver_read_sent ON direct_messages(receiver_id, is_read, sent_at)",
             "CREATE INDEX IF NOT EXISTS idx_direct_messages_sender_receiver_sent ON direct_messages(sender_id, receiver_id, sent_at)",
-            "CREATE INDEX IF NOT EXISTS idx_location_tracking_user_tracked ON location_tracking(user_id, tracked_at)"
+            "CREATE INDEX IF NOT EXISTS idx_location_tracking_user_tracked ON location_tracking(user_id, tracked_at)",
+            # ── admin_dashboard specific ──────────────────────────────────────
+            # Covers the IN-process tab (submitted / assigned_to_ci) quickly.
+            "CREATE INDEX IF NOT EXISTS idx_loan_app_submitted_at_asc ON loan_applications(submitted_at ASC)",
+            # Covers the direct-submission OR branch: needs_ci_interview=0 AND status='submitted'.
+            # PostgreSQL partial indexes are ignored by SQLite but harmless.
+            "CREATE INDEX IF NOT EXISTS idx_loan_app_direct_submit ON loan_applications(submitted_at) WHERE needs_ci_interview = 0 AND status = 'submitted'",
+            # Partial index for each status that admin review tab queries.
+            "CREATE INDEX IF NOT EXISTS idx_loan_app_ci_completed ON loan_applications(submitted_at) WHERE status = 'ci_completed'",
+            # users.role lookup (CI staff widget and role-based queries everywhere).
+            "CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)",
+            # Notification count: user_id+is_read already covered; add message prefix
+            # as a separate leading-char index isn't possible for LIKE '%...%', but
+            # the existing composite index narrows the set enough.  Add a covering
+            # index so the COUNT needs no heap fetch.
+            "CREATE INDEX IF NOT EXISTS idx_notif_user_read_msg ON notifications(user_id, is_read, message)"
         ]
         for statement in statements:
             conn.execute(statement)
@@ -3713,71 +3730,117 @@ def submit_ci_checklist(id):
 @app.route('/admin/dashboard')
 @login_required
 def admin_dashboard():
+    import time as _time
+    import logging as _logging
+    _perf = _logging.getLogger('app.perf')
+
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
+
+    _t0 = _time.monotonic()
     try:
         conn = get_db()
+        _t_conn = _time.monotonic()
 
-        def _normalize_datetime_fields(rows):
-            """Convert datetime values to strings for template slicing compatibility."""
-            normalized = []
-            for row in rows:
-                row_dict = dict(row)
-                for field in ('submitted_at', 'admin_decision_at', 'ci_completed_at'):
-                    value = row_dict.get(field)
-                    if isinstance(value, datetime):
-                        row_dict[field] = value.strftime('%Y-%m-%d %H:%M:%S')
-                normalized.append(row_dict)
-            return normalized
-        
-        # Get applications for review (ci_completed, approved, disapproved, deferred, or direct submissions)
-        applications = conn.execute('''
-            SELECT la.*, 
-                   u1.name as loan_staff_name,
-                   u2.name as ci_staff_name
-            FROM loan_applications la
-            LEFT JOIN users u1 ON la.submitted_by = u1.id
-            LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
-            WHERE la.status IN ('ci_completed', 'approved', 'disapproved', 'deferred')
-               OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
-            ORDER BY la.submitted_at ASC
-        ''').fetchall()
-        applications = _normalize_datetime_fields(applications)
-        
-        # Get "In Process" applications (between LPS and CI)
-        in_process_applications = conn.execute('''
-            SELECT la.*, 
-                   u1.name as loan_staff_name,
-                   u2.name as ci_staff_name
-            FROM loan_applications la
-            LEFT JOIN users u1 ON la.submitted_by = u1.id
-            LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
-            WHERE la.status IN ('submitted', 'assigned_to_ci')
-            ORDER BY la.submitted_at ASC
-        ''').fetchall()
-        in_process_applications = _normalize_datetime_fields(
-            in_process_applications
+        # Only fetch the columns the template actually reads.
+        # SELECT la.* was the primary bottleneck: it transferred ci_checklist_data,
+        # admin_notes, loan_officer_notes, and other large TEXT/JSON columns for
+        # every row, potentially MBs from Render's managed PostgreSQL node.
+        _LA_COLS = (
+            'la.id, la.status, la.member_name, la.loan_amount, la.loan_type,'
+            ' la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,'
+            ' u1.name AS loan_staff_name, u2.name AS ci_staff_name'
         )
-        
-        # Get online CI staff
-        ci_staff = conn.execute('''
-            SELECT id, name, email, is_online, last_seen, profile_photo
-            FROM users 
-            WHERE role = 'ci_staff'
-            ORDER BY is_online DESC, name ASC
-        ''').fetchall()
-        
-        row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                    (current_user.id,)).fetchone()
+        _LA_JOIN = (
+            'LEFT JOIN users u1 ON la.submitted_by = u1.id'
+            ' LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id'
+        )
+
+        # --- Q1: Applications ready for admin review -------------------------
+        # LIMIT 500: historical approved/disapproved/deferred can be very large;
+        # show the 500 oldest pending first (ASC keeps oldest-first priority).
+        applications = conn.execute(
+            f'SELECT {_LA_COLS} FROM loan_applications la {_LA_JOIN}'
+            " WHERE la.status IN ('ci_completed','approved','disapproved','deferred')"
+            " OR (la.needs_ci_interview = 0 AND la.status = 'submitted')"
+            ' ORDER BY la.submitted_at ASC LIMIT 500'
+        ).fetchall()
+        _t_q1 = _time.monotonic()
+
+        # --- Q2: In-process applications (LPS → CI pipeline) -----------------
+        in_process_applications = conn.execute(
+            f'SELECT {_LA_COLS} FROM loan_applications la {_LA_JOIN}'
+            " WHERE la.status IN ('submitted','assigned_to_ci')"
+            ' ORDER BY la.submitted_at ASC LIMIT 300'
+        ).fetchall()
+        _t_q2 = _time.monotonic()
+
+        # --- Q3: CI staff online status  -------------------------------------
+        ci_staff = conn.execute(
+            'SELECT id, name, email, is_online, last_seen, profile_photo'
+            ' FROM users WHERE role = %s'
+            ' ORDER BY is_online DESC, name ASC'
+            if is_postgresql() else
+            'SELECT id, name, email, is_online, last_seen, profile_photo'
+            ' FROM users WHERE role = ?'
+            ' ORDER BY is_online DESC, name ASC',
+            ('ci_staff',)
+        ).fetchall()
+        _t_q3 = _time.monotonic()
+
+        # --- Q4: Unread notification count -----------------------------------
+        # Uses idx_notifications_user_read_created; the LIKE filter runs on the
+        # small result set after the index narrows by user_id + is_read.
+        row = conn.execute(
+            "SELECT COUNT(*) AS count FROM notifications"
+            " WHERE user_id = ? AND is_read = 0"
+            " AND message NOT LIKE 'New message from%'",
+            (current_user.id,)
+        ).fetchone()
         unread_count = row['count'] if row else 0
+        _t_q4 = _time.monotonic()
+
         conn.close()
-        return render_template('admin_dashboard.html', 
-                         applications=applications, 
-                         in_process_applications=in_process_applications,
-                         ci_staff=ci_staff, 
-                         unread_count=unread_count)
+
+        # Normalise submitted_at to string so templates can slice it safely
+        def _norm_dt(rows):
+            out = []
+            for row in rows:
+                d = dict(row)
+                v = d.get('submitted_at')
+                if isinstance(v, datetime):
+                    d['submitted_at'] = v.strftime('%Y-%m-%d %H:%M:%S')
+                out.append(d)
+            return out
+
+        applications = _norm_dt(applications)
+        in_process_applications = _norm_dt(in_process_applications)
+        _t_end = _time.monotonic()
+
+        # Emit a WARNING whenever the full handler exceeds 500 ms so we can
+        # see exactly which query is slow in Render's log stream.
+        _total = _t_end - _t0
+        if _total > 0.5:
+            _perf.warning(
+                'admin_dashboard slow %.3fs | conn=%.0fms q1(review)=%.0fms'
+                ' q2(inprocess)=%.0fms q3(staff)=%.0fms q4(notif)=%.0fms norm=%.0fms',
+                _total,
+                (_t_conn - _t0) * 1000,
+                (_t_q1 - _t_conn) * 1000,
+                (_t_q2 - _t_q1) * 1000,
+                (_t_q3 - _t_q2) * 1000,
+                (_t_q4 - _t_q3) * 1000,
+                (_t_end - _t_q4) * 1000,
+            )
+
+        return render_template(
+            'admin_dashboard.html',
+            applications=applications,
+            in_process_applications=in_process_applications,
+            ci_staff=ci_staff,
+            unread_count=unread_count,
+        )
     except Exception as e:
         print(f"❌ ERROR in admin_dashboard: {e}")
         import traceback
