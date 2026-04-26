@@ -51,3 +51,22 @@ keepalive = int(os.environ.get("GUNICORN_KEEPALIVE", "5") or "5")
 control_socket_disable = True
 
 proc_name = "dccco_ci"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Suppress "Bad file descriptor" noise during graceful shutdown
+# ──────────────────────────────────────────────────────────────────────────────
+# When Render sends SIGTERM for a rolling redeploy, gunicorn closes the listen
+# socket while eventlet's WSGI layer is still tearing down Socket.IO connections.
+# Eventlet calls socket.shutdown() on the already-closed fd and logs
+# "socket shutdown error: [Errno 9] Bad file descriptor" for every open client.
+# This is harmless (connections are already closing) so we install a log filter
+# that drops those records instead of letting them clutter the Render log tail.
+import logging
+
+class _SuppressSocketShutdownFilter(logging.Filter):
+    def filter(self, record):
+        msg = record.getMessage()
+        return 'Bad file descriptor' not in msg and 'socket shutdown error' not in msg
+
+for _logger_name in ('eventlet.wsgi.server', 'gunicorn.error', 'gunicorn.access', ''):
+    logging.getLogger(_logger_name).addFilter(_SuppressSocketShutdownFilter())
