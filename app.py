@@ -7207,13 +7207,23 @@ def autocomplete_names():
         return jsonify({'success': True, 'suggestions': []})
     
     conn = get_db()
-    results = conn.execute('''
-        SELECT DISTINCT member_name, member_contact, member_address
-        FROM loan_applications
-        WHERE member_name LIKE ? 
-        ORDER BY submitted_at DESC
-        LIMIT 10
-    ''', (f'%{query}%',)).fetchall()
+    if is_postgresql():
+        results = conn.execute('''
+            SELECT DISTINCT ON (member_name) member_name, member_contact, member_address
+            FROM loan_applications
+            WHERE member_name ILIKE %s
+            ORDER BY member_name, submitted_at DESC
+            LIMIT 10
+        ''', (f'%{query}%',)).fetchall()
+    else:
+        results = conn.execute('''
+            SELECT member_name, member_contact, member_address
+            FROM loan_applications
+            WHERE member_name LIKE ?
+            GROUP BY member_name
+            ORDER BY MAX(submitted_at) DESC
+            LIMIT 10
+        ''', (f'%{query}%',)).fetchall()
     conn.close()
     
     suggestions = [{
@@ -7232,13 +7242,23 @@ def autocomplete_contacts():
         return jsonify({'success': True, 'suggestions': []})
     
     conn = get_db()
-    results = conn.execute('''
-        SELECT DISTINCT member_contact, member_name
-        FROM loan_applications
-        WHERE member_contact LIKE ?
-        ORDER BY submitted_at DESC
-        LIMIT 10
-    ''', (f'%{query}%',)).fetchall()
+    if is_postgresql():
+        results = conn.execute('''
+            SELECT DISTINCT ON (member_contact) member_contact, member_name
+            FROM loan_applications
+            WHERE member_contact ILIKE %s
+            ORDER BY member_contact, submitted_at DESC
+            LIMIT 10
+        ''', (f'%{query}%',)).fetchall()
+    else:
+        results = conn.execute('''
+            SELECT member_contact, member_name
+            FROM loan_applications
+            WHERE member_contact LIKE ?
+            GROUP BY member_contact
+            ORDER BY MAX(submitted_at) DESC
+            LIMIT 10
+        ''', (f'%{query}%',)).fetchall()
     conn.close()
     
     suggestions = [{
@@ -7257,20 +7277,32 @@ def autocomplete_addresses():
         return jsonify({'success': True, 'suggestions': []})
     
     conn = get_db()
-    results = conn.execute('''
-        SELECT DISTINCT member_address, member_name
-        FROM loan_applications
-        WHERE member_address LIKE ?
-        ORDER BY submitted_at DESC
-        LIMIT 10
-    ''', (f'%{query}%',)).fetchall()
+    # PostgreSQL: ORDER BY columns must appear in the SELECT list when using DISTINCT.
+    # Use a subquery to rank by recency, then deduplicate in the outer query.
+    if is_postgresql():
+        results = conn.execute('''
+            SELECT DISTINCT ON (member_address) member_address, member_name
+            FROM loan_applications
+            WHERE member_address ILIKE %s
+            ORDER BY member_address, submitted_at DESC
+            LIMIT 10
+        ''', (f'%{query}%',)).fetchall()
+    else:
+        results = conn.execute('''
+            SELECT member_address, member_name
+            FROM loan_applications
+            WHERE member_address LIKE ?
+            GROUP BY member_address
+            ORDER BY MAX(submitted_at) DESC
+            LIMIT 10
+        ''', (f'%{query}%',)).fetchall()
     conn.close()
-    
+
     suggestions = [{
         'value': row['member_address'],
         'context': row['member_name']
     } for row in results if row['member_address']]
-    
+
     return jsonify({'success': True, 'suggestions': suggestions})
 
 @app.route('/api/autocomplete/member_details', methods=['GET'])

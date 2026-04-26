@@ -9,6 +9,7 @@ cd "$ROOT"
 export PORT="${PORT:-5000}"
 
 exec gunicorn \
+  --config "$ROOT/gunicorn.conf.py" \
   --no-control-socket \
   --worker-class eventlet \
   -w 1 \
