@@ -78,6 +78,16 @@ def naive_utc_iso_z(dt=None):
 
 
 app = Flask(__name__)
+
+# Performance logger — emits WARNING lines visible in Render logs.
+import logging as _logging
+_perf_logger = _logging.getLogger('app.perf')
+if not _perf_logger.handlers:
+    _perf_handler = _logging.StreamHandler()
+    _perf_handler.setFormatter(_logging.Formatter('[PERF] %(message)s'))
+    _perf_logger.addHandler(_perf_handler)
+_perf_logger.setLevel(_logging.WARNING)
+
 _secret_key = (os.getenv('SECRET_KEY') or '').strip()
 if not _secret_key:
     raise RuntimeError("SECRET_KEY must be set in environment for secure sessions.")
@@ -337,9 +347,18 @@ def utility_processor():
     # calls get_db() which reuses the request-scoped connection (no extra round-trip).
     message_unread_count = 0
     try:
+        import time as _t
         from flask_login import current_user as _cu
         if _cu.is_authenticated:
+            _ctx_t0 = _t.monotonic()
             message_unread_count = get_unread_message_count(_cu.id)
+            _ctx_elapsed = _t.monotonic() - _ctx_t0
+            if _ctx_elapsed > 0.1:
+                import logging as _log
+                _log.getLogger('app.perf').warning(
+                    'context_processor get_unread_message_count slow %.0fms user=%s',
+                    _ctx_elapsed * 1000, _cu.id,
+                )
     except Exception:
         pass
 
@@ -889,7 +908,17 @@ def ensure_performance_indexes():
             # as a separate leading-char index isn't possible for LIKE '%...%', but
             # the existing composite index narrows the set enough.  Add a covering
             # index so the COUNT needs no heap fetch.
-            "CREATE INDEX IF NOT EXISTS idx_notif_user_read_msg ON notifications(user_id, is_read, message)"
+            "CREATE INDEX IF NOT EXISTS idx_notif_user_read_msg ON notifications(user_id, is_read, message)",
+            # ── messages (internal loan-application thread) ────────────────────
+            "CREATE INDEX IF NOT EXISTS idx_messages_receiver_read ON messages(receiver_id, is_read)",
+            # ── direct_messages bilateral history query ────────────────────────
+            # Speeds up the chat_with_user pair query (sender+receiver in both directions).
+            "CREATE INDEX IF NOT EXISTS idx_dm_sender_receiver ON direct_messages(sender_id, receiver_id, sent_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_dm_receiver_sender ON direct_messages(receiver_id, sender_id, sent_at DESC)",
+            # ── loan_applications assigned_ci_staff + status (ci_dashboard) ───
+            "CREATE INDEX IF NOT EXISTS idx_loan_app_ci_status ON loan_applications(assigned_ci_staff, status, submitted_at)",
+            # ── loan_applications submitted_by + status (loan_dashboard) ───────
+            "CREATE INDEX IF NOT EXISTS idx_loan_app_by_status ON loan_applications(submitted_by, status, submitted_at)",
         ]
         for statement in statements:
             conn.execute(statement)
@@ -2739,29 +2768,48 @@ def logout():
 @app.route('/loan/dashboard')
 @login_required
 def loan_dashboard():
+    import time as _time
+    _t0 = _time.monotonic()
     if current_user.role != 'loan_staff':
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     conn = get_db()
-    # LPS users only see applications they submitted (submitted_by); duplicate checks on submit
-    # and /api/member_application_prefill still read across all members for data hygiene.
+    # Only fetch the columns the template reads — avoids transferring ci_checklist_data,
+    # admin_notes, loan_officer_notes, and other wide TEXT columns from PostgreSQL.
     applications = conn.execute('''
-        SELECT la.*, u.name as ci_staff_name 
+        SELECT la.id, la.status, la.member_name, la.loan_amount, la.loan_type,
+               la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
+               u.name as ci_staff_name
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
         WHERE la.submitted_by = ?
         ORDER BY la.submitted_at ASC
+        LIMIT 300
     ''', (current_user.id,)).fetchall()
-    
-    # Get all CI staff for the dropdown
+    _t_q1 = _time.monotonic()
+
     ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
-    
-    # Fixed: Handle None case when no notifications exist
-    unread_count_row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'", 
-                                (current_user.id,)).fetchone()
+    _t_q2 = _time.monotonic()
+
+    unread_count_row = conn.execute(
+        "SELECT COUNT(*) as count FROM notifications"
+        " WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
+        (current_user.id,)
+    ).fetchone()
     unread_count = unread_count_row['count'] if unread_count_row else 0
     conn.close()
-    return render_template('loan_dashboard.html', applications=applications, unread_count=unread_count, ci_staff_list=ci_staff_list)
+
+    _total = _time.monotonic() - _t0
+    if _total > 0.5:
+        import logging as _log
+        _log.getLogger('app.perf').warning(
+            'loan_dashboard slow %.3fs | q1(apps)=%.0fms q2(staff)=%.0fms q3(notif)=%.0fms',
+            _total, (_t_q1 - _t0) * 1000, (_t_q2 - _t_q1) * 1000,
+            (_time.monotonic() - _t_q2) * 1000,
+        )
+
+    return render_template('loan_dashboard.html', applications=applications,
+                           unread_count=unread_count, ci_staff_list=ci_staff_list)
 
 @app.route('/notifications/count')
 @login_required
@@ -3234,19 +3282,36 @@ def api_member_application_prefill():
 @app.route('/ci/dashboard')
 @login_required
 def ci_dashboard():
+    import time as _time
+    _t0 = _time.monotonic()
     if current_user.role != 'ci_staff':
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     conn = get_db()
+    # Select only columns the CI dashboard template needs.
     applications = conn.execute('''
-        SELECT la.*, u.name as loan_staff_name
+        SELECT la.id, la.status, la.member_name, la.member_address, la.loan_amount,
+               la.loan_type, la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
+               u.name as loan_staff_name
         FROM loan_applications la
         LEFT JOIN users u ON la.submitted_by = u.id
         WHERE la.assigned_ci_staff = ?
         ORDER BY la.submitted_at ASC
+        LIMIT 200
     ''', (current_user.id,)).fetchall()
+    _t_q1 = _time.monotonic()
+
     unread_count = get_unread_notification_count(current_user.id)
     conn.close()
+
+    _total = _time.monotonic() - _t0
+    if _total > 0.5:
+        import logging as _log
+        _log.getLogger('app.perf').warning(
+            'ci_dashboard slow %.3fs | q1(apps)=%.0fms',
+            _total, (_t_q1 - _t0) * 1000,
+        )
+
     return render_template('ci_dashboard.html', applications=applications, unread_count=unread_count)
 
 @app.route('/ci/checklist/<int:id>', methods=['GET'])
@@ -3408,7 +3473,8 @@ def ci_review_application(id):
     # Get uploaded documents
     try:
         documents = conn.execute(
-            'SELECT * FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC',
+            'SELECT id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at'
+            ' FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC LIMIT 100',
             (id,),
         ).fetchall()
     except Exception as doc_err:
@@ -3417,11 +3483,11 @@ def ci_review_application(id):
 
     unread_count = get_unread_notification_count(current_user.id)
     conn.close()
-    
-    return render_template('ci_review_application.html', 
-                         application=app_data, 
-                         documents=documents,
-                         unread_count=unread_count)
+
+    return render_template('ci_review_application.html',
+                           application=app_data,
+                           documents=documents,
+                           unread_count=unread_count)
 
 
 def _coalesce_ci_staff_display(app_data, checklist_data):
@@ -3566,7 +3632,8 @@ def view_ci_checklist(id):
 
         # Gather LPS-submitted reference photos and any CI uploads.
         docs = conn.execute(
-            'SELECT * FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC',
+            'SELECT id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at'
+            ' FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC LIMIT 100',
             (id,)
         ).fetchall()
 
@@ -3891,13 +3958,15 @@ def admin_dashboard():
 @app.route('/admin/application/<int:id>', methods=['GET','POST'])
 @login_required
 def admin_application(id):
+    import time as _time
+    _t0 = _time.monotonic()
     if current_user.role not in ['admin', 'loan_officer']:
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
+
     conn = get_db()
     app_data = conn.execute('''
-        SELECT la.*, 
+        SELECT la.*,
                u1.name as loan_staff_name,
                u2.name as ci_staff_name
         FROM loan_applications la
@@ -3905,6 +3974,7 @@ def admin_application(id):
         LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
         WHERE la.id=?
     ''', (id,)).fetchone()
+    _t_q1 = _time.monotonic()
     
     if not app_data:
         flash('Application not found', 'danger')
@@ -4010,36 +4080,49 @@ def admin_application(id):
             return redirect(url_for('admin_application', id=id))
     
     try:
-        documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=?', (id,)).fetchall()
+        # Only fetch columns; documents table may have large file paths but rarely huge data.
+        documents = conn.execute(
+            'SELECT id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at'
+            ' FROM documents WHERE loan_application_id=?'
+            ' ORDER BY uploaded_at DESC LIMIT 100',
+            (id,)
+        ).fetchall()
     except Exception as doc_err:
         print(f"WARNING loading documents for admin_application({id}): {doc_err}")
         documents = []
 
     try:
         messages = conn.execute('''
-            SELECT m.*, u.name as sender_name 
+            SELECT m.id, m.loan_application_id, m.message, m.sent_at,
+                   m.sender_id, u.name as sender_name
             FROM messages m
             JOIN users u ON m.sender_id = u.id
             WHERE m.loan_application_id=?
             ORDER BY m.sent_at ASC
+            LIMIT 200
         ''', (id,)).fetchall()
     except Exception as msg_err:
         print(f"WARNING loading messages for admin_application({id}): {msg_err}")
         messages = []
-    
-    # Get CI staff list for reassignment (schema-compatible across deployments).
+
     ci_staff_list = fetch_ci_staff_list(conn, include_pending=False)
     conn.close()
 
-    # Use centralized unread count helper with backward-compatible fallbacks.
     unread_count = get_unread_notification_count(current_user.id)
-    
-    return render_template('admin_application.html', 
-                         application=app_data, 
-                         documents=documents, 
-                         messages=messages, 
-                         ci_staff_list=ci_staff_list,
-                         unread_count=unread_count)
+
+    _total = _time.monotonic() - _t0
+    if _total > 0.5:
+        _perf_logger.warning(
+            'admin_application GET id=%s slow %.3fs | q1(app)=%.0fms total=%.0fms',
+            id, _total, (_t_q1 - _t0) * 1000, _total * 1000,
+        )
+
+    return render_template('admin_application.html',
+                           application=app_data,
+                           documents=documents,
+                           messages=messages,
+                           ci_staff_list=ci_staff_list,
+                           unread_count=unread_count)
 
 @app.route('/reassign_ci_staff/<int:app_id>', methods=['POST'])
 @login_required
@@ -4436,12 +4519,14 @@ def messages():
 def chat_with_user(user_id):
     conn = get_db()
     try:
-        other_user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        other_user = conn.execute(
+            'SELECT id, name, email, role, profile_photo FROM users WHERE id=?',
+            (user_id,)
+        ).fetchone()
         if not other_user:
             flash('That user is no longer available.', 'warning')
             return redirect(url_for('messages'))
 
-        # Normalise so templates never blow up on missing / None fields.
         other_user = dict(other_user)
         other_user.setdefault('id', user_id)
         if not other_user.get('name'):
@@ -4449,14 +4534,20 @@ def chat_with_user(user_id):
         if not other_user.get('role'):
             other_user['role'] = 'user'
 
+        # Limit to last 200 messages; full history causes large data transfers with no benefit.
         messages = conn.execute('''
-            SELECT dm.*, COALESCE(u.name, '') as sender_name
+            SELECT dm.id, dm.sender_id, dm.receiver_id, dm.message,
+                   dm.sent_at, dm.is_read, dm.is_edited, dm.edited_at,
+                   COALESCE(u.name, '') as sender_name
             FROM direct_messages dm
             LEFT JOIN users u ON dm.sender_id = u.id
             WHERE (dm.sender_id = ? AND dm.receiver_id = ?)
                OR (dm.sender_id = ? AND dm.receiver_id = ?)
-            ORDER BY dm.sent_at ASC
+            ORDER BY dm.sent_at DESC
+            LIMIT 200
         ''', (current_user.id, user_id, user_id, current_user.id)).fetchall()
+        # Reverse so oldest-first in the template (DESC + LIMIT, then flip is faster than ASC over full table)
+        messages = list(reversed(messages)) if messages else []
 
         safe_messages = []
         for msg in messages or []:
