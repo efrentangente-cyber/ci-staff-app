@@ -146,6 +146,34 @@ try:
 except ImportError:
     pass
 
+# ── WhiteNoise: serve /static/ files at WSGI level, before Flask routing ──────
+# Problem: with a single eventlet worker, every static file request goes through
+# the full Flask pipeline (rate limiter, before_request hooks, send_from_directory
+# file I/O, after_request hooks). Requests serialise behind slower app requests,
+# causing 7–8 s TTFB on tiny CSS/JS files.
+# WhiteNoise intercepts /static/… before Flask sees the request, serves from an
+# in-memory cache built at startup, and sets long-lived Cache-Control headers so
+# the browser avoids the round-trip entirely on subsequent page loads.
+try:
+    from whitenoise import WhiteNoise as _WhiteNoise
+    _static_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+    app.wsgi_app = _WhiteNoise(
+        app.wsgi_app,
+        root=_static_root,
+        prefix='static',
+        # 1-day browser cache.  Files without a content-hash in the name get a
+        # shorter lifetime so stale assets aren't cached across deploys.
+        max_age=86400,
+        # Re-scan disk on every request in dev so you don't need to restart when
+        # editing static files; in production keep the startup snapshot (faster).
+        autorefresh=not _on_render,
+    )
+    print('✓ WhiteNoise static file middleware active')
+except ImportError:
+    print('ℹ️  whitenoise not installed — Flask will serve static files (slower in production)')
+except Exception as _wn_err:
+    print(f'⚠️  WhiteNoise setup failed: {_wn_err} — falling back to Flask static serving')
+
 _SKIP_SESSION_ENFORCE_ENDPOINTS = frozenset(
     {
         'login',
@@ -271,6 +299,14 @@ limiter = Limiter(
     default_limits=["50 per minute"],
     storage_uri="memory://"
 )
+
+# Exempt static assets from rate limiting.
+# WhiteNoise already intercepts /static/… before Flask, so these filters are
+# belt-and-suspenders for requests that fall through (e.g. favicon.ico).
+@limiter.request_filter
+def _limiter_exempt_static():
+    p = request.path or ''
+    return p.startswith('/static/') or p == '/favicon.ico'
 
 # Configure Resend
 resend.api_key = os.getenv('RESEND_API_KEY')
@@ -531,10 +567,14 @@ _security_alert_cache = {}
 _SECURITY_ALERT_TTL_SECONDS = 300
 _SINGLE_LOGIN_STALE_SECONDS = 2 * 60 * 60
 
-# Serve static files for PWA
+# Serve static files — fallback only (WhiteNoise handles /static/… before Flask).
+# This route is only reached when WhiteNoise is not installed or misses a file.
 @app.route('/static/<path:filename>')
 def serve_static(filename):
-    return send_from_directory('static', filename)
+    resp = send_from_directory('static', filename)
+    if 'Cache-Control' not in resp.headers:
+        resp.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=3600'
+    return resp
 
 # Serve favicon directly at /favicon.ico
 @app.route('/favicon.ico')
@@ -2216,9 +2256,9 @@ def add_security_headers(response):
     ep = request.endpoint
     static_asset = p.startswith('/static/') or ep in ('serve_static', 'favicon')
     if static_asset and 'Cache-Control' not in response.headers:
-        # Logged-in users were sending no-cache on every .js/.css; browser re-fetched all assets each
-        # navigation. Public static has no user-specific data; short cache is safe and much faster.
-        response.headers['Cache-Control'] = 'public, max-age=300, stale-while-revalidate=60'
+        # 1-day browser cache for static assets (WhiteNoise sets this independently;
+        # this covers the Flask fallback route and favicon).
+        response.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=3600'
 
     if current_user.is_authenticated and not static_asset:
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
