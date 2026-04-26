@@ -39,9 +39,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     {% endif %}
     {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='ci-field.css') }}?v=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='ci-field.min.css' if config.USE_MINIFIED_ASSETS else 'ci-field.css') }}?v=2">
     {% endif %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.min.css' if config.USE_MINIFIED_ASSETS else 'css/base.css') }}?v=2">
     {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}
     {# Socket.IO client must load before {% block content %}—many pages use io() in inline scripts #}
@@ -509,11 +509,13 @@
     }
     </script>
     
-    <!-- CSRF Protection Script -->
+    <!-- Core security scripts (bundled+minified in production) -->
+    {% if config.USE_MINIFIED_ASSETS %}
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=2" defer></script>
+    {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
-    
-    <!-- Session Security Script -->
-    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260426-tab-lock-stable" defer></script>
+    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260426-friendly-session" defer></script>
+    {% endif %}
     
     {# Per-page: {% include 'includes/assets_autocomplete.html' %} or assets_datatable.html — see block below #}
     {% block layout_feature_scripts %}{% endblock %}
@@ -524,6 +526,34 @@
         if (!sessionStorage.getItem('loginTime')) {
             sessionStorage.setItem('loginTime', Date.now().toString());
         }
+        (function () {
+            var hbUrl = {{ url_for('session_heartbeat') | tojson }};
+            var intervalMs = 3 * 60 * 1000;
+            function csrfToken() {
+                var m = document.querySelector('meta[name="csrf-token"]');
+                return m ? m.getAttribute('content') : '';
+            }
+            function sessionHeartbeat() {
+                var t = csrfToken();
+                if (!t || !hbUrl) return;
+                fetch(hbUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-CSRFToken': t,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                }).catch(function () {});
+            }
+            setInterval(sessionHeartbeat, intervalMs);
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) sessionHeartbeat();
+            });
+            document.addEventListener('DOMContentLoaded', function () {
+                setTimeout(sessionHeartbeat, 8000);
+            });
+        })();
     </script>
     {% endif %}
     
@@ -576,10 +606,14 @@
     });
     </script>
     
-    <!-- Offline PWA Scripts for CI/BI -->
+    <!-- Offline PWA scripts for CI staff (bundled+minified in production) -->
     {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
+    {% if config.USE_MINIFIED_ASSETS %}
+    <script src="{{ url_for('static', filename='js/ci-pwa.min.js') }}?v=2" defer></script>
+    {% else %}
     <script src="{{ url_for('static', filename='indexeddb-manager.js') }}" defer></script>
     <script src="{{ url_for('static', filename='offline-sync.js') }}" defer></script>
+    {% endif %}
     {% endif %}
     
     {% block scripts %}{% endblock %}

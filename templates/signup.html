@@ -67,6 +67,32 @@
             color: #1e3a5f;
             font-weight: 600;
         }
+        .hand-sign-captcha {
+            background: #f0f4f8;
+            border: 1px solid #c5d0dc;
+            border-radius: 12px;
+            padding: 1rem 1rem 1.25rem;
+        }
+        .hand-sign-captcha .hand-btn {
+            min-width: 3.5rem;
+            min-height: 3.25rem;
+            font-size: 2rem;
+            line-height: 1.2;
+            border-radius: 10px;
+            border: 2px solid #cbd5e1;
+            background: #fff;
+            transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+        }
+        .hand-sign-captcha .hand-btn:hover {
+            border-color: #1e3a5f;
+            background: #e8f0fe;
+        }
+        .hand-sign-captcha .hand-btn.selected {
+            border-color: #1e3a5f;
+            background: #dbeafe;
+            box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.2);
+        }
+        .hp-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
     </style>
 </head>
 <body>
@@ -90,6 +116,10 @@
         
         <form method="POST" action="{{ url_for('signup') }}" id="signupForm" enctype="multipart/form-data" onsubmit="return validateSignup()">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="hp-trap" aria-hidden="true">
+                <label for="website">Do not fill this in</label>
+                <input type="text" name="website" id="website" value="" tabindex="-1" autocomplete="off">
+            </div>
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-person"></i> Full Name</label>
                 <input type="text" class="form-control" name="name" required>
@@ -124,8 +154,21 @@
                     <p class="text-muted mt-2 mb-0" style="font-size: 0.9rem;">Click to draw your signature</p>
                 </div>
             </div>
+
+            <div class="mb-4 hand-sign-captcha" id="handSignCaptcha">
+                <label class="form-label"><i class="bi bi-shield-check"></i> Hand sign (human check)</label>
+                <p class="small text-muted mb-2">This blocks automated sign-ups. <strong>Tap the emoji</strong> that matches:</p>
+                <p class="mb-3 fw-semibold" style="color: #1e3a5f;">{{ hand_sign_prompt }}</p>
+                <input type="hidden" name="hand_sign" id="hand_sign" value="" autocomplete="off">
+                <div class="d-flex flex-wrap gap-2 justify-content-center" role="group" aria-label="Hand sign choices">
+                    {% for row in hand_choices %}
+                    <button type="button" class="btn hand-btn hand-btn-choice" data-hand="{{ row[0] }}" title="{{ row[1] }}">{{ row[2] }}</button>
+                    {% endfor %}
+                </div>
+                <p class="text-danger small mt-2 d-none" id="handSignError">Please select the hand that matches the description above.</p>
+            </div>
             
-            <button type="submit" class="btn btn-primary w-100">
+            <button type="submit" class="btn btn-primary w-100" id="btnRegister">
                 <i class="bi bi-person-plus"></i> Register
             </button>
         </form>
@@ -138,10 +181,30 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
     <script>
+    (function () {
+        const hidden = document.getElementById('hand_sign');
+        const err = document.getElementById('handSignError');
+        document.querySelectorAll('.hand-btn-choice').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('.hand-btn-choice').forEach(function (b) { b.classList.remove('selected'); });
+                btn.classList.add('selected');
+                hidden.value = btn.getAttribute('data-hand') || '';
+                if (err) { err.classList.add('d-none'); }
+            });
+        });
+    })();
     function validateSignup() {
         const signatureInput = document.getElementById('signature_data');
         if (!signatureInput.value) {
             alert('Please provide your signature before registering.');
+            return false;
+        }
+        const hand = document.getElementById('hand_sign');
+        if (!hand || !hand.value) {
+            const e = document.getElementById('handSignError');
+            if (e) e.classList.remove('d-none');
+            const box = document.getElementById('handSignCaptcha');
+            if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
             return false;
         }
         return true;

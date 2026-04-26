@@ -439,16 +439,33 @@ def get_unread_notification_count(user_id):
     return count
 
 
+# CI staff list cache — invalidated on user approve/role change; TTL is a safety net.
+_ci_staff_cache: dict = {}
+_CI_STAFF_CACHE_TTL = 120  # seconds
+
+
+def _invalidate_ci_staff_cache():
+    """Call after any users table write that changes CI staff membership/approval."""
+    _ci_staff_cache.clear()
+
+
 def fetch_ci_staff_list(conn, include_pending=True):
     """
     Fetch CI staff list with compatibility for older schemas where users.is_approved
-    may not exist yet in production.
+    may not exist yet in production.  Results are cached for up to 120 s so that
+    dashboard and application detail pages don't each hit the DB independently.
     """
+    cache_key = 'all' if include_pending else 'approved'
+    _now = time.time()
+    _cached = _ci_staff_cache.get(cache_key)
+    if _cached and (_now - _cached['ts']) < _CI_STAFF_CACHE_TTL:
+        return _cached['value']
+
     where_role = "WHERE role='ci_staff'"
     order_by = "ORDER BY name ASC"
     if include_pending:
         try:
-            return conn.execute(
+            result = conn.execute(
                 f'''
                 SELECT id, name, email, is_approved
                 FROM users
@@ -468,13 +485,15 @@ def fetch_ci_staff_list(conn, include_pending=True):
                 ).fetchall()
             except Exception:
                 return []
-            return [
+            result = [
                 {'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1}
                 for r in rows
             ]
+        _ci_staff_cache[cache_key] = {'value': result, 'ts': _now}
+        return result
 
     try:
-        return conn.execute(
+        result = conn.execute(
             f'''
             SELECT id, name, email, is_approved
             FROM users
@@ -494,7 +513,10 @@ def fetch_ci_staff_list(conn, include_pending=True):
             ).fetchall()
         except Exception:
             return []
-        return [{'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1} for r in rows]
+        result = [{'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1} for r in rows]
+
+    _ci_staff_cache[cache_key] = {'value': result, 'ts': _now}
+    return result
 
 
 def _fetch_loan_types_flexible(conn, active_only=False):
@@ -584,7 +606,22 @@ _notification_count_cache = {}
 _message_count_cache = {}
 _security_alert_cache = {}
 _SECURITY_ALERT_TTL_SECONDS = 300
-_SINGLE_LOGIN_STALE_SECONDS = 2 * 60 * 60
+# System settings cache — invalidated on every write to system_settings table.
+_system_settings_cache: dict = {'data': None, 'ts': 0.0}
+_SYSTEM_SETTINGS_CACHE_TTL = 60  # seconds
+# Server-side "abandoned session" window — increase for long forms / field work (overridable).
+try:
+    _SESSION_STALE_HOURS = float((os.getenv('SESSION_STALE_HOURS') or '8').strip() or '8')
+except ValueError:
+    _SESSION_STALE_HOURS = 8.0
+_SESSION_STALE_HOURS = max(1.0, min(72.0, _SESSION_STALE_HOURS))
+_SINGLE_LOGIN_STALE_SECONDS = int(_SESSION_STALE_HOURS * 3600)
+# How often to update last_seen in the DB (keeps long single-page work from going stale).
+try:
+    _SESSION_TOUCH_MIN_SEC = int((os.getenv('SESSION_TOUCH_MIN_SEC') or '30').strip() or '30')
+except ValueError:
+    _SESSION_TOUCH_MIN_SEC = 30
+_SESSION_TOUCH_MIN_SEC = max(15, min(600, _SESSION_TOUCH_MIN_SEC))
 
 # Serve static files — fallback only (WhiteNoise handles /static/… before Flask).
 # This route is only reached when WhiteNoise is not installed or misses a file.
@@ -1294,6 +1331,97 @@ ensure_sms_templates_table()
 ensure_sms_sent_log_table()
 ensure_system_activity_log_table()
 ensure_user_login_sessions_table()
+
+
+# ── Asset minification / bundling ────────────────────────────────────────────
+def _build_minified_assets():
+    """
+    Minify CSS and bundle+minify JS at startup using pure-Python rcssmin/rjsmin.
+    Outputs land in static/css/ and static/js/ so WhiteNoise serves them with
+    the same 1-day cache headers as all other static files.
+    Falls back silently if the packages are not yet installed.
+    """
+    try:
+        import rcssmin as _rcss
+        import rjsmin as _rjs
+    except ImportError:
+        print("⚠  rcssmin/rjsmin not installed — skipping asset minification (pip install rcssmin rjsmin)")
+        app.config['USE_MINIFIED_ASSETS'] = False
+        return
+
+    _static = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+    os.makedirs(os.path.join(_static, 'js'), exist_ok=True)
+
+    # ── CSS: minify individual files ─────────────────────────────────────────
+    _css_pairs = [
+        ('css/base.css', 'css/base.min.css'),
+        ('ci-field.css', 'ci-field.min.css'),
+    ]
+    _css_ok = False
+    for src_rel, dst_rel in _css_pairs:
+        src_path = os.path.join(_static, src_rel)
+        if not os.path.exists(src_path):
+            continue
+        try:
+            with open(src_path, 'r', encoding='utf-8') as _f:
+                _raw = _f.read()
+            _min = _rcss.cssmin(_raw, keep_bang_comments=False)
+            dst_path = os.path.join(_static, dst_rel)
+            with open(dst_path, 'w', encoding='utf-8') as _f:
+                _f.write(_min)
+            print(f"✓ CSS minified  {src_rel} → {dst_rel}  "
+                  f"({len(_raw) // 1024}KB → {len(_min) // 1024}KB)")
+            if src_rel == 'css/base.css':
+                _css_ok = True
+        except Exception as _e:
+            print(f"⚠  CSS minify failed {src_rel}: {_e}")
+
+    # ── JS: bundle + minify groups ───────────────────────────────────────────
+    # Each bundle = (output_path_rel, [source_paths_rel_to_static])
+    _js_bundles = [
+        (
+            'js/app-core.min.js',
+            ['csrf-protection.js', 'session-security.js'],
+        ),
+        (
+            'js/ci-pwa.min.js',
+            ['indexeddb-manager.js', 'offline-sync.js'],
+        ),
+    ]
+    _js_ok = False
+    for dst_rel, src_rels in _js_bundles:
+        parts = []
+        for sr in src_rels:
+            sp = os.path.join(_static, sr)
+            if os.path.exists(sp):
+                try:
+                    with open(sp, 'r', encoding='utf-8') as _f:
+                        parts.append(_f.read())
+                except Exception:
+                    pass
+        if not parts:
+            continue
+        try:
+            _raw = '\n;\n'.join(parts)
+            _min = _rjs.jsmin(_raw, keep_bang_comments=False)
+            dst_path = os.path.join(_static, dst_rel)
+            with open(dst_path, 'w', encoding='utf-8') as _f:
+                _f.write(_min)
+            print(f"✓ JS bundled    {dst_rel}  "
+                  f"({len(_raw) // 1024}KB → {len(_min) // 1024}KB)")
+            if dst_rel == 'js/app-core.min.js':
+                _js_ok = True
+        except Exception as _e:
+            print(f"⚠  JS bundle failed {dst_rel}: {_e}")
+
+    # Signal to base.html which assets to serve.
+    app.config['USE_MINIFIED_ASSETS'] = _css_ok and _js_ok
+    if app.config['USE_MINIFIED_ASSETS']:
+        print("✓ Minified assets active — base.html will use .min files")
+
+
+_build_minified_assets()
+
 
 # Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
@@ -2323,7 +2451,7 @@ def add_security_headers(response):
         try:
             now_ts = int(time.time())
             last_touch = int(session.get('_session_touch_ts', 0) or 0)
-            if now_ts - last_touch >= 60:
+            if now_ts - last_touch >= _SESSION_TOUCH_MIN_SEC:
                 auth_token = session.get('auth_session_token')
                 if auth_token:
                     _touch_user_session(current_user.id, auth_token)
@@ -2411,13 +2539,21 @@ def enforce_single_active_login():
     is_active = int(row['is_active']) if 'is_active' in row.keys() and row['is_active'] is not None else 0
     token_match = str(row['session_token']) == str(auth_token)
     is_stale = _is_session_stale(row['last_seen'] if 'last_seen' in row.keys() else None)
-    if not token_match or not is_active or is_stale:
+    if not token_match or not is_active:
         try:
             logout_user()
         except Exception:
             pass
         session.clear()
-        flash('Your account is active on another device. Please log in again.', 'warning')
+        flash('Your account was signed in somewhere else, or the session was replaced. Please sign in again.', 'warning')
+        return redirect(url_for('login'))
+    if is_stale:
+        try:
+            logout_user()
+        except Exception:
+            pass
+        session.clear()
+        flash('You were away for a while, so we signed you out to protect your account. Please sign in again when you are ready.', 'info')
         return redirect(url_for('login'))
     if _ENFORCE_GET_MIN_SEC > 0 and request.method in ('GET', 'HEAD'):
         session['_enforce_last_get_ok'] = str(time.time())
@@ -2857,6 +2993,23 @@ def loan_dashboard():
 
     return render_template('loan_dashboard.html', applications=applications,
                            unread_count=unread_count, ci_staff_list=ci_staff_list)
+
+@app.route('/api/session_heartbeat', methods=['POST'])
+@login_required
+def session_heartbeat():
+    """
+    Refresh server-side last_seen for long single-page work (checklists, long forms)
+    so the session is not treated as idle while the user is still active in the tab.
+    """
+    try:
+        auth_token = session.get('auth_session_token')
+        if auth_token and current_user.is_authenticated:
+            _touch_user_session(current_user.id, auth_token)
+            session['_session_touch_ts'] = int(time.time())
+    except Exception:
+        pass
+    return jsonify({'ok': True})
+
 
 @app.route('/notifications/count')
 @login_required
@@ -5846,10 +5999,64 @@ def api_sync_status():
         'is_online': True
     })
 
+# --- Signup: hand-sign captcha (session-bound) + honeypot + min submit time ---------
+# Stops simple scripted registration; correct answer is only checked server-side.
+_HAND_SIGN_OPTIONS = [
+    ('wave', 'The open hand — “hello” or “stop”', '🖐'),
+    ('thumbs', 'Thumbs up — “good” or “yes”', '👍'),
+    ('peace', 'Two fingers: peace or victory', '✌️'),
+    ('ok', 'Fingers in an “OK” circle', '👌'),
+    ('fist', 'A closed, tight fist', '✊'),
+]
+_SIGNUP_CAPTCHA_TTL = 20 * 60
+_SIGNUP_MIN_SUBMIT_SEC = 4
+
+
+def _prepare_signup_hand_captcha():
+    import random
+    order = _HAND_SIGN_OPTIONS[:]
+    random.shuffle(order)
+    expected = random.choice(_HAND_SIGN_OPTIONS)
+    session['signup_hand_captcha'] = {
+        'expected_id': expected[0],
+        'issued_at': time.time(),
+    }
+    return {
+        'hand_sign_prompt': expected[1],
+        'hand_choices': order,
+    }
+
+
 # USER REGISTRATION & APPROVAL ROUTES
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
+        # Honeypot (should stay empty — bots often fill all fields)
+        if (request.form.get('website') or '').strip():
+            return redirect(url_for('login'))
+
+        cap = session.get('signup_hand_captcha')
+        if not cap:
+            flash('This page expired. Please open the form again and try once more.', 'warning')
+            return redirect(url_for('signup'))
+        if time.time() - cap.get('issued_at', 0) > _SIGNUP_CAPTCHA_TTL:
+            session.pop('signup_hand_captcha', None)
+            flash('The form took too long. Please try again with a new hand-sign check.', 'info')
+            return redirect(url_for('signup'))
+
+        _hs = (request.form.get('hand_sign') or '').strip()
+        if not _hs or _hs != cap.get('expected_id'):
+            session.pop('signup_hand_captcha', None)
+            flash('The hand sign did not match. Please try the check again.', 'warning')
+            return redirect(url_for('signup'))
+        if (time.time() - cap.get('issued_at', 0)) < _SIGNUP_MIN_SUBMIT_SEC:
+            session.pop('signup_hand_captcha', None)
+            flash('Please take a few seconds to complete the form, then try again.', 'info')
+            return redirect(url_for('signup'))
+
+        # One-time: prevent replay; further validation below
+        session.pop('signup_hand_captcha', None)
+
         name = request.form.get('name')
         email = request.form.get('email')
         password = request.form.get('password')
@@ -5922,7 +6129,7 @@ def signup():
             flash(f'Registration failed: {str(e)}', 'danger')
             return redirect(url_for('signup'))
     
-    return render_template('signup.html')
+    return render_template('signup.html', **_prepare_signup_hand_captcha())
 
 @app.route('/manage_users')
 @login_required
@@ -5990,6 +6197,7 @@ def approve_user(user_id):
 
         conn.execute('UPDATE users SET is_approved = 1 WHERE id=?', (user_id,))
         conn.commit()
+        _invalidate_ci_staff_cache()
         display_name = user['name'] or user['email'] or f'User #{user_id}'
     except Exception as e:
         print(f"ERROR approve_user: {e}")
@@ -6074,6 +6282,7 @@ def disapprove_user(user_id):
                 pass
             conn.execute('UPDATE users SET is_approved = 0 WHERE id=?', (user_id,))
             conn.commit()
+            _invalidate_ci_staff_cache()
             flash(f'User {display_name} disapproved (kept for history).', 'warning')
     except Exception as e:
         print(f"ERROR disapprove_user: {e}")
@@ -6112,6 +6321,7 @@ def assign_role(user_id):
         if user['role'] == 'ci_staff' and role != 'ci_staff':
             conn.execute('UPDATE users SET assigned_route=NULL WHERE id=?', (user_id,))
         conn.commit()
+        _invalidate_ci_staff_cache()
         return jsonify({'success': True, 'message': 'Role assigned successfully'})
     except Exception as e:
         print(f"ERROR assign_role: {e}")
@@ -6253,9 +6463,19 @@ def system_settings():
     ensure_system_activity_log_table()
     conn = get_db()
 
-    settings = conn.execute(
-        'SELECT setting_key, setting_value, description FROM system_settings ORDER BY setting_key'
-    ).fetchall()
+    # Use cache for system settings — only re-reads from DB after 60 s or a write.
+    _now_ts = _time.monotonic()
+    if (
+        _system_settings_cache['data'] is not None
+        and (_now_ts - _system_settings_cache['ts']) < _SYSTEM_SETTINGS_CACHE_TTL
+    ):
+        settings = _system_settings_cache['data']
+    else:
+        settings = conn.execute(
+            'SELECT setting_key, setting_value, description FROM system_settings ORDER BY setting_key'
+        ).fetchall()
+        _system_settings_cache['data'] = settings
+        _system_settings_cache['ts'] = _now_ts
     _t_q1 = _time.monotonic()
 
     # Run all 5 stats counts in one round-trip using conditional aggregation.
@@ -6407,6 +6627,9 @@ def update_system_settings():
     
     conn.commit()
     conn.close()
+    # Bust the settings cache so the next GET sees updated values.
+    _system_settings_cache['data'] = None
+    _system_settings_cache['ts'] = 0.0
 
     _log_system_activity(
         current_user.role.replace('_', ' ').upper() if hasattr(current_user, 'role') else 'SYSTEM',
@@ -7859,9 +8082,8 @@ def manage_sms_templates():
         deferred_count = len(deferred_templates)
         custom_count = len(custom_templates)
 
-        # SMS sent-log: limit initial load to 50 rows. Search still allows up to 200.
+        # SMS sent-log: limit initial load to 50 rows. Search allows up to 200.
         search_q = (request.args.get('q') or '').strip()
-        _log_limit = 200 if search_q else 50
         if search_q:
             like = f'%{search_q}%'
             sent_rows = conn.execute(
