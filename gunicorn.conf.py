@@ -55,47 +55,34 @@ proc_name = "dccco_ci"
 # ──────────────────────────────────────────────────────────────────────────────
 # Suppress "Bad file descriptor" noise during graceful shutdown
 # ──────────────────────────────────────────────────────────────────────────────
-# When Render sends SIGTERM for a rolling redeploy, gunicorn closes the listen
-# socket while eventlet's WSGI layer is still tearing down Socket.IO connections.
-# eventlet's wsgi.py calls socket.shutdown() on the already-closed fd and writes
-#   "server=... client=... socket shutdown error: [Errno 9] Bad file descriptor"
-# directly to stderr (a file-like object, NOT through Python's logging module).
-# A logging.Filter won't intercept it; we must wrap sys.stderr.
-import sys
-import logging
+# eventlet/websocket.py WebSocket.close() catches OSError and writes:
+#   "server=HOST/socket.io/ client=IP:PORT socket shutdown error: [Errno 9] Bad file descriptor"
+# to environ['wsgi.errors'], which gunicorn sets to a WSGIErrorsWrapper instance.
+# WSGIErrorsWrapper.__init__ snapshots sys.stderr at worker startup, so replacing
+# sys.stderr later (or adding a logging.Filter) does not intercept the write.
+# Fix: patch WSGIErrorsWrapper.write() directly to drop shutdown-noise lines.
+_SHUTDOWN_NOISE = ('socket shutdown error', 'Bad file descriptor')
 
-_SHUTDOWN_NOISE = ('Bad file descriptor', 'socket shutdown error')
+import errno as _errno
 
+def _post_fork(server, worker):
+    """Patch WSGIErrorsWrapper to suppress socket-shutdown noise after SIGTERM."""
+    try:
+        from gunicorn.http.wsgi import WSGIErrorsWrapper
 
-class _FilteredStream:
-    """Drop shutdown-noise lines; pass everything else through unchanged."""
-    def __init__(self, stream):
-        self.__stream = stream
+        _orig_write = WSGIErrorsWrapper.write
 
-    def write(self, msg):
-        if any(n in msg for n in _SHUTDOWN_NOISE):
-            return
-        self.__stream.write(msg)
+        def _filtered_write(self, data):
+            if isinstance(data, (bytes, bytearray)):
+                text = data.decode('utf-8', errors='replace')
+            else:
+                text = str(data)
+            if any(n in text for n in _SHUTDOWN_NOISE):
+                return
+            _orig_write(self, data)
 
-    def flush(self):
-        self.__stream.flush()
+        WSGIErrorsWrapper.write = _filtered_write
+    except Exception:
+        pass  # never break the worker boot over a cosmetic filter
 
-    def isatty(self):
-        return getattr(self.__stream, 'isatty', lambda: False)()
-
-    def __getattr__(self, name):
-        return getattr(self.__stream, name)
-
-
-sys.stderr = _FilteredStream(sys.stderr)
-
-# Belt-and-suspenders: also add a logging.Filter for any path that *does* use
-# the logging module (e.g. gunicorn's own error logger on some versions).
-class _ShutdownNoiseLogFilter(logging.Filter):
-    def filter(self, record):
-        msg = record.getMessage()
-        return not any(n in msg for n in _SHUTDOWN_NOISE)
-
-
-for _ln in ('eventlet.wsgi.server', 'eventlet.wsgi', 'gunicorn.error', 'gunicorn.access', ''):
-    logging.getLogger(_ln).addFilter(_ShutdownNoiseLogFilter())
+post_fork = _post_fork
