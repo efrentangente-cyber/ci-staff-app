@@ -88,10 +88,29 @@ app.config['WTF_CSRF_CHECK_DEFAULT'] = os.getenv('WTF_CSRF_CHECK_DEFAULT', 'True
 app.config['REMEMBER_COOKIE_DURATION'] = __import__('datetime').timedelta(days=30)
 app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=2)  # Session expires after 2 hours of inactivity
 app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
-# Only send cookies over HTTPS in production by default; allow local HTTP dev unless overridden.
+# HSTS / "production" UI — not the same as session cookie "Secure" (RENDER=1 is often only for DATABASE_URL on LAN).
 _is_production = (os.getenv('FLASK_ENV', '').lower() == 'production') or (os.getenv('RENDER', '').lower() == 'true')
-_default_secure_cookie = _is_production
-app.config['SESSION_COOKIE_SECURE'] = (os.getenv('SESSION_COOKIE_SECURE', str(_default_secure_cookie))).lower() == 'true'
+_flask_debug = app.config.get('DEBUG', False)
+_use_https_local = (os.getenv('USE_HTTPS_LOCAL', 'false') or '').lower() in ('1', 'true', 'yes')
+# True when actually deployed to render.com (HTTPS). Local .env often has RENDER=1 for Postgres — not HTTPS in the browser.
+_on_render = (os.getenv('ON_RENDER', '').lower() == 'true')
+_sce_env = (os.getenv('SESSION_COOKIE_SECURE') or '').strip()
+if _sce_env:
+    app.config['SESSION_COOKIE_SECURE'] = _sce_env.lower() == 'true'
+else:
+    # Default: Secure only on real Render. Without ON_RENDER, default False (http:// can save session).
+    app.config['SESSION_COOKIE_SECURE'] = _on_render and (not _flask_debug)
+# Browsers will not keep a Secure session cookie on plain http:// — login 302s to dashboard, then 302 back to /login.
+if _flask_debug and (not _use_https_local) and app.config.get('SESSION_COOKIE_SECURE'):
+    app.config['SESSION_COOKIE_SECURE'] = False
+# Local http://: never keep Secure (browser drops the cookie → login loop).
+if (not _on_render) and (not _use_https_local) and app.config.get('SESSION_COOKIE_SECURE'):
+    app.config['SESSION_COOKIE_SECURE'] = False
+    if _sce_env and _sce_env.lower() == 'true':
+        print('⚠️  SESSION_COOKIE_SECURE was true in .env but not ON_RENDER/HTTPS; forced off for http:// login. '
+              'On render.com, set ON_RENDER=true (and HTTPS). For local mkcert, set USE_HTTPS_LOCAL=true.')
+if not _on_render and (os.getenv('RENDER', '').lower() == 'true') and (not _sce_env):
+    print('ℹ️  RENDER=1 in .env (Postgres) does not enable Secure cookies. For hosted Render, add ON_RENDER=true.')
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
 
@@ -130,6 +149,9 @@ def _should_skip_session_enforce():
     if p.startswith('/static/') or p.startswith('/uploads/') or p.startswith('/signatures/') or p.startswith(
         '/serve_message_file/',
     ):
+        return True
+    # Socket.IO long-poll / transport hits Flask often; would duplicate session DB checks.
+    if p.startswith('/socket.io'):
         return True
     return False
 
@@ -458,9 +480,19 @@ socketio = SocketIO(
 # Track online users
 online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timestamp}}
 
-# Tiny in-memory caches to reduce repeated COUNT(*) queries per request.
-_COUNT_CACHE_TTL_SECONDS = 20
+# Tiny in-memory caches to reduce repeated COUNT(*) queries per user (message + notification badges).
+try:
+    _COUNT_CACHE_TTL_SECONDS = int((os.getenv('COUNT_CACHE_TTL_SECONDS') or '60').strip() or '60')
+except ValueError:
+    _COUNT_CACHE_TTL_SECONDS = 60
 _count_cache_lock = eventlet.semaphore.Semaphore()
+# Skip user_login_sessions SELECT on rapid GET navigations (seconds). POST/PUT/PATCH/DELETE always validate.
+# Set SESSION_ENFORCE_GET_MIN_SEC=0 to check every request (slowest, strictest).
+try:
+    _ENFORCE_GET_MIN_SEC = float((os.getenv('SESSION_ENFORCE_GET_MIN_SEC') or '4').strip() or '4')
+except ValueError:
+    _ENFORCE_GET_MIN_SEC = 4.0
+_ENFORCE_GET_MIN_SEC = max(0.0, _ENFORCE_GET_MIN_SEC)
 _notification_count_cache = {}
 _message_count_cache = {}
 _security_alert_cache = {}
@@ -2162,6 +2194,19 @@ def enforce_single_active_login():
         flash('Please sign in again for security.', 'warning')
         return redirect(url_for('login'))
 
+    # Same valid session: skip repeated user_login_sessions reads on back-to-back GET/HEAD (major nav perf win).
+    if (
+        _ENFORCE_GET_MIN_SEC > 0
+        and request.method in ('GET', 'HEAD')
+        and auth_token == session.get('_enforce_token_snap')
+    ):
+        try:
+            last_ok = float(session.get('_enforce_last_get_ok', 0) or 0)
+        except (TypeError, ValueError):
+            last_ok = 0.0
+        if (time.time() - last_ok) < _ENFORCE_GET_MIN_SEC:
+            return None
+
     try:
         conn = get_db()
         row = conn.execute(
@@ -2196,6 +2241,9 @@ def enforce_single_active_login():
         session.clear()
         flash('Your account is active on another device. Please log in again.', 'warning')
         return redirect(url_for('login'))
+    if _ENFORCE_GET_MIN_SEC > 0 and request.method in ('GET', 'HEAD'):
+        session['_enforce_last_get_ok'] = str(time.time())
+        session['_enforce_token_snap'] = auth_token
     return None
 
 
@@ -2436,7 +2484,7 @@ def _login_success_redirect(effective_role):
 @app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'GET' and current_user.is_authenticated:
-        return render_template('login.html')
+        return index()
 
     if request.method == 'POST':
         email = request.form['email']
