@@ -57,16 +57,45 @@ proc_name = "dccco_ci"
 # ──────────────────────────────────────────────────────────────────────────────
 # When Render sends SIGTERM for a rolling redeploy, gunicorn closes the listen
 # socket while eventlet's WSGI layer is still tearing down Socket.IO connections.
-# Eventlet calls socket.shutdown() on the already-closed fd and logs
-# "socket shutdown error: [Errno 9] Bad file descriptor" for every open client.
-# This is harmless (connections are already closing) so we install a log filter
-# that drops those records instead of letting them clutter the Render log tail.
+# eventlet's wsgi.py calls socket.shutdown() on the already-closed fd and writes
+#   "server=... client=... socket shutdown error: [Errno 9] Bad file descriptor"
+# directly to stderr (a file-like object, NOT through Python's logging module).
+# A logging.Filter won't intercept it; we must wrap sys.stderr.
+import sys
 import logging
 
-class _SuppressSocketShutdownFilter(logging.Filter):
+_SHUTDOWN_NOISE = ('Bad file descriptor', 'socket shutdown error')
+
+
+class _FilteredStream:
+    """Drop shutdown-noise lines; pass everything else through unchanged."""
+    def __init__(self, stream):
+        self.__stream = stream
+
+    def write(self, msg):
+        if any(n in msg for n in _SHUTDOWN_NOISE):
+            return
+        self.__stream.write(msg)
+
+    def flush(self):
+        self.__stream.flush()
+
+    def isatty(self):
+        return getattr(self.__stream, 'isatty', lambda: False)()
+
+    def __getattr__(self, name):
+        return getattr(self.__stream, name)
+
+
+sys.stderr = _FilteredStream(sys.stderr)
+
+# Belt-and-suspenders: also add a logging.Filter for any path that *does* use
+# the logging module (e.g. gunicorn's own error logger on some versions).
+class _ShutdownNoiseLogFilter(logging.Filter):
     def filter(self, record):
         msg = record.getMessage()
-        return 'Bad file descriptor' not in msg and 'socket shutdown error' not in msg
+        return not any(n in msg for n in _SHUTDOWN_NOISE)
 
-for _logger_name in ('eventlet.wsgi.server', 'gunicorn.error', 'gunicorn.access', ''):
-    logging.getLogger(_logger_name).addFilter(_SuppressSocketShutdownFilter())
+
+for _ln in ('eventlet.wsgi.server', 'eventlet.wsgi', 'gunicorn.error', 'gunicorn.access', ''):
+    logging.getLogger(_ln).addFilter(_ShutdownNoiseLogFilter())
