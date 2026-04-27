@@ -2994,6 +2994,7 @@ def loan_dashboard():
     conn = get_db()
     # Only fetch the columns the template reads — avoids transferring ci_checklist_data,
     # admin_notes, loan_officer_notes, and other wide TEXT columns from PostgreSQL.
+    # Newest first so recent submissions always appear (ASC + LIMIT was hiding new rows).
     applications = conn.execute('''
         SELECT la.id, la.status, la.member_name, la.loan_amount, la.loan_type,
                la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
@@ -3001,8 +3002,8 @@ def loan_dashboard():
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
         WHERE la.submitted_by = ?
-        ORDER BY la.submitted_at ASC
-        LIMIT 300
+        ORDER BY la.submitted_at DESC
+        LIMIT 500
     ''', (current_user.id,)).fetchall()
     _t_q1 = _time.monotonic()
 
@@ -3524,6 +3525,7 @@ def ci_dashboard():
         return redirect(url_for('index'))
     conn = get_db()
     # Select only columns the CI dashboard template needs.
+    # Pending interviews first, then newest within each group (ASC + LIMIT hid new assignments).
     applications = conn.execute('''
         SELECT la.id, la.status, la.member_name, la.member_address, la.loan_amount,
                la.loan_type, la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
@@ -3531,8 +3533,9 @@ def ci_dashboard():
         FROM loan_applications la
         LEFT JOIN users u ON la.submitted_by = u.id
         WHERE la.assigned_ci_staff = ?
-        ORDER BY la.submitted_at ASC
-        LIMIT 200
+        ORDER BY CASE WHEN la.status = 'assigned_to_ci' THEN 0 ELSE 1 END,
+                 la.submitted_at DESC
+        LIMIT 500
     ''', (current_user.id,)).fetchall()
     _t_q1 = _time.monotonic()
 
@@ -4100,13 +4103,12 @@ def admin_dashboard():
         )
 
         # --- Q1: Applications ready for admin review -------------------------
-        # LIMIT 500: historical approved/disapproved/deferred can be very large;
-        # show the 500 oldest pending first (ASC keeps oldest-first priority).
+        # Newest first so recent CI completions / direct submits are not cut off by LIMIT.
         applications = conn.execute(
             f'SELECT {_LA_COLS} FROM loan_applications la {_LA_JOIN}'
             " WHERE la.status IN ('ci_completed','approved','disapproved','deferred')"
             " OR (la.needs_ci_interview = 0 AND la.status = 'submitted')"
-            ' ORDER BY la.submitted_at ASC LIMIT 500'
+            ' ORDER BY la.submitted_at DESC LIMIT 500'
         ).fetchall()
         _t_q1 = _time.monotonic()
 
@@ -4114,7 +4116,7 @@ def admin_dashboard():
         in_process_applications = conn.execute(
             f'SELECT {_LA_COLS} FROM loan_applications la {_LA_JOIN}'
             " WHERE la.status IN ('submitted','assigned_to_ci')"
-            ' ORDER BY la.submitted_at ASC LIMIT 300'
+            ' ORDER BY la.submitted_at DESC LIMIT 500'
         ).fetchall()
         _t_q2 = _time.monotonic()
 
@@ -7628,7 +7630,7 @@ def api_loan_applications():
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
         WHERE la.submitted_by = ?
-        ORDER BY la.submitted_at ASC
+        ORDER BY la.submitted_at DESC
     ''', (current_user.id,)).fetchall()
     conn.close()
     
@@ -7646,7 +7648,8 @@ def api_ci_applications():
         FROM loan_applications la
         LEFT JOIN users u ON la.submitted_by = u.id
         WHERE la.assigned_ci_staff = ?
-        ORDER BY la.submitted_at ASC
+        ORDER BY CASE WHEN la.status = 'assigned_to_ci' THEN 0 ELSE 1 END,
+                 la.submitted_at DESC
     ''', (current_user.id,)).fetchall()
     conn.close()
     
