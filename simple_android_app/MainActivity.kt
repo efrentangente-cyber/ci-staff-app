@@ -51,9 +51,9 @@ class MainActivity : AppCompatActivity() {
         val webSettings: WebSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        webSettings.databaseEnabled = false
-        webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
-        webSettings.setAppCacheEnabled(false)
+        webSettings.databaseEnabled = true
+        // Let HTTP cache + service worker persist for offline; LOAD_NO_CACHE wiped usable offline state every launch
+        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
         webSettings.allowFileAccess = true
         webSettings.allowContentAccess = true
         
@@ -109,26 +109,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        // Clear ALL cache and data
-        webView.clearCache(true)
-        webView.clearHistory()
-        webView.clearFormData()
-        webView.clearSslPreferences()
-        android.webkit.CookieManager.getInstance().removeAllCookies(null)
-        android.webkit.CookieManager.getInstance().flush()
-        android.webkit.WebStorage.getInstance().deleteAllData()
-        
-        // Delete cache directory
-        try {
-            val cacheDir = this.cacheDir
-            cacheDir.deleteRecursively()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        // Do NOT clear WebStorage/cookies/cache on every launch: that wipes IndexedDB (offline
+        // applications), session cookies, and the service worker cache. Users clear app data in Settings if needed.
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true)
         
         // Load your CI Staff System - Render deployment
-        val timestamp = System.currentTimeMillis()
-        webView.loadUrl("https://ci-staff-app-rrv5.onrender.com?nocache=$timestamp")
+        webView.loadUrl("https://ci-staff-app-rrv5.onrender.com")
     }
     
     private fun requestPermissions() {
