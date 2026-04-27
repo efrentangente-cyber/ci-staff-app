@@ -128,26 +128,11 @@
                 <small class="text-muted">All applications must go through CI interview process</small>
             </div>
             
-            <!-- Remarks Field with Voice-to-Text -->
             <div class="mb-3">
-                <label class="form-label">
+                <label class="form-label" for="lps_remarks">
                     <i class="bi bi-chat-left-text"></i> Remarks / Notes (Optional)
                 </label>
-                <div class="input-group">
-                    <textarea name="lps_remarks" id="lps_remarks" class="form-control" rows="3" placeholder="Type your remarks here or use voice input..."></textarea>
-                    <button type="button" class="btn btn-outline-primary" id="voiceInputBtn" title="Voice Input">
-                        <i class="bi bi-mic-fill" id="micIcon"></i>
-                    </button>
-                </div>
-                <small class="text-muted">
-                    <i class="bi bi-info-circle"></i> Click the microphone button to speak your remarks, or type them manually
-                </small>
-                <div id="voiceStatus" class="mt-2" style="display: none;">
-                    <span class="badge bg-danger">
-                        <span class="spinner-grow spinner-grow-sm me-1"></span>
-                        Listening...
-                    </span>
-                </div>
+                <textarea name="lps_remarks" id="lps_remarks" class="form-control" rows="3" placeholder="Type your remarks here (optional)"></textarea>
             </div>
             
             <div class="d-flex gap-2">
@@ -918,123 +903,6 @@ function showNotification(type, message) {
     setTimeout(() => {
         notification.remove();
     }, 3000);
-}
-
-// Voice-to-Text Functionality
-let recognition = null;
-let isListening = false;
-let finalTranscript = '';
-let baseTextBeforeDictation = '';
-
-// Check if browser supports speech recognition
-if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = (navigator.language || 'en-US');
-    recognition.maxAlternatives = 1;
-    
-    const voiceInputBtn = document.getElementById('voiceInputBtn');
-    const remarksTextarea = document.getElementById('lps_remarks');
-    const voiceStatus = document.getElementById('voiceStatus');
-    const micIcon = document.getElementById('micIcon');
-    
-    function updateVoiceButtonUI(listening) {
-        if (!voiceInputBtn || !voiceStatus || !micIcon) return;
-        voiceStatus.style.display = listening ? 'block' : 'none';
-        voiceInputBtn.classList.toggle('btn-danger', listening);
-        voiceInputBtn.classList.toggle('btn-outline-primary', !listening);
-        micIcon.classList.toggle('bi-mic-mute-fill', listening);
-        micIcon.classList.toggle('bi-mic-fill', !listening);
-        voiceInputBtn.title = listening ? 'Stop Listening' : 'Voice Input';
-    }
-
-    function startListening() {
-        if (!remarksTextarea || !recognition) return;
-        baseTextBeforeDictation = remarksTextarea.value.trim();
-        finalTranscript = '';
-        try {
-            recognition.start();
-            isListening = true;
-            updateVoiceButtonUI(true);
-        } catch (error) {
-            console.error('Speech recognition error:', error);
-            showNotification('danger', 'Failed to start voice input');
-        }
-    }
-    
-    function stopListening() {
-        if (recognition && isListening) {
-            try { recognition.stop(); } catch (_) {}
-        }
-        isListening = false;
-        updateVoiceButtonUI(false);
-    }
-
-    // Start/stop voice recognition
-    voiceInputBtn?.addEventListener('click', function() {
-        if (isListening) {
-            stopListening();
-        } else {
-            startListening();
-        }
-    });
-    
-    // Handle speech recognition results
-    recognition.onresult = function(event) {
-        if (!remarksTextarea) return;
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            const text = event.results[i][0].transcript || '';
-            if (event.results[i].isFinal) {
-                finalTranscript += text + ' ';
-            } else {
-                interim += text;
-            }
-        }
-        const merged = (finalTranscript + interim).trim();
-        remarksTextarea.value = baseTextBeforeDictation
-            ? `${baseTextBeforeDictation} ${merged}`.trim()
-            : merged;
-    };
-    
-    // Handle errors
-    recognition.onerror = function(event) {
-        console.error('Speech recognition error:', event.error);
-        
-        let errorMessage = 'Voice input failed';
-        if (event.error === 'no-speech') {
-            errorMessage = 'No speech detected. Please try again.';
-        } else if (event.error === 'audio-capture') {
-            errorMessage = 'Microphone not found or not accessible';
-        } else if (event.error === 'not-allowed') {
-            errorMessage = 'Microphone access denied. Please allow microphone access.';
-        }
-        
-        showNotification('danger', errorMessage);
-        stopListening();
-    };
-    
-    // Handle end of recognition
-    recognition.onend = function() {
-        if (!isListening) return;
-        stopListening();
-        if (finalTranscript.trim()) {
-            showNotification('success', 'Voice input added!');
-        }
-    };
-    
-} else {
-    // Browser doesn't support speech recognition
-    const voiceInputBtn = document.getElementById('voiceInputBtn');
-    if (voiceInputBtn) {
-        voiceInputBtn.disabled = true;
-        voiceInputBtn.title = 'Voice input not supported in this browser';
-        voiceInputBtn.innerHTML = '<i class="bi bi-mic-mute"></i>';
-    }
-    console.warn('Speech recognition not supported in this browser');
 }
 </script>
 {% endblock %}

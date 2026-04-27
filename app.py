@@ -504,8 +504,10 @@ csrf = CSRFProtect(app)
 
 # Offline / WebView: idempotent CI interview POST (FormData + client_request_id)
 from offline_interview_complete import init_offline_interview_api
+from ci_offline_saves import ensure_ci_offline_packages_table, init_ci_offline_saves, get_offline_package_for_wizard
 
 init_offline_interview_api(app, csrf)
+init_ci_offline_saves(app, csrf)
 
 
 @app.errorhandler(CSRFError)
@@ -1107,6 +1109,18 @@ def has_permission(user, permission):
             return permission in user.permissions
     return False
 
+
+def can_access_manage_users_actions():
+    """Same as /manage_users: admin, or loan officer with manage_users permission."""
+    if not current_user.is_authenticated:
+        return False
+    if current_user.role == 'admin':
+        return True
+    if current_user.role == 'loan_officer' and has_permission(current_user, 'manage_users'):
+        return True
+    return False
+
+
 def init_db():
     """Initialize database if it doesn't exist (SQLite only - PostgreSQL uses migrations)"""
     db_type = get_database_type()
@@ -1567,6 +1581,7 @@ ensure_sms_sent_log_table()
 ensure_system_activity_log_table()
 ensure_user_login_sessions_table()
 ensure_ci_coverage_routes_table()
+ensure_ci_offline_packages_table()
 
 
 # ── Asset minification / bundling ────────────────────────────────────────────
@@ -1868,6 +1883,26 @@ def _is_session_stale(last_seen_value):
     else:
         now_dt = datetime.utcnow()
     return (now_dt - last_seen_dt).total_seconds() > _SINGLE_LOGIN_STALE_SECONDS
+
+
+def _login_blocked_by_active_session(row) -> bool:
+    """
+    If True, a new login for this user must be rejected: someone else is using the
+    account and their server-side session is still active and not past the idle limit.
+    When last_seen is stale, allow login to replace the row (reclaims abandoned logins).
+    """
+    if not row:
+        return False
+    try:
+        is_active = int(row['is_active']) if row['is_active'] is not None else 0
+    except (TypeError, ValueError, KeyError):
+        is_active = 0
+    if is_active != 1:
+        return False
+    ls = row['last_seen'] if 'last_seen' in row.keys() else None
+    if _is_session_stale(ls):
+        return False
+    return True
 
 
 def _upsert_user_session(conn, user_id, session_token):
@@ -3071,9 +3106,25 @@ def login():
                 flash('Your account is pending admin approval. Please wait.', 'warning')
                 return render_template('login.html')
 
-            # Single session: new login always replaces the row in user_login_sessions (ON CONFLICT).
-            # Do not block with "log out the other device first" — a stale client cookie can leave
-            # is_active=1 in the DB while the user has no real session, which locked them out forever.
+            # If this account already has a live session (not idle-expired), reject the new login so the
+            # first browser stays signed in. If the row is missing, inactive, or last_seen is stale, allow
+            # login and replace the row (reclaims after idle window / no heartbeat).
+            try:
+                sess_row = conn.execute(
+                    'SELECT is_active, last_seen FROM user_login_sessions WHERE user_id=?',
+                    (row['id'],),
+                ).fetchone()
+            except Exception:
+                sess_row = None
+            if _login_blocked_by_active_session(sess_row):
+                flash(
+                    'This account is already signed in elsewhere. Use Sign out on the other device or browser '
+                    'first, or try again after that session is idle. '
+                    'A second user cannot take over the session while the first is active.',
+                    'warning',
+                )
+                return render_template('login.html')
+
             auth_session_token = uuid.uuid4().hex
             _upsert_user_session(conn, row['id'], auth_session_token)
             conn.commit()
@@ -3883,6 +3934,24 @@ def ci_checklist_wizard(id):
 
     unread_count = get_unread_notification_count(current_user.id)
     prefill_data = _build_ci_prefill_data(app_data, current_user.name)
+
+    import_pkg = request.args.get("import_offline_package", type=int)
+    if import_pkg:
+        off = get_offline_package_for_wizard(import_pkg, current_user.id, id)
+        if off:
+            ch = off.get("checklist")
+            if isinstance(ch, str):
+                try:
+                    ch = json.loads(ch)
+                except Exception:
+                    ch = None
+            if isinstance(ch, dict):
+                prefill_data.update(ch)
+        else:
+            flash(
+                "Offline import is missing or not for this application. You can still edit the checklist as usual.",
+                "warning",
+            )
 
     conn.close()
     return render_template(
@@ -6758,7 +6827,7 @@ def disapprove_user(user_id):
 @app.route('/assign_role/<int:user_id>', methods=['POST'])
 @login_required
 def assign_role(user_id):
-    if current_user.role not in ['admin', 'loan_officer']:
+    if not can_access_manage_users_actions():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -6831,16 +6900,30 @@ def deactivate_user(user_id):
 @app.route('/update_ci_route', methods=['POST'])
 @login_required
 def update_ci_route():
-    def _wants_json_response() -> bool:
-        return bool(request.is_json) or (
+    def _wants_json_client_response() -> bool:
+        # fetch() with FormData + Accept: application/json must still get JSON back
+        if 'application/json' in (request.headers.get('Accept') or ''):
+            return True
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return True
+        if bool(request.is_json) or (
             (request.content_type or '').lower().find('application/json') >= 0
-        )
+        ):
+            return True
+        return False
 
-    if current_user.role not in ['admin', 'loan_officer']:
-        if _wants_json_response():
+    def _use_form_data() -> bool:
+        ct = (request.content_type or '').lower()
+        if 'multipart/form-data' in ct or 'application/x-www-form-urlencoded' in ct:
+            return True
+        uid = request.form.get('user_id')
+        return bool(uid is not None and str(uid).strip() != '')
+
+    if not can_access_manage_users_actions():
+        if _wants_json_client_response():
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-        flash('Unauthorized', 'danger')
-        return redirect(url_for('index'))
+        flash('Access denied - You do not have permission to manage user routes.', 'danger')
+        return redirect(url_for('admin_dashboard' if current_user.role == 'loan_officer' else 'index'))
 
     def _allowed_route_set():
         return set(get_ci_route_label_dict().keys())
@@ -6875,20 +6958,17 @@ def update_ci_route():
                 ordered.append(p)
         return ','.join(ordered) if ordered else None
 
-    # Parse JSON at most once (Werkzeug input stream is single-use).
-    wants_json = _wants_json_response()
-    json_data: dict = {}
-    if wants_json:
-        _parsed = request.get_json(silent=True)
-        json_data = _parsed if isinstance(_parsed, dict) else {}
-    is_json_client = bool(wants_json)
-
-    if wants_json:
-        user_id = json_data.get('user_id')
-        raw_parts = _parts_from_json_body(json_data)
-    else:
+    wants_json = _wants_json_client_response()
+    if _use_form_data():
         user_id = request.form.get('user_id')
         raw_parts = _parts_from_form()
+    else:
+        json_data = request.get_json(silent=True) or {}
+        if not isinstance(json_data, dict):
+            json_data = {}
+        user_id = json_data.get('user_id')
+        raw_parts = _parts_from_json_body(json_data)
+    is_json_client = bool(wants_json)
 
     try:
         user_id = int(user_id)
@@ -6922,11 +7002,12 @@ def update_ci_route():
 
         conn.execute('UPDATE users SET assigned_route=? WHERE id=?', (assigned_route, user_id))
         conn.commit()
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+    except Exception as err:
+        app.logger.exception('update_ci_route: %s', err)
+        if is_json_client:
+            return jsonify({'success': False, 'error': 'Could not save routes'}), 500
+        flash('Could not save routes.', 'danger')
+        return redirect(url_for('manage_users'))
 
     _invalidate_ci_staff_cache()
 
@@ -6957,10 +7038,7 @@ def update_ci_route():
 @login_required
 def api_ci_coverage_routes():
     """List coverage routes (GET) or create a custom route (POST: label, optional keywords)."""
-    if not (
-        current_user.role == 'admin'
-        or (current_user.role == 'loan_officer' and has_permission(current_user, 'manage_users'))
-    ):
+    if not can_access_manage_users_actions():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     if request.method == 'GET':

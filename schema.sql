@@ -142,3 +142,19 @@ CREATE TABLE IF NOT EXISTS ci_coverage_routes (
     is_active INTEGER DEFAULT 1,
     created_at TEXT
 );
+
+-- CI offline field packages (synced from PWA; Continue merges checklist into online wizard)
+CREATE TABLE IF NOT EXISTS ci_offline_packages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ci_user_id INTEGER NOT NULL,
+    loan_application_id INTEGER,
+    client_package_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    member_name TEXT,
+    source_label TEXT,
+    package_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (client_package_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ci_offline_user_created ON ci_offline_packages(ci_user_id, created_at DESC);

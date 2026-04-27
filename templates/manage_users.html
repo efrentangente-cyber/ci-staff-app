@@ -279,22 +279,29 @@ const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
 const ALLOWED_ASSIGNABLE_ROLES = new Set(['loan_staff', 'ci_staff']);
 
+function manageUsersCsrfToken() {
+    if (typeof window.getCSRFToken === 'function') {
+        const t = window.getCSRFToken();
+        if (t) {
+            return t;
+        }
+    }
+    const m = document.querySelector('meta[name="csrf-token"]');
+    if (m && m.getAttribute('content')) {
+        return m.getAttribute('content');
+    }
+    return '';
+}
+
 function manageUsersApiHeaders() {
     const h = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
     };
-    if (typeof window.getCSRFToken === 'function') {
-        const t = window.getCSRFToken();
-        if (t) {
-            h['X-CSRFToken'] = t;
-        }
-    } else {
-        const m = document.querySelector('meta[name="csrf-token"]');
-        if (m && m.getAttribute('content')) {
-            h['X-CSRFToken'] = m.getAttribute('content');
-        }
+    const t = manageUsersCsrfToken();
+    if (t) {
+        h['X-CSRFToken'] = t;
     }
     return h;
 }
@@ -335,7 +342,7 @@ function submitCreateCiRoute() {
         method: 'POST',
         headers: manageUsersApiHeaders(),
         credentials: 'same-origin',
-        body: JSON.stringify({ label: label, keywords: keywords })
+        body: JSON.stringify({ label: label, keywords: keywords, csrf_token: manageUsersCsrfToken() })
     })
         .then(function (r) {
             return r.json().then(function (data) { return { ok: r.ok, data: data }; });
@@ -435,15 +442,25 @@ function submitCiRouteForm(event) {
         function (cb) { return cb.value; }
     );
     const modalEl = document.getElementById('routeModal');
-    const headers = manageUsersApiHeaders();
+    const tokenInput = form.querySelector('input[name="csrf_token"]');
+    const csrf = (tokenInput && tokenInput.value) ? tokenInput.value : manageUsersCsrfToken();
+    const fd = new FormData();
+    fd.append('csrf_token', csrf || '');
+    fd.append('user_id', String(uid));
+    assigned.forEach(function (v) { fd.append('assigned_route', v); });
+    const headers = {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+    };
+    var ctk = manageUsersCsrfToken();
+    if (ctk) {
+        headers['X-CSRFToken'] = ctk;
+    }
     fetch(UPDATE_CI_ROUTE_URL, {
         method: 'POST',
         headers: headers,
         credentials: 'same-origin',
-        body: JSON.stringify({
-            user_id: uid,
-            assigned_routes: assigned
-        })
+        body: fd
     })
     .then(function (r) {
         return r.json()
@@ -483,7 +500,7 @@ function assignRole(userId, role) {
         method: 'POST',
         headers: manageUsersApiHeaders(),
         credentials: 'same-origin',
-        body: JSON.stringify({ role: role })
+        body: JSON.stringify({ role: role, csrf_token: manageUsersCsrfToken() })
     })
     .then(response => response.json())
     .then(data => {
@@ -536,7 +553,7 @@ function changeUserRole(userId, newRole, userName) {
         method: 'POST',
         headers: manageUsersApiHeaders(),
         credentials: 'same-origin',
-        body: JSON.stringify({ role: newRole })
+        body: JSON.stringify({ role: newRole, csrf_token: manageUsersCsrfToken() })
     })
     .then(response => response.json())
     .then(data => {
