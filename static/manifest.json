@@ -1,7 +1,7 @@
 {
-  "name": "DCCCO Loan Management",
+  "name": "DCCCO — Davao City Community Multi-Purpose Cooperative",
   "short_name": "DCCCO",
-  "description": "DCCCO Multipurpose Cooperative - Loan Management System",
+  "description": "Davao City Community Multi-Purpose Cooperative (DCCCO) — loan management",
   "start_url": "/ci/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",

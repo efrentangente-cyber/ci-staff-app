@@ -79,6 +79,11 @@ def naive_utc_iso_z(dt=None):
 
 app = Flask(__name__)
 
+# Official cooperative name (matches seal: DAVAO CITY COMMUNITY MULTI-PURPOSE COOPERATIVE).
+# Injected into all Jinja templates as org_full_name, org_abbr, org_print_caps.
+ORG_FULL_NAME = 'Davao City Community Multi-Purpose Cooperative'
+ORG_ABBR = 'DCCCO'
+
 # Performance logger — emits WARNING lines visible in Render logs.
 import logging as _logging
 _perf_logger = _logging.getLogger('app.perf')
@@ -395,6 +400,9 @@ def utility_processor():
         message_unread_count=message_unread_count,
         secure_token=secure_token,
         csrf_token=csrf_token,
+        org_full_name=ORG_FULL_NAME,
+        org_abbr=ORG_ABBR,
+        org_print_caps=ORG_FULL_NAME.upper(),
     )
 
 
@@ -838,13 +846,13 @@ def send_verification_email(to_email, code, user_name):
         params = {
             "from": from_email,
             "to": [to_email],
-            "subject": "Password Reset Verification Code - DCCCO",
+            "subject": f"Password Reset Verification Code - {ORG_ABBR}",
             "html": f"""
             <html>
                 <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f7fa;">
                     <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
                         <div style="text-align: center; margin-bottom: 30px;">
-                            <h2 style="color: #1e3a5f; margin: 0;">DCCCO Multipurpose Cooperative</h2>
+                            <h2 style="color: #1e3a5f; margin: 0;">{ORG_FULL_NAME}</h2>
                             <p style="color: #666; margin: 5px 0;">Loan Management System</p>
                         </div>
                         
@@ -1409,7 +1417,7 @@ def _build_minified_assets():
     _js_bundles = [
         (
             'js/app-core.min.js',
-            ['csrf-protection.js', 'session-security.js'],
+            ['csrf-protection.js', 'session-security.js', 'offline-request-queue.js'],
         ),
         (
             'js/ci-pwa.min.js',
@@ -1561,7 +1569,7 @@ def setup_production_users():
             if count and count['count'] == 0:
                 print("Setting up default system settings...")
                 settings = [
-                    ('company_name', 'DCCCO Multipurpose Cooperative', 'Company name displayed in the system'),
+                    ('company_name', ORG_FULL_NAME, 'Company name displayed in the system'),
                     ('max_loan_amount', '500000', 'Maximum loan amount allowed'),
                     ('min_loan_amount', '5000', 'Minimum loan amount allowed'),
                     ('default_interest_rate', '12', 'Default annual interest rate (%)'),
@@ -2343,7 +2351,7 @@ def call_ai_engine(query, history, context):
             messages.append({'role': msg['role'], 'content': msg['content']})
         messages.append({'role': 'user', 'content': query})
 
-        system_message = f"""You are DaisyandCoco, an AI assistant for the DCCCO Multipurpose Cooperative loan management system.
+        system_message = f"""You are DaisyandCoco, an AI assistant for the {ORG_FULL_NAME} ({ORG_ABBR}) loan management system.
 
 You help administrators understand and troubleshoot the system.
 

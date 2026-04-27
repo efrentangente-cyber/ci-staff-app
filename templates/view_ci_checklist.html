@@ -100,7 +100,7 @@
       <p class="formal-3col-signoff__title">Credit Officer</p>
     </div>
   </div>
-  <p class="credit-check-confidential-foot">*This document is <strong>CONFIDENTIAL</strong>. The information contained herein has been obtained with the express permission of the applicant for the exclusive use of DCCCO Multipurpose Cooperative (DCCCO) officers/staff as basis for credit decision.</p>
+  <p class="credit-check-confidential-foot">*This document is <strong>CONFIDENTIAL</strong>. The information contained herein has been obtained with the express permission of the applicant for the exclusive use of {{ org_full_name }} ({{ org_abbr }}) officers/staff as basis for credit decision.</p>
 </div>
 {%- endmacro %}
 {% macro signoff_cas_2col(ci_signature_url=none) -%}
@@ -554,7 +554,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4 no-print">
         <div>
         <h2 class="mb-1"><i class="bi bi-clipboard-check"></i> CI Assessment Checklist - {{ application.member_name }}</h2>
-        <p class="text-muted small mb-0">Loan-officer print package is <strong>7 pages</strong>: DCCCO forms 1–5, cash flow (page 6), evidence photos (page 7). Use <kbd>Ctrl</kbd>+<kbd>P</kbd> / Print to PDF.</p>
+        <p class="text-muted small mb-0">Loan-officer print package is <strong>7 pages</strong>: {{ org_abbr }} forms 1–5, cash flow (page 6), evidence photos (page 7). Use <kbd>Ctrl</kbd>+<kbd>P</kbd> / Print to PDF.</p>
         </div>
         <div class="d-flex gap-2">
             <button onclick="window.print()" class="btn btn-primary btn-lg">
@@ -582,14 +582,14 @@
     </div>
     {% endif %}
 
-    <!-- PAGE 1: PERSONAL DATA (DCCCO Form 086) -->
+    <!-- PAGE 1: PERSONAL DATA (Form 056) -->
     <div class="card print-page">
         <div class="card-header bg-primary text-white text-center">
-            <h4 class="print-dccco-title" style="color:#fff; margin:0;">DCCCO MULTIPURPOSE COOPERATIVE</h4>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0;">{{ org_print_caps }}</h4>
         </div>
         <div class="card-body" style="padding-top:0.5rem;">
             <div class="print-dccco-meta" style="margin-top:0.25rem;">
-                <span>DCCCO Form No. 056</span>
+                <span>{{ org_abbr }} Form No. 056</span>
                 <span>Revised October 2021</span>
             </div>
             <p class="print-section-dccco">PERSONAL DATA</p>
@@ -762,7 +762,7 @@
     <!-- PAGE 2: CREDIT CHECKING + MEMBERSHIP -->
     <div class="card print-page">
         <div class="card-header bg-primary text-white text-center">
-            <h4 class="print-dccco-title" style="color:#fff; margin:0;">DCCCO MULTIPURPOSE COOPERATIVE</h4>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0;">{{ org_print_caps }}</h4>
         </div>
         <div class="card-body" style="padding-top:0.4rem;">
             {% set cd = checklist_data if (checklist_data is defined and checklist_data) else none %}
@@ -848,7 +848,7 @@
                 </tr>
             </table>
 
-            <p class="print-section-dccco">MEMBERSHIP STATUS WITH DCCCO</p>
+            <p class="print-section-dccco">MEMBERSHIP STATUS WITH {{ org_abbr }}</p>
             <p class="mb-0 small" style="font-size:8.5pt; line-height:1.4;">Membership Classification:
                 {% if cd.get('member_new') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} New Member
                 {% if cd.get('member_migs') or cd.get('member_nrcs') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} MIGS / NRCS
@@ -864,7 +864,7 @@
                 {% if cd.get('other_gold') or cd.get('cat_gold') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Gold
                 {% if cd.get('other_platinum') or cd.get('cat_platinum') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} Platinum
             </p>
-            <p class="print-section-dccco" style="font-style:italic; font-size:8.5pt; font-weight:600; border:0; padding:0.15rem 0;">Loan accounts with DCCCO (see attached SOA):</p>
+            <p class="print-section-dccco" style="font-style:italic; font-size:8.5pt; font-weight:600; border:0; padding:0.15rem 0;">Loan accounts with {{ org_abbr }} (see attached SOA):</p>
             <p class="mb-0 small" style="font-size:8.5pt;"><strong>Status of loan accounts within 12 months</strong> —
                 {% if cd.get('loan_no_loan') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} No fines
                 {% if cd.get('loan_1_2') or cd.get('loan_fines_1_2') %}[&nbsp;X&nbsp;]{% else %}[&nbsp;&nbsp;]{% endif %} 1-2 Fines
@@ -896,7 +896,7 @@
     <!-- PAGE 3: COMPUTATION (MOST IMPORTANT) -->
     <div class="card print-page print-page--deir">
         <div class="card-header bg-success text-white text-center">
-            <h4 class="print-dccco-title" style="color:#fff; margin:0;">DCCCO Multipurpose Cooperative</h4>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0;">{{ org_print_caps }}</h4>
         </div>
         <div class="card-body" style="padding-top:0.4rem;">
             <p class="text-center mb-0" style="font-size:9pt;">Branch: <span class="d-inline-block" style="min-width:12rem; border-bottom:1px solid #000;">{{ checklist_data.get('deir_branch', '') }}</span> &nbsp; Date: <span class="d-inline-block" style="min-width:8rem; border-bottom:1px solid #000;">{{ checklist_data.get('deir_date', '') }}</span></p>
@@ -995,10 +995,10 @@
                     <td class="text-end" colspan="3">₱ {{ '{:,.2f}'.format(checklist_data.get('total_loan_amortizations', 0)|float) }}</td>
                 </tr>
             </table>
-            <p class="mb-0 mt-1" style="font-size:8.5pt; font-weight:600;">DCCCO loans (existing)</p>
+            <p class="mb-0 mt-1" style="font-size:8.5pt; font-weight:600;">{{ org_abbr }} loans (existing)</p>
             <table class="view-table" style="font-size:8.5pt;">
-                <tr><td width="70%">Existing DCCCO loan 1</td><td class="text-end" width="30%">₱ {{ '{:,.2f}'.format(checklist_data.get('dccco_loan_1', 0)|float) }}</td></tr>
-                <tr><td>Existing DCCCO loan 2</td><td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('dccco_loan_2', 0)|float) }}</td></tr>
+                <tr><td width="70%">Existing {{ org_abbr }} loan 1</td><td class="text-end" width="30%">₱ {{ '{:,.2f}'.format(checklist_data.get('dccco_loan_1', 0)|float) }}</td></tr>
+                <tr><td>Existing {{ org_abbr }} loan 2</td><td class="text-end">₱ {{ '{:,.2f}'.format(checklist_data.get('dccco_loan_2', 0)|float) }}</td></tr>
                 <tr>
                     <td><strong>Total loans/amortizations before new loan</strong></td>
                     <td class="text-end"><strong>₱ {{ '{:,.2f}'.format(checklist_data.get('total_before_new', 0)|float) }}</strong></td>
@@ -1073,7 +1073,7 @@
     <!-- PAGE 4: CREDIT ASSESSMENT SUMMARY -->
     <div class="card print-page print-page--cas">
         <div class="card-header bg-primary text-white text-center">
-            <h4 class="print-dccco-title" style="color:#fff; margin:0;">DCCCO Multipurpose Cooperative</h4>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0;">{{ org_print_caps }}</h4>
         </div>
         <div class="card-body" style="padding-top:0.4rem;">
             <p class="text-center mb-0" style="font-size:8.5pt;">Branch: <span style="border-bottom:1px solid #000; min-width:8rem; display:inline-block;">{{ checklist_data.get('assess_branch', '') }}</span> &nbsp; Date: <span style="border-bottom:1px solid #000; min-width:8rem; display:inline-block;">{{ checklist_data.get('assess_date', '') }}</span></p>
@@ -1104,7 +1104,7 @@
                     <td>{{ checklist_data.get('assess_term', '') or '—' }}</td>
                 </tr>
                 <tr>
-                    <td colspan="2">Accounts with DCCCO (see Attachment 1 – SOA)</td>
+                    <td colspan="2">Accounts with {{ org_abbr }} (see Attachment 1 – SOA)</td>
                     <td><strong>Amortization</strong></td>
                     <td>₱ {{ '{:,.2f}'.format((checklist_data.get('assess_amortization', 0)|float)) }}</td>
                 </tr>
@@ -1308,10 +1308,10 @@
     <div class="card print-page print-cashflow-block">
         <div class="card-header bg-info text-white text-center">
             <div class="print-dccco-meta" style="color: rgba(255,255,255,0.95); font-size: 8.5pt;">
-                <span>DCCCO</span>
+                <span>{{ org_abbr }}</span>
                 <span>Excel / Cash Flow</span>
             </div>
-            <h4 class="print-dccco-title" style="color:#fff; margin:0.15rem 0; font-size:1rem;">DCCCO MULTIPURPOSE COOPERATIVE</h4>
+            <h4 class="print-dccco-title" style="color:#fff; margin:0.15rem 0; font-size:1rem;">{{ org_print_caps }}</h4>
             <p class="mb-0" style="font-size:0.8rem; letter-spacing:0.04em; text-transform:uppercase; font-weight:700;">CASH FLOW STATEMENT</p>
             <small class="d-block" style="opacity:0.9;">(saved spreadsheet from CI wizard — same as data entry)</small>
         </div>

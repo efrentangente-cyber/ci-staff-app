@@ -16,6 +16,9 @@ class OfflineSyncManager {
     window.addEventListener('online', () => {
       this.isOnline = true;
       this.updateConnectionStatus();
+      if (window.DCCCOOutbox && typeof window.DCCCOOutbox.flush === 'function') {
+        window.DCCCOOutbox.flush();
+      }
       this.syncAll();
     });
 
@@ -23,6 +26,7 @@ class OfflineSyncManager {
       this.isOnline = false;
       this.updateConnectionStatus();
     });
+
 
     // Initial status
     this.updateConnectionStatus();
@@ -41,6 +45,9 @@ class OfflineSyncManager {
       indicator.classList.remove('online');
       indicator.classList.add('offline');
       indicator.innerHTML = '<i class="bi bi-wifi-off"></i> Offline';
+    }
+    if (typeof window.__dcccoRepaintOfflineIndicator === 'function') {
+      window.__dcccoRepaintOfflineIndicator();
     }
   }
 

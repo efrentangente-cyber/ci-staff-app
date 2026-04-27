@@ -7,9 +7,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}?v=20260425-row-insert">
 
-<!-- Include Offline Indicator -->
-{% include 'offline_indicator.html' %}
-
 <style>
 /* Hide bottom navigation bar on CI checklist page */
 .navbar-fixed-bottom,
@@ -216,8 +213,8 @@ nav[style*="position: fixed"][style*="bottom"],
         <div class="wizard-page active" data-page="1">
             <div class="paper-form">
                 <div class="form-header">
-                    <small>DCCCO Form No. 008</small>
-                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <small>{{ org_abbr }} Form No. 008</small>
+                    <h4>{{ org_print_caps }}</h4>
                     <small>Revised October 2021</small>
                 </div>
 
@@ -395,7 +392,7 @@ nav[style*="position: fixed"][style*="bottom"],
         <div class="wizard-page" data-page="2">
             <div class="paper-form">
                 <div class="form-header">
-                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <h4>{{ org_print_caps }}</h4>
                 </div>
 
                 <table class="form-table-paper">
@@ -490,7 +487,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     </tr>
                 </table>
 
-                <div class="section-title">MEMBERSHIP STATUS WITH DCCCO</div>
+                <div class="section-title">MEMBERSHIP STATUS WITH {{ org_abbr }}</div>
                 <table class="form-table-paper">
                     <tr>
                         <td>Membership Classification:</td>
@@ -501,7 +498,7 @@ nav[style*="position: fixed"][style*="bottom"],
                         </td>
                     </tr>
                     <tr>
-                        <td colspan="4"><strong>Loan Accounts with DCCCO (last attached SDA):</strong></td>
+                        <td colspan="4"><strong>Loan Accounts with {{ org_abbr }} (last attached SDA):</strong></td>
                     </tr>
                     <tr>
                         <td colspan="4">
@@ -570,7 +567,7 @@ nav[style*="position: fixed"][style*="bottom"],
         <div class="wizard-page" data-page="2.5">
             <div class="paper-form">
                 <div class="form-header">
-                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <h4>{{ org_print_caps }}</h4>
                     <small>CASH FLOW STATEMENT - Excel Spreadsheet</small>
                 </div>
 
@@ -646,7 +643,7 @@ nav[style*="position: fixed"][style*="bottom"],
         <div class="wizard-page" data-page="3">
             <div class="paper-form">
                 <div class="form-header">
-                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <h4>{{ org_print_caps }}</h4>
                     <small>COMPUTATION OF DEBT AND EXPENSE-TO-INCOME RATIO</small>
                 </div>
 
@@ -757,7 +754,7 @@ nav[style*="position: fixed"][style*="bottom"],
 
                 <table class="form-table-paper">
                     <tr>
-                        <th colspan="2">DCCCO Loans (existing)</th>
+                        <th colspan="2">{{ org_abbr }} Loans (existing)</th>
                         <th>Monthly Amortization</th>
                     </tr>
                     <tr>
@@ -848,7 +845,7 @@ nav[style*="position: fixed"][style*="bottom"],
         <div class="wizard-page" data-page="4">
             <div class="paper-form">
                 <div class="form-header">
-                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <h4>{{ org_print_caps }}</h4>
                     <small>CREDIT ASSESSMENT SUMMARY</small>
                 </div>
 
@@ -878,7 +875,7 @@ nav[style*="position: fixed"][style*="bottom"],
                         <td><input type="text" name="assess_term"></td>
                     </tr>
                     <tr>
-                        <td colspan="2">Account with DCCCO: Good Attendance</td>
+                        <td colspan="2">Account with {{ org_abbr }}: Good Attendance</td>
                         <td>Amortization:</td>
                         <td><input type="number" name="assess_amortization" step="0.01"></td>
                     </tr>
@@ -958,7 +955,7 @@ nav[style*="position: fixed"][style*="bottom"],
                         <th>Item</th>
                     </tr>
                     <tr>
-                        <td colspan="3"><strong>DCCCO Credit History in the last twelve (12) months:</strong></td>
+                        <td colspan="3"><strong>{{ org_abbr }} Credit History in the last twelve (12) months:</strong></td>
                     </tr>
                     <tr>
                         <td style="text-align:center"><input type="checkbox" name="character_current_yes"></td>
@@ -1095,7 +1092,7 @@ nav[style*="position: fixed"][style*="bottom"],
         <div class="wizard-page" data-page="5">
             <div class="paper-form">
                 <div class="form-header">
-                    <h4>DCCCO MULTIPURPOSE COOPERATIVE</h4>
+                    <h4>{{ org_print_caps }}</h4>
                     <small>RECOMMENDATION/ACTION</small>
                 </div>
 
@@ -1609,7 +1606,7 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endblock %}
             <div class="paper-form">
                 <div class="form-header">
-                    <h4>DCCCO Multipurpose Cooperative</h4>
+                    <h4>{{ org_print_caps }}</h4>
                     <div>Branch: _____________ Date: _____________</div>
                     <h5>COMPUTATION OF DEBT AND EXPENSE-TO-INCOME RATIO</h5>
                 </div>
@@ -1662,10 +1659,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     <tr style="background:#fff3cd"><td colspan="3"><strong>Sub-total</strong></td><td><strong>₱<input type="number" name="total_loan_amortizations" step="0.01" value="0" readonly style="background:#fff3cd;font-weight:bold"></strong></td></tr>
                 </table>
 
-                <p><strong>DCCCO Loans (existing):</strong></p>
+                <p><strong>{{ org_abbr }} Loans (existing):</strong></p>
                 <table class="form-table-paper">
-                    <tr><td width="70%">Existing DCCCO Loan 1</td><td width="30%">₱<input type="number" name="dccco_loan_1" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
-                    <tr><td>Existing DCCCO Loan 2</td><td>₱<input type="number" name="dccco_loan_2" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td width="70%">Existing {{ org_abbr }} Loan 1</td><td width="30%">₱<input type="number" name="dccco_loan_1" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
+                    <tr><td>Existing {{ org_abbr }} Loan 2</td><td>₱<input type="number" name="dccco_loan_2" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>
                     <tr style="background:#cfe2ff"><td><strong>Total Loans/Amortizations before New Loan</strong></td><td><strong>₱<input type="number" name="total_before_new" step="0.01" value="0" readonly style="background:#cfe2ff;font-weight:bold"></strong></td></tr>
                     <tr><td>Add: Loan applied for</td><td>₱<input type="number" name="new_loan_amount" step="0.01" value="{{ application.loan_amount }}" oninput="updateAllComputations()"></td></tr>
                     <tr><td>Less: Loan's deductible from proceeds</td><td>₱<input type="number" name="loan_deductible" step="0.01" value="0" oninput="updateAllComputations()"></td></tr>

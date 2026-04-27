@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{% block title %}DCCCO{% endblock %}</title>
+    <title>{% block title %}Dashboard{% endblock %} | {{ org_abbr }}</title>
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" type="image/png" href="/static/favicon.png?v=3">
@@ -29,7 +29,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="CI/BI">
+    <meta name="apple-mobile-web-app-title" content="{{ org_abbr }}">
     <meta name="theme-color" content="#007bff">
     <link rel="manifest" href="/static/manifest.json">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
@@ -97,6 +97,7 @@
     
     {% if current_user.is_authenticated %}
     <div class="dashboard-container">
+        {% include 'offline_indicator.html' %}
         <!-- Sidebar (Desktop & Landscape) -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
@@ -104,11 +105,12 @@
                     {% if current_user.profile_photo %}
                     <img src="{{ url_for('serve_upload', filename=current_user.profile_photo.split('/')[-1].split('\\')[-1]) }}" alt="{{ current_user.name }}" style="object-fit: cover;">
                     {% else %}
-                    <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="DCCCO Multipurpose Cooperative">
+                    <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="{{ org_full_name }}">
                     {% endif %}
                 </div>
                 <div class="sidebar-user">{{ current_user.name }}</div>
                 <div class="sidebar-email">{{ current_user.role.replace('_', ' ').title() }}</div>
+                <div class="sidebar-org-name" title="{{ org_full_name }}">{{ org_full_name }}</div>
             </div>
             <nav class="sidebar-nav" aria-label="Main navigation">
                 <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
@@ -285,7 +287,7 @@
                 
                 // Optional: Show browser notification
                 if (Notification.permission === 'granted') {
-                    new Notification('DCCCO Notification', {
+                    new Notification({{ (org_abbr ~ ' Notification')|tojson }}, {
                         body: data.message,
                         icon: '/static/favicon.png'
                     });
@@ -385,11 +387,14 @@
 
         // ── Online / Offline events ─────────────────────────────────────────
         window.addEventListener('offline', () => {
-            showBanner('📡 Offline — forms will be saved and sent when you reconnect', '#f59e0b', false);
+            showBanner('📡 Offline — submits are saved on this device and sent when you reconnect', '#f59e0b', false);
         });
 
         window.addEventListener('online', () => {
             showBanner('✅ Back online — syncing saved data...', '#10b981', false);
+            if (window.DCCCOOutbox && typeof window.DCCCOOutbox.flush === 'function') {
+                window.DCCCOOutbox.flush();
+            }
             if ('serviceWorker' in navigator && 'SyncManager' in window) {
                 navigator.serviceWorker.ready
                     .then(reg => reg.sync.register('sync-pending'))
@@ -399,15 +404,10 @@
 
         // Show banner on load if offline
         if (!navigator.onLine) {
-            showBanner('📡 Offline — forms will be saved and sent when you reconnect', '#f59e0b', false);
+            showBanner('📡 Offline — submits are saved on this device and sent when you reconnect', '#f59e0b', false);
         }
 
         // ── Listen for sync complete message from SW ────────────────────────
-        navigator.serviceWorker.addEventListener('message', e => {
-            if (e.data && e.data.type === 'SYNC_COMPLETE') {
-                showBanner('✅ All offline data synced successfully!', '#10b981', true);
-            }
-        });
     </script>
     
     <script>
@@ -511,10 +511,11 @@
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=2" defer></script>
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=3" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
     <script src="{{ url_for('static', filename='session-security.js') }}?v=20260426-friendly-session" defer></script>
+    <script src="{{ url_for('static', filename='offline-request-queue.js') }}?v=1" defer></script>
     {% endif %}
     
     {# Per-page: {% include 'includes/assets_autocomplete.html' %} or assets_datatable.html — see block below #}
@@ -609,7 +610,7 @@
     <!-- Offline PWA scripts for CI staff (bundled+minified in production) -->
     {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/ci-pwa.min.js') }}?v=2" defer></script>
+    <script src="{{ url_for('static', filename='js/ci-pwa.min.js') }}?v=3" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='indexeddb-manager.js') }}" defer></script>
     <script src="{{ url_for('static', filename='offline-sync.js') }}" defer></script>

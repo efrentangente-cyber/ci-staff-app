@@ -30,6 +30,12 @@
     animation: pulse 2s infinite;
 }
 
+.offline-indicator.pending-sync {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+}
+
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
@@ -51,3 +57,37 @@
     }
 }
 </style>
+<script>
+(function () {
+  function paintOfflineIndicator() {
+    var el = document.getElementById('offline-indicator');
+    if (!el) return;
+    var pending = typeof window.__dcccoPendingCount === 'number' ? window.__dcccoPendingCount : 0;
+    var pend = pending > 0 ? ' · ' + pending + ' pending' : '';
+    el.classList.remove('pending-sync');
+    if (!navigator.onLine) {
+      el.classList.remove('online');
+      el.classList.add('offline');
+      el.innerHTML = '<i class="bi bi-wifi-off"></i> Offline' + pend;
+      return;
+    }
+    el.classList.remove('offline');
+    el.classList.add('online');
+    if (pending > 0) {
+      el.classList.add('pending-sync');
+      el.innerHTML = '<i class="bi bi-cloud-arrow-up"></i> Online' + pend;
+    } else {
+      el.innerHTML = '<i class="bi bi-wifi"></i> Online';
+    }
+  }
+  window.__dcccoRepaintOfflineIndicator = paintOfflineIndicator;
+  window.addEventListener('dccco-outbox-changed', paintOfflineIndicator);
+  window.addEventListener('online', paintOfflineIndicator);
+  window.addEventListener('offline', paintOfflineIndicator);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', paintOfflineIndicator);
+  } else {
+    paintOfflineIndicator();
+  }
+})();
+</script>

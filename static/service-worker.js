@@ -1,5 +1,5 @@
-// DCCCO CI Staff App - Service Worker v6 - Offline PWA with Auto-sync
-const CACHE_NAME = 'dccco-staff-v6';
+// DCCCO CI Staff App - Service Worker v7 - GET cache + offline shell (mutations queued in main thread)
+const CACHE_NAME = 'dccco-staff-v7';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install
@@ -62,27 +62,8 @@ self.addEventListener('fetch', event => {
   // Skip chrome-extension and non-http requests
   if (!url.protocol.startsWith('http')) return;
 
-  // ── POST/PUT: try network, queue if offline ──────────────────────────────
-  if (request.method === 'POST' || request.method === 'PUT') {
-    event.respondWith(
-      fetch(request.clone())
-        .catch(async () => {
-          await queueRequest(request.clone());
-          // Return a response that tells the page the data was saved offline
-          return new Response(
-            `<script>
-              sessionStorage.setItem('offlineSaved', '1');
-              window.history.back();
-            </script>`,
-            {
-              status: 200,
-              headers: { 'Content-Type': 'text/html' }
-            }
-          );
-        })
-    );
-    return;
-  }
+  // Mutating requests: handled by offline-request-queue.js (fetch wrapper) in the page.
+  // Do not intercept POST/PUT here — breaks JSON, multipart, and CSRF replay.
 
   // ── GET: network first, fallback to cache ────────────────────────────────
   event.respondWith(
@@ -125,98 +106,7 @@ self.addEventListener('fetch', event => {
   );
 });
 
-// ── Background Sync - Auto-upload when connection returns ───────────────────
-self.addEventListener('sync', event => {
-  if (event.tag === 'sync-pending' || event.tag === 'upload-checklists') {
-    event.waitUntil(syncPendingRequests());
-  }
-});
+// Background sync tags may still be registered from the page; no SW-side queue.
+self.addEventListener('sync', () => {});
 
-// Register periodic background sync (if supported)
-self.addEventListener('periodicsync', event => {
-  if (event.tag === 'auto-sync') {
-    event.waitUntil(syncPendingRequests());
-  }
-});
-
-// ── Queue a failed POST into IndexedDB ───────────────────────────────────────
-async function queueRequest(request) {
-  try {
-    const body = await request.text();
-    const db = await openDB();
-    const tx = db.transaction('pending', 'readwrite');
-    tx.objectStore('pending').add({
-      url: request.url,
-      method: request.method,
-      headers: [...request.headers.entries()],
-      body,
-      timestamp: Date.now()
-    });
-  } catch (e) {
-    console.error('Queue error:', e);
-  }
-}
-
-// ── Replay all queued requests when back online ───────────────────────────────
-async function syncPendingRequests() {
-  const db = await openDB();
-  const all = await getAll(db, 'pending');
-
-  let synced = 0;
-  for (const item of all) {
-    try {
-      const res = await fetch(item.url, {
-        method: item.method,
-        headers: new Headers(item.headers),
-        body: item.body,
-        credentials: 'include'
-      });
-      if (res.ok || res.status === 302 || res.redirected) {
-        await deleteItem(db, 'pending', item.id);
-        synced++;
-      }
-    } catch (e) {
-      // Still offline, keep in queue
-    }
-  }
-
-  // Notify all open tabs
-  const clients = await self.clients.matchAll({ includeUncontrolled: true });
-  clients.forEach(client => client.postMessage({
-    type: 'SYNC_COMPLETE',
-    count: synced
-  }));
-}
-
-// ── IndexedDB helpers ─────────────────────────────────────────────────────────
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('ci-staff-offline', 2);
-    req.onerror = () => reject(req.error);
-    req.onsuccess = () => resolve(req.result);
-    req.onupgradeneeded = e => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('pending')) {
-        db.createObjectStore('pending', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-  });
-}
-
-function getAll(db, storeName) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
-    const req = tx.objectStore(storeName).getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function deleteItem(db, storeName, id) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const req = tx.objectStore(storeName).delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
+self.addEventListener('periodicsync', () => {});
