@@ -2488,6 +2488,9 @@ def add_security_headers(response):
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
+        # Discourage shared caches from serving one user’s HTML to another (belt-and-suspenders with no-store).
+        if 'Vary' not in response.headers:
+            response.headers['Vary'] = 'Cookie'
         # Touch active session heartbeat once per minute (skip on static-only responses to cut noise).
         try:
             now_ts = int(time.time())
@@ -3034,6 +3037,21 @@ def loan_dashboard():
 
     return render_template('loan_dashboard.html', applications=applications,
                            unread_count=unread_count, ci_staff_list=ci_staff_list)
+
+@app.route('/api/session_status', methods=['GET'])
+def api_session_status():
+    """
+    Lightweight auth check for history revalidation (returns JSON 401, not a login HTML page).
+    Used when the user returns via Back/Forward so we can redirect to login if the session ended.
+    """
+    if not current_user.is_authenticated:
+        resp = jsonify({'ok': False})
+        resp.headers['Cache-Control'] = 'no-store, private, max-age=0'
+        return resp, 401
+    resp = jsonify({'ok': True})
+    resp.headers['Cache-Control'] = 'no-store, private, max-age=0'
+    return resp
+
 
 @app.route('/api/session_heartbeat', methods=['POST'])
 @login_required
@@ -6622,87 +6640,125 @@ def deactivate_user(user_id):
 @app.route('/update_ci_route', methods=['POST'])
 @login_required
 def update_ci_route():
+    def _wants_json_response() -> bool:
+        return bool(request.is_json) or (
+            (request.content_type or '').lower().find('application/json') >= 0
+        )
+
     if current_user.role not in ['admin', 'loan_officer']:
-        # Check if it's JSON request
-        if request.is_json:
+        if _wants_json_response():
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
-    def _normalize_assigned_route_from_request():
-        """Support one route, comma-separated string, JSON list, or multi-select form."""
-        parts = []
-        if request.is_json:
-            data = request.get_json(silent=True) or {}
-            if isinstance(data.get('assigned_routes'), list):
-                parts = [str(x).strip() for x in data['assigned_routes'] if str(x).strip()]
-            else:
-                raw = data.get('assigned_route')
-                if raw is None:
-                    parts = []
-                elif isinstance(raw, list):
-                    parts = [str(x).strip() for x in raw if str(x).strip()]
-                else:
-                    parts = [p.strip() for p in str(raw).split(',') if p.strip()]
-        else:
-            parts = request.form.getlist('assigned_route')
-            if not parts:
-                single = request.form.get('assigned_route')
-                if single:
-                    parts = [p.strip() for p in str(single).split(',') if p.strip()]
-            else:
-                parts = [p.strip() for p in parts if p.strip()]
+
+    def _allowed_route_set():
+        return set(_CI_ROUTE_LABELS.keys())
+
+    def _parts_from_json_body(data: dict) -> list:
+        if not data:
+            return []
+        if isinstance(data.get('assigned_routes'), list):
+            return [str(x).strip() for x in data['assigned_routes'] if str(x).strip()]
+        raw = data.get('assigned_route')
+        if raw is None:
+            return []
+        if isinstance(raw, list):
+            return [str(x).strip() for x in raw if str(x).strip()]
+        return [p.strip() for p in str(raw).split(',') if p.strip()]
+
+    def _parts_from_form() -> list:
+        parts = request.form.getlist('assigned_route')
+        if not parts:
+            single = request.form.get('assigned_route')
+            if single:
+                return [p.strip() for p in str(single).split(',') if p.strip()]
+        return [p.strip() for p in parts if p.strip()]
+
+    def _build_assigned_route_string(parts: list) -> str | None:
+        allowed = _allowed_route_set()
         seen = set()
-        ordered = []
+        ordered: list = []
         for p in parts:
-            if p and p not in seen:
+            if p and p in allowed and p not in seen:
                 seen.add(p)
                 ordered.append(p)
         return ','.join(ordered) if ordered else None
 
-    # Handle both JSON and form data
-    if request.is_json:
-        data = request.get_json(silent=True) or {}
-        user_id = data.get('user_id')
+    # Parse JSON at most once (Werkzeug input stream is single-use).
+    wants_json = _wants_json_response()
+    json_data: dict = {}
+    if wants_json:
+        _parsed = request.get_json(silent=True)
+        json_data = _parsed if isinstance(_parsed, dict) else {}
+    is_json_client = bool(wants_json)
+
+    if wants_json:
+        user_id = json_data.get('user_id')
+        raw_parts = _parts_from_json_body(json_data)
     else:
         user_id = request.form.get('user_id')
+        raw_parts = _parts_from_form()
 
-    assigned_route = _normalize_assigned_route_from_request()
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        user_id = None
 
     if not user_id:
-        if request.is_json:
+        if is_json_client:
             return jsonify({'success': False, 'error': 'User ID required'}), 400
         flash('Invalid request', 'danger')
         return redirect(url_for('manage_users'))
-    
+
+    assigned_route = _build_assigned_route_string(raw_parts)
+    if raw_parts and not assigned_route and is_json_client:
+        return jsonify({'success': False, 'error': 'No valid route ids in request'}), 400
+
     conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-    
-    if not user:
-        conn.close()
-        if request.is_json:
-            return jsonify({'success': False, 'error': 'User not found'}), 404
-        flash('User not found', 'danger')
-        return redirect(url_for('manage_users'))
-    
-    # Update route
-    conn.execute('UPDATE users SET assigned_route=? WHERE id=?', (assigned_route, user_id))
-    conn.commit()
-    conn.close()
-    
-    # Notify the CI staff if route assigned
+    try:
+        user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        if not user:
+            if is_json_client:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            flash('User not found', 'danger')
+            return redirect(url_for('manage_users'))
+
+        if user['role'] != 'ci_staff':
+            if is_json_client:
+                return jsonify({'success': False, 'error': 'User must be CI/BI to have routes'}), 400
+            flash('Only CI/BI users can be assigned coverage routes.', 'warning')
+            return redirect(url_for('manage_users'))
+
+        conn.execute('UPDATE users SET assigned_route=? WHERE id=?', (assigned_route, user_id))
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    _invalidate_ci_staff_cache()
+
     if assigned_route:
-        enqueue_notification(
-            int(user_id),
-            'Your assigned route has been updated',
-            '/ci/dashboard'
+        try:
+            enqueue_notification(
+                int(user_id),
+                'Your assigned route has been updated',
+                '/ci/dashboard',
+            )
+        except Exception:
+            pass
+
+    if is_json_client:
+        return jsonify(
+            {
+                'success': True,
+                'message': 'Route assigned successfully',
+                'assigned_route': assigned_route or '',
+            }
         )
-    
-    # Return appropriate response
-    if request.is_json:
-        return jsonify({'success': True, 'message': 'Route assigned successfully'})
-    
-    flash(f'Route assigned successfully!', 'success')
+
+    flash('Route assigned successfully!', 'success')
     return redirect(url_for('manage_users'))
 
 # REPORT GENERATION ROUTES

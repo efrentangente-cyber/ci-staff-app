@@ -4,6 +4,9 @@
     <title>{% block title %}Dashboard{% endblock %} | {{ org_abbr }}</title>
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {% if current_user.is_authenticated %}
+    <meta name="login-url" content="{{ url_for('login') }}">
+    {% endif %}
     <link rel="icon" type="image/png" href="/static/favicon.png?v=3">
     
     <!-- CRITICAL: Load dark mode BEFORE any rendering to prevent flash -->
@@ -510,10 +513,10 @@
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=4" defer></script>
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=5" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
-    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260427-bfcache-revalidate" defer></script>
+    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260427-history-session" defer></script>
     <script src="{{ url_for('static', filename='offline-request-queue.js') }}?v=1" defer></script>
     {% endif %}
     

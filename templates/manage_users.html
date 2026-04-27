@@ -165,7 +165,7 @@
                             {% if user.role %}
                             {% if user.role in ['loan_staff', 'ci_staff'] %}
                             <select class="form-select form-select-sm" 
-                                    onchange="changeUserRole({{ user.id }}, this.value, '{{ user.name }}')" 
+                                    onchange='changeUserRole({{ user.id }}, this.value, {{ user.name|tojson }})' 
                                     style="width: auto; min-width: 150px;">
                                 <option value="loan_staff" {% if user.role == 'loan_staff' %}selected{% endif %}>LPS</option>
                                 <option value="ci_staff" {% if user.role == 'ci_staff' %}selected{% endif %}>CI/BI</option>
@@ -225,7 +225,7 @@
                 <h5 class="modal-title">Assign routes (CI/BI)</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="/update_ci_route">
+            <form method="post" action="#" id="ciRouteForm" onsubmit="return submitCiRouteForm(event)">
                 <div class="modal-body">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="user_id" id="edit_user_id">
@@ -275,6 +275,7 @@
 </style>
 
 <script>
+const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const ALLOWED_ASSIGNABLE_ROLES = new Set(['loan_staff', 'ci_staff']);
 
 function searchUsers(tableType) {
@@ -316,8 +317,52 @@ function editRoute(userId, currentRoute, userName) {
     document.querySelectorAll('#ci_route_checkbox_list input[name="assigned_route"]').forEach(function (cb) {
         cb.checked = parts.indexOf(cb.value) >= 0;
     });
-    const modal = new bootstrap.Modal(document.getElementById('routeModal'));
-    modal.show();
+    const routeEl = document.getElementById('routeModal');
+    if (typeof bootstrap === 'undefined' || !routeEl) {
+        alert('Page is still loading. Please try again in a second.');
+        return;
+    }
+    bootstrap.Modal.getOrCreateInstance(routeEl).show();
+}
+
+function submitCiRouteForm(event) {
+    if (event && event.preventDefault) {
+        event.preventDefault();
+    }
+    const form = document.getElementById('ciRouteForm');
+    if (!form) {
+        return false;
+    }
+    const userId = form.querySelector('[name="user_id"]').value;
+    const assigned = Array.prototype.map.call(
+        form.querySelectorAll('input[name="assigned_route"]:checked'),
+        function (cb) { return cb.value; }
+    );
+    const modalEl = document.getElementById('routeModal');
+    fetch(UPDATE_CI_ROUTE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            user_id: parseInt(userId, 10),
+            assigned_routes: assigned
+        })
+    })
+    .then(function (r) { return r.json().catch(function () { return {}; }); })
+    .then(function (data) {
+        if (data.success) {
+            if (typeof bootstrap !== 'undefined' && modalEl) {
+                const inst = bootstrap.Modal.getInstance(modalEl);
+                if (inst) {
+                    inst.hide();
+                }
+            }
+            location.reload();
+            return;
+        }
+        alert((data && data.error) || 'Could not save routes. Check that the user is CI/BI and try again.');
+    })
+    .catch(function () { alert('Could not save routes. Please refresh the page and try again.'); });
+    return false;
 }
 
 // Assign role to pending user
