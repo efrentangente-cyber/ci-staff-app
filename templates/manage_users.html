@@ -78,23 +78,15 @@
                         </td>
                         <td>
                             {% if user.role == 'ci_staff' or not user.role %}
-                            <!-- Route assignment: hold Ctrl (Windows) or ⌘ (Mac) to pick more than one -->
-                            <select class="form-select form-select-sm route-select-{{ user.id }}"
-                                    multiple
-                                    size="5"
-                                    onchange="assignRouteMulti({{ user.id }}, this)"
-                                    style="width: auto; min-width: 180px; {% if user.role and user.role != 'ci_staff' %}display:none;{% endif %}"
-                                    title="Hold Ctrl/⌘ and click to select multiple routes"
-                                    {% if user.role != 'ci_staff' %}disabled{% endif %}>
-                                <option value="route_1_bayawan_kalumboyan" {% if 'route_1_bayawan_kalumboyan' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 1: Bayawan → Kalumboyan</option>
-                                <option value="route_2_bayawan_basay" {% if 'route_2_bayawan_basay' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 2: Bayawan → Basay</option>
-                                <option value="route_3_bayawan_sipalay" {% if 'route_3_bayawan_sipalay' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 3: Bayawan → Sipalay</option>
-                                <option value="route_4_bayawan_santa_catalina" {% if 'route_4_bayawan_santa_catalina' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 4: Bayawan → Santa Catalina</option>
-                                <option value="route_5_bayawan_center" {% if 'route_5_bayawan_center' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 5: Bayawan City Center</option>
-                                <option value="route_6_bayawan_omod" {% if 'route_6_bayawan_omod' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 6: Bayawan → Omod</option>
-                                <option value="route_7_bayawan_tayawan" {% if 'route_7_bayawan_tayawan' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 7: Bayawan → Tayawan</option>
-                                <option value="route_8_bayawan_mabinay" {% if 'route_8_bayawan_mabinay' in (user.assigned_route|route_tokens) %}selected{% endif %}>Route 8: Bayawan → Mabinay</option>
-                            </select>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary route-select-{{ user.id }}"
+                                    onclick="editRoute({{ user.id }}, {{ (user.assigned_route or '')|tojson }}, {{ user.name|tojson }})"
+                                    {% if user.role != 'ci_staff' %}disabled title="Select CI/BI role first"{% endif %}>
+                                <i class="bi bi-map"></i> Set routes
+                            </button>
+                            {% if user.assigned_route %}
+                            <div class="small text-success mt-1">{% for t in (user.assigned_route|route_tokens) %}{{ t|ci_route_label }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+                            {% endif %}
                             {% else %}
                             <small class="text-muted">N/A</small>
                             {% endif %}
@@ -225,37 +217,50 @@
     </div>
 </div>
 
-<!-- Route Assignment Modal -->
+<!-- Route Assignment Modal (checkboxes = multiple routes without Ctrl/Cmd) -->
 <div class="modal fade" id="routeModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Assign Route</h5>
+                <h5 class="modal-title">Assign routes (CI/BI)</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST" action="/update_ci_route">
                 <div class="modal-body">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="user_id" id="edit_user_id">
-                    <p>Assign route for: <strong id="edit_user_name"></strong></p>
-                    <p class="small text-muted">Hold <kbd>Ctrl</kbd> / <kbd>⌘</kbd> to select more than one route.</p>
-                    <div class="mb-3">
-                        <label class="form-label">Routes</label>
-                        <select class="form-select" name="assigned_route" id="edit_assigned_route" multiple size="7" required aria-required="true">
-                            <option value="route_1_bayawan_kalumboyan">Route 1: Bayawan → Kalumboyan</option>
-                            <option value="route_2_bayawan_basay">Route 2: Bayawan → Basay</option>
-                            <option value="route_3_bayawan_sipalay">Route 3: Bayawan → Sipalay</option>
-                            <option value="route_4_bayawan_santa_catalina">Route 4: Bayawan → Santa Catalina</option>
-                            <option value="route_5_bayawan_center">Route 5: Bayawan City Center</option>
-                            <option value="route_6_bayawan_omod">Route 6: Bayawan → Omod</option>
-                            <option value="route_7_bayawan_tayawan">Route 7: Bayawan → Tayawan</option>
-                            <option value="route_8_bayawan_mabinay">Route 8: Bayawan → Mabinay</option>
-                        </select>
+                    <p class="mb-2">Assign routes for: <strong id="edit_user_name"></strong></p>
+                    <p class="small text-muted mb-3">Check all areas this investigator covers. You can choose more than one.</p>
+                    <div class="list-group list-group-flush border rounded ci-route-checks" id="ci_route_checkbox_list">
+                        <label class="list-group-item list-group-item-action py-2">
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_1_bayawan_kalumboyan"> Route 1: Bayawan → Kalumboyan
+                        </label>
+                        <label class="list-group-item list-group-item-action py-2">
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_2_bayawan_basay"> Route 2: Bayawan → Basay
+                        </label>
+                        <label class="list-group-item list-group-item-action py-2">
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_3_bayawan_sipalay"> Route 3: Bayawan → Sipalay
+                        </label>
+                        <label class="list-group-item list-group-item-action py-2">
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_4_bayawan_santa_catalina"> Route 4: Bayawan → Santa Catalina
+                        </label>
+                        <label class="list-group-item list-group-item-action py-2">
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_5_bayawan_center"> Route 5: Bayawan City Center
+                        </label>
+                        <label class="list-group-item list-group-item-action py-2">
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_6_bayawan_omod"> Route 6: Bayawan → Omod
+                        </label>
+                        <label class="list-group-item list-group-item-action py-2">
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_7_bayawan_tayawan"> Route 7: Bayawan → Tayawan
+                        </label>
+                        <label class="list-group-item list-group-item-action py-2">
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_8_bayawan_mabinay"> Route 8: Bayawan → Mabinay
+                        </label>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Route</button>
+                    <button type="submit" class="btn btn-primary">Save routes</button>
                 </div>
             </form>
         </div>
@@ -304,12 +309,13 @@ function searchUsers(tableType) {
 function editRoute(userId, currentRoute, userName) {
     document.getElementById('edit_user_id').value = userId;
     document.getElementById('edit_user_name').textContent = userName;
-    const sel = document.getElementById('edit_assigned_route');
     const parts = (currentRoute && typeof currentRoute === 'string' ? currentRoute : '')
         .split(',')
         .map(function (s) { return s.trim(); })
         .filter(Boolean);
-    Array.from(sel.options).forEach(function (o) { o.selected = parts.indexOf(o.value) >= 0; });
+    document.querySelectorAll('#ci_route_checkbox_list input[name="assigned_route"]').forEach(function (cb) {
+        cb.checked = parts.indexOf(cb.value) >= 0;
+    });
     const modal = new bootstrap.Modal(document.getElementById('routeModal'));
     modal.show();
 }
@@ -335,15 +341,14 @@ function assignRole(userId, role) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Show/hide route dropdown based on role
-            const routeSelect = document.querySelector(`.route-select-${userId}`);
-            if (routeSelect) {
+            const routeBtn = document.querySelector(`.route-select-${userId}`);
+            if (routeBtn) {
                 if (role === 'ci_staff') {
-                    routeSelect.style.display = '';
-                    routeSelect.disabled = false;
+                    routeBtn.disabled = false;
+                    routeBtn.removeAttribute('title');
                 } else {
-                    routeSelect.style.display = 'none';
-                    routeSelect.disabled = true;
+                    routeBtn.disabled = true;
+                    routeBtn.setAttribute('title', 'Select CI/BI role first');
                 }
             }
             
@@ -412,40 +417,5 @@ function changeUserRole(userId, newRole, userName) {
     });
 }
 
-// Assign one or more routes to pending CI staff (comma-separated on server)
-function assignRouteMulti(userId, selectEl) {
-    const values = Array.from(selectEl.selectedOptions)
-        .map(function (o) { return o.value; })
-        .filter(Boolean);
-    if (!values.length) {
-        return;
-    }
-    const route = values.join(',');
-    fetch('/update_ci_route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            user_id: userId,
-            assigned_route: route
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const al = document.createElement('div');
-            al.className = 'alert alert-success alert-dismissible fade show';
-            al.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
-            al.innerHTML = '<strong>Success!</strong> Route(s) saved. <button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-            document.body.appendChild(al);
-            setTimeout(function () { al.remove(); }, 3000);
-        } else {
-            alert('Error: ' + (data.error || 'unknown'));
-        }
-    })
-    .catch(function (error) {
-        console.error('Error:', error);
-        alert('Failed to assign route');
-    });
-}
 </script>
 {% endblock %}

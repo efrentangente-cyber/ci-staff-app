@@ -23,4 +23,15 @@
     metaExpires.httpEquiv = 'Expires';
     metaExpires.content = '0';
     document.head.appendChild(metaExpires);
+
+    // Browsers (especially Chromium) can restore this tab from the back/forward cache
+    // without hitting the network. A restored snapshot could show a stale signed-in
+    // UI or cached form data after sign-out. Force a reload so the server re-checks
+    // the session and headers apply. You cannot fully disable the toolbar Back button;
+    // revalidation is the correct mitigation.
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
 }());

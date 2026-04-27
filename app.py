@@ -308,6 +308,11 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm',
 # Initialize CSRF Protection
 csrf = CSRFProtect(app)
 
+# Offline / WebView: idempotent CI interview POST (FormData + client_request_id)
+from offline_interview_complete import init_offline_interview_api
+
+init_offline_interview_api(app, csrf)
+
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):

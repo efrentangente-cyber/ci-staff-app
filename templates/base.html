@@ -144,7 +144,7 @@
                     <i class="bi bi-chat-dots"></i> SMS Templates
                 </a>
                 <a href="{{ url_for('system_settings') }}">
-                    <i class="bi bi-tools"></i> Admin tools
+                    <i class="bi bi-gear"></i> System Settings
                 </a>
                 <a href="{{ url_for('manage_loan_types') }}">
                     <i class="bi bi-tags"></i> Loan Types
@@ -155,7 +155,7 @@
                     </a>
                     {% if current_user.permissions and 'system_settings' in current_user.permissions %}
                     <a href="{{ url_for('system_settings') }}">
-                        <i class="bi bi-tools"></i> Admin tools
+                        <i class="bi bi-gear"></i> System Settings
                     </a>
                     <a href="{{ url_for('manage_loan_types') }}">
                         <i class="bi bi-tags"></i> Loan Types
@@ -510,10 +510,10 @@
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=3" defer></script>
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=4" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
-    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260426-friendly-session" defer></script>
+    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260427-bfcache-revalidate" defer></script>
     <script src="{{ url_for('static', filename='offline-request-queue.js') }}?v=1" defer></script>
     {% endif %}
     
