@@ -98,6 +98,14 @@
             letter-spacing: 0.02em;
             text-transform: none; /* copy is already uppercase */
         }
+        .logo-section h3 .login-brand-branch {
+            display: inline-block;
+            margin-top: 0.35rem;
+            font-size: 1.05em;
+            letter-spacing: 0.14em;
+            color: #fbbf24;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.35);
+        }
         
         .logo-section p {
             color: #fbbf24;
@@ -355,7 +363,7 @@
         <!-- Logo Section -->
         <div class="logo-section" id="logoSection" tabindex="0" role="button" aria-label="Show sign-in form (or hover with the mouse)">
             <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="{{ org_abbr }} cooperative logo">
-            <h3>ELECTRONIC LOAN SCREENING AND<br>CREDIT INTERVIEW FOR DCCCO BAYAWAN</h3>
+            <h3>ELECTRONIC LOAN SCREENING AND<br>CREDIT INTERVIEW FOR<br><span class="login-brand-branch">DCCCO BAYAWAN</span></h3>
         </div>
         
         <!-- Login Form Section -->

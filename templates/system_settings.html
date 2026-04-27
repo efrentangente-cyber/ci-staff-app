@@ -1,17 +1,18 @@
 {% extends "base.html" %}
-{% block title %}System Settings{% endblock %}
+{% block title %}Admin tools{% endblock %}
 {% block content %}
 <div class="container-fluid py-2 system-settings-page">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
-            <h4 class="mb-1"><i class="bi bi-gear"></i> System Configuration</h4>
-            <small class="text-muted">Clean admin controls, recent activity logs, and quick actions.</small>
+            <h4 class="mb-1"><i class="bi bi-tools"></i> Admin tools</h4>
+            <small class="text-muted">Activity logs, quick links, and application status overview.</small>
         </div>
     </div>
 
-    {% if current_user.role != 'admin' %}
+    {% set _can_tools = (current_user.role == 'admin') or (current_user.role == 'loan_officer' and current_user.permissions and 'system_settings' in current_user.permissions) %}
+    {% if not _can_tools %}
     <div class="alert alert-danger">
-        <i class="bi bi-exclamation-triangle"></i> Only super admins can access system settings.
+        <i class="bi bi-exclamation-triangle"></i> You do not have access to this page.
     </div>
     {% else %}
     <div class="row g-3">
@@ -19,10 +20,7 @@
             <div class="card shadow-sm sticky-lg-top nav-card">
                 <div class="card-body p-2">
                     <div class="list-group list-group-flush small-nav">
-                        <a href="#settings-section" class="list-group-item list-group-item-action active">
-                            <i class="bi bi-sliders me-2"></i>System Settings
-                        </a>
-                        <a href="#logs-section" class="list-group-item list-group-item-action">
+                        <a href="#logs-section" class="list-group-item list-group-item-action active">
                             <i class="bi bi-clock-history me-2"></i>Recent Logs
                         </a>
                         <a href="#quick-section" class="list-group-item list-group-item-action">
@@ -37,49 +35,6 @@
         </div>
 
         <div class="col-lg-9">
-            <section id="settings-section" class="card shadow-sm mb-3">
-                <div class="card-header">
-                    <strong><i class="bi bi-sliders me-1"></i> System Settings</strong>
-                </div>
-                <div class="card-body">
-                    <form method="POST" action="{{ url_for('update_system_settings') }}">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="table-responsive table-scroll-compact">
-                            <table class="table table-sm table-hover align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th style="width: 220px;">Setting</th>
-                                        <th style="width: 280px;">Value</th>
-                                        <th>Description</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for setting in settings %}
-                                    <tr>
-                                        <td><strong>{{ setting.setting_key }}</strong></td>
-                                        <td>
-                                            <input
-                                                type="text"
-                                                name="setting_{{ setting.id }}"
-                                                class="form-control form-control-sm"
-                                                value="{{ setting.setting_value }}"
-                                            >
-                                        </td>
-                                        <td><small class="text-muted">{{ setting.description }}</small></td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="mt-2">
-                            <button type="submit" class="btn btn-primary btn-sm">
-                                <i class="bi bi-save"></i> Save Settings
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </section>
-
             <section id="logs-section" class="card shadow-sm mb-3">
                 <div class="card-header">
                     <strong><i class="bi bi-journal-text me-1"></i> System Recent Activities</strong>
@@ -183,6 +138,14 @@
                             <a href="{{ url_for('manage_users') }}" class="btn btn-outline-info btn-sm"><i class="bi bi-people"></i> Manage Users</a>
                             <a href="{{ url_for('reports') }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-file-earmark-bar-graph"></i> Reports</a>
                             <a href="{{ url_for('ci_tracking') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-geo-alt"></i> CI Tracking</a>
+                            <form method="post" action="{{ url_for('system_settings_dedupe_member_applications') }}" class="m-0"
+                                  onsubmit="return confirm('Remove duplicate loan applications that share the same member name? One row per name is kept (best status first). This cannot be undone.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                                    <i class="bi bi-person-lines-fill"></i> Remove duplicate names (DB)
+                                </button>
+                            </form>
+                            <p class="text-muted small mb-0">Merges duplicate member names already in the database. New submissions still auto-remove extra open copies for the same name.</p>
                         </div>
                     </div>
                 </div>
@@ -201,13 +164,45 @@
             </section>
 
             <section id="status-section" class="card shadow-sm">
-                <div class="card-header"><strong><i class="bi bi-list-check"></i> Application Status Guide</strong></div>
+                <div class="card-header"><strong><i class="bi bi-list-check"></i> Application status guide</strong></div>
                 <div class="card-body">
-                    <div class="row g-2 text-center">
-                        <div class="col-md-3"><div class="border rounded p-2 bg-light"><strong>Submitted</strong><div class="text-muted small">Initial submission</div></div></div>
-                        <div class="col-md-3"><div class="border rounded p-2 bg-light"><strong>Assigned to CI</strong><div class="text-muted small">Awaiting investigation</div></div></div>
-                        <div class="col-md-3"><div class="border rounded p-2 bg-light"><strong>CI Completed</strong><div class="text-muted small">Awaiting admin decision</div></div></div>
-                        <div class="col-md-3"><div class="border rounded p-2 bg-light"><strong>Approved/Rejected</strong><div class="text-muted small">Final decision</div></div></div>
+                    <p class="text-muted small mb-3">Live counts from all loan applications in the database.</p>
+                    <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3">
+                        <div class="col">
+                            <div class="border rounded p-3 text-center h-100 bg-light">
+                                <div class="display-6 fw-bold text-secondary">{{ stats.cnt_submitted }}</div>
+                                <strong>Submitted</strong>
+                                <div class="text-muted small mt-1">Awaiting assignment or officer review</div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="border rounded p-3 text-center h-100 bg-light">
+                                <div class="display-6 fw-bold text-primary">{{ stats.pending_ci }}</div>
+                                <strong>Assigned to CI/BI</strong>
+                                <div class="text-muted small mt-1">With credit investigator</div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="border rounded p-3 text-center h-100 bg-light">
+                                <div class="display-6 fw-bold text-info">{{ stats.cnt_ci_completed }}</div>
+                                <strong>CI/BI completed</strong>
+                                <div class="text-muted small mt-1">Checklist done; pending decision</div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="border rounded p-3 text-center h-100 bg-light">
+                                <div class="display-6 fw-bold text-danger">{{ stats.cnt_rejected }}</div>
+                                <strong>Rejected</strong>
+                                <div class="text-muted small mt-1">Disapproved (or rejected)</div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="border rounded p-3 text-center h-100 bg-light">
+                                <div class="display-6 fw-bold text-success">{{ stats.approved_loans }}</div>
+                                <strong>Approved</strong>
+                                <div class="text-muted small mt-1">Final approval</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -235,5 +230,26 @@
     overflow-y: auto;
 }
 </style>
+<script>
+(function () {
+    var nav = document.querySelectorAll('.system-settings-page .small-nav .list-group-item');
+    function syncActive(hash) {
+        var h = (hash || '').replace('#', '') || 'logs-section';
+        nav.forEach(function (a) {
+            var href = a.getAttribute('href') || '';
+            var id = href.split('#')[1] || '';
+            a.classList.toggle('active', id === h);
+        });
+    }
+    document.querySelectorAll('.system-settings-page .small-nav a[href^="#"]').forEach(function (a) {
+        a.addEventListener('click', function () {
+            var id = (a.getAttribute('href') || '').split('#')[1];
+            if (id) syncActive(id);
+        });
+    });
+    syncActive(window.location.hash);
+    window.addEventListener('hashchange', function () { syncActive(window.location.hash); });
+})();
+</script>
 </div>
 {% endblock %}

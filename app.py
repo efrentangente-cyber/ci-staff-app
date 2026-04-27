@@ -5084,6 +5084,119 @@ def unread_messages_count():
     return jsonify({'count': count})
 
 
+def _delete_loan_application_cascade(conn, app_id, status=None, assigned_ci_staff=None):
+    """
+    Delete one loan_applications row and related documents/messages/sms logs.
+    Decrements CI workload when deleting assigned_to_ci rows.
+    Returns True if the application row was removed.
+    """
+    if status is None:
+        row = conn.execute(
+            'SELECT id, status, assigned_ci_staff FROM loan_applications WHERE id=?',
+            (app_id,),
+        ).fetchone()
+        if not row:
+            return False
+        status = row.get('status')
+        assigned_ci_staff = row.get('assigned_ci_staff')
+    st = (status or '').strip()
+    ci = assigned_ci_staff
+    if st == 'assigned_to_ci' and ci:
+        try:
+            conn.execute(
+                '''
+                UPDATE users SET current_workload =
+                    CASE WHEN COALESCE(current_workload, 0) < 1 THEN 0
+                         ELSE COALESCE(current_workload, 0) - 1 END
+                WHERE id=?
+                ''',
+                (ci,),
+            )
+        except Exception:
+            pass
+    for q in (
+        'DELETE FROM documents WHERE loan_application_id=?',
+        'DELETE FROM messages WHERE loan_application_id=?',
+    ):
+        try:
+            conn.execute(q, (app_id,))
+        except Exception:
+            pass
+    try:
+        conn.execute('DELETE FROM sms_sent_log WHERE loan_application_id=?', (app_id,))
+    except Exception:
+        pass
+    try:
+        conn.execute('DELETE FROM loan_applications WHERE id=?', (app_id,))
+        return True
+    except Exception:
+        return False
+
+
+_MEMBER_NAME_DEDUPE_STATUS_RANK = {
+    'approved': 1,
+    'ci_completed': 2,
+    'assigned_to_ci': 3,
+    'submitted': 4,
+    'deferred': 5,
+    'disapproved': 6,
+    'rejected': 6,
+}
+
+
+def _member_name_dedupe_rank(status):
+    st = (status or '').strip().lower()
+    return _MEMBER_NAME_DEDUPE_STATUS_RANK.get(st, 50)
+
+
+def dedupe_loan_applications_by_member_name(conn):
+    """
+    For each normalized member_name that appears more than once, keep a single row:
+    best workflow status (approved > ci_completed > …), then highest id as tie-breaker.
+    Removes related documents/messages/sms rows and adjusts CI workload when needed.
+    Returns number of loan_applications rows deleted.
+    """
+    dup_keys = conn.execute(
+        '''
+        SELECT nk FROM (
+            SELECT LOWER(TRIM(COALESCE(member_name, ''))) AS nk
+            FROM loan_applications
+            WHERE LENGTH(TRIM(COALESCE(member_name, ''))) >= 2
+        ) x
+        GROUP BY nk
+        HAVING COUNT(*) > 1
+        '''
+    ).fetchall()
+    deleted = 0
+    for drow in dup_keys or []:
+        nk = (drow['nk'] if drow else '') or ''
+        nk = str(nk).strip()
+        if not nk:
+            continue
+        apps = conn.execute(
+            '''
+            SELECT id, status, assigned_ci_staff FROM loan_applications
+            WHERE LOWER(TRIM(COALESCE(member_name, ''))) = ?
+            ''',
+            (nk,),
+        ).fetchall()
+        if not apps or len(apps) < 2:
+            continue
+        apps_sorted = sorted(
+            apps,
+            key=lambda r: (
+                _member_name_dedupe_rank(r.get('status')),
+                -int(r['id']),
+            ),
+        )
+        for r in apps_sorted[1:]:
+            if _delete_loan_application_cascade(
+                conn, r['id'], r.get('status'), r.get('assigned_ci_staff')
+            ):
+                deleted += 1
+    return deleted
+
+
 def _purge_nonfinal_duplicate_applications(conn, member_name):
     """
     Remove non-final rows with the same member name (trimmed, case-insensitive)
@@ -5104,39 +5217,8 @@ def _purge_nonfinal_duplicate_applications(conn, member_name):
     ).fetchall()
     deleted = 0
     for r in rows or []:
-        aid = r['id']
-        st = (r.get('status') or '').strip()
-        ci = r.get('assigned_ci_staff')
-        if st == 'assigned_to_ci' and ci:
-            try:
-                conn.execute(
-                    '''
-                    UPDATE users SET current_workload =
-                        CASE WHEN COALESCE(current_workload, 0) < 1 THEN 0
-                             ELSE COALESCE(current_workload, 0) - 1 END
-                    WHERE id=?
-                    ''',
-                    (ci,),
-                )
-            except Exception:
-                pass
-        for q in (
-            'DELETE FROM documents WHERE loan_application_id=?',
-            'DELETE FROM messages WHERE loan_application_id=?',
-        ):
-            try:
-                conn.execute(q, (aid,))
-            except Exception:
-                pass
-        try:
-            conn.execute('DELETE FROM sms_sent_log WHERE loan_application_id=?', (aid,))
-        except Exception:
-            pass
-        try:
-            conn.execute('DELETE FROM loan_applications WHERE id=?', (aid,))
+        if _delete_loan_application_cascade(conn, r['id'], r.get('status'), r.get('assigned_ci_staff')):
             deleted += 1
-        except Exception:
-            pass
     return deleted
 
 
@@ -6653,22 +6735,9 @@ def system_settings():
     ensure_system_activity_log_table()
     conn = get_db()
 
-    # Use cache for system settings — only re-reads from DB after 60 s or a write.
-    _now_ts = _time.monotonic()
-    if (
-        _system_settings_cache['data'] is not None
-        and (_now_ts - _system_settings_cache['ts']) < _SYSTEM_SETTINGS_CACHE_TTL
-    ):
-        settings = _system_settings_cache['data']
-    else:
-        settings = conn.execute(
-            'SELECT setting_key, setting_value, description FROM system_settings ORDER BY setting_key'
-        ).fetchall()
-        _system_settings_cache['data'] = settings
-        _system_settings_cache['ts'] = _now_ts
     _t_q1 = _time.monotonic()
 
-    # Run all 5 stats counts in one round-trip using conditional aggregation.
+    # User + application stats (single pass each; includes status guide counts).
     stats_row = conn.execute('''
         SELECT
             SUM(CASE WHEN is_approved=1 THEN 1 ELSE 0 END) AS total_users
@@ -6677,8 +6746,11 @@ def system_settings():
     app_stats = conn.execute('''
         SELECT
             COUNT(*) AS total_applications,
+            SUM(CASE WHEN status='submitted' THEN 1 ELSE 0 END) AS cnt_submitted,
             SUM(CASE WHEN status='assigned_to_ci' THEN 1 ELSE 0 END) AS pending_ci,
+            SUM(CASE WHEN status='ci_completed' THEN 1 ELSE 0 END) AS cnt_ci_completed,
             SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved_loans,
+            SUM(CASE WHEN status IN ('disapproved', 'rejected') THEN 1 ELSE 0 END) AS cnt_rejected,
             COALESCE(SUM(CASE WHEN status='approved' THEN loan_amount ELSE 0 END), 0) AS total_loan_amount
         FROM loan_applications
     ''').fetchone()
@@ -6687,8 +6759,11 @@ def system_settings():
     stats = {
         'total_users': (stats_row['total_users'] or 0) if stats_row else 0,
         'total_applications': (app_stats['total_applications'] or 0) if app_stats else 0,
+        'cnt_submitted': (app_stats['cnt_submitted'] or 0) if app_stats else 0,
         'pending_ci': (app_stats['pending_ci'] or 0) if app_stats else 0,
+        'cnt_ci_completed': (app_stats['cnt_ci_completed'] or 0) if app_stats else 0,
         'approved_loans': (app_stats['approved_loans'] or 0) if app_stats else 0,
+        'cnt_rejected': (app_stats['cnt_rejected'] or 0) if app_stats else 0,
         'total_loan_amount': (app_stats['total_loan_amount'] or 0) if app_stats else 0,
     }
 
@@ -6763,9 +6838,8 @@ def system_settings():
     _total = _time.monotonic() - _t0
     if _total > 0.5:
         _perf_logger.warning(
-            'system_settings slow %.3fs | settings=%.0fms stats=%.0fms logs=%.0fms opts=%.0fms',
+            'system_settings slow %.3fs | stats=%.0fms logs=%.0fms opts=%.0fms',
             _total,
-            (_t_q1 - _t0) * 1000,
             (_t_q2 - _t_q1) * 1000,
             (_t_q3 - _t_q2) * 1000,
             (_t_q4 - _t_q3) * 1000,
@@ -6773,7 +6847,6 @@ def system_settings():
     
     return render_template(
         'system_settings.html',
-        settings=settings,
         stats=stats,
         recent_logs=recent_logs,
         role_options=role_options,
@@ -6787,6 +6860,45 @@ def system_settings():
             'to': log_to,
         },
     )
+
+
+@app.route('/system_settings/dedupe_member_applications', methods=['POST'])
+@login_required
+def system_settings_dedupe_member_applications():
+    """Remove duplicate loan_applications rows that share the same member name (DB cleanup)."""
+    if current_user.role == 'admin':
+        pass
+    elif current_user.role == 'loan_officer' and has_permission(current_user, 'system_settings'):
+        pass
+    else:
+        flash('Unauthorized.', 'danger')
+        return redirect(url_for('index'))
+
+    conn = None
+    try:
+        conn = get_db()
+        removed = dedupe_loan_applications_by_member_name(conn)
+        conn.commit()
+        flash(
+            f'Removed {removed} duplicate application(s). '
+            'One record per member name was kept (best status wins; ties use newest id).',
+            'success',
+        )
+    except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        flash(f'Deduplication failed: {e}', 'danger')
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return redirect(url_for('system_settings') + '#quick-section')
+
 
 @app.route('/update_system_settings', methods=['POST'])
 @login_required
