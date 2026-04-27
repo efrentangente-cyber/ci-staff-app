@@ -217,13 +217,13 @@
     </div>
 </div>
 
-<!-- Route Assignment Modal (checkboxes = multiple routes without Ctrl/Cmd) -->
-<div class="modal fade" id="routeModal" tabindex="-1">
+<!-- Route modal is moved to document.body on load so it is not clipped by .content-card overflow or covered by the mobile bottom nav. -->
+<div class="modal fade" id="routeModal" tabindex="-1" aria-labelledby="routeModalTitle" data-bs-backdrop="true" data-bs-keyboard="true">
     <div class="modal-dialog modal-dialog-scrollable modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Assign routes (CI/BI)</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="routeModalTitle">Assign routes (CI/BI)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="post" action="#" id="ciRouteForm" onsubmit="return submitCiRouteForm(event)">
                 <div class="modal-body">
@@ -272,11 +272,45 @@
     max-height: 320px;
     overflow-y: auto;
 }
+/* Above bottom nav (z-index 1000) and any stacking contexts in .main-content */
+#routeModal {
+    z-index: 1080 !important;
+}
+body > .modal-backdrop.show {
+    z-index: 1070 !important;
+}
 </style>
 
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const ALLOWED_ASSIGNABLE_ROLES = new Set(['loan_staff', 'ci_staff']);
+
+function manageUsersApiHeaders() {
+    const h = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+    };
+    if (typeof window.getCSRFToken === 'function') {
+        const t = window.getCSRFToken();
+        if (t) {
+            h['X-CSRFToken'] = t;
+        }
+    } else {
+        const m = document.querySelector('meta[name="csrf-token"]');
+        if (m && m.getAttribute('content')) {
+            h['X-CSRFToken'] = m.getAttribute('content');
+        }
+    }
+    return h;
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var m = document.getElementById('routeModal');
+    if (m && m.parentNode !== document.body) {
+        document.body.appendChild(m);
+    }
+});
 
 function searchUsers(tableType) {
     const input = document.getElementById(`search${tableType === 'pending' ? 'Pending' : 'Active'}`);
@@ -308,8 +342,16 @@ function searchUsers(tableType) {
 }
 
 function editRoute(userId, currentRoute, userName) {
-    document.getElementById('edit_user_id').value = userId;
-    document.getElementById('edit_user_name').textContent = userName;
+    var idInput = document.getElementById('edit_user_id');
+    var nameEl = document.getElementById('edit_user_name');
+    if (!idInput) {
+        alert('Route form is not on the page. Please refresh.');
+        return;
+    }
+    idInput.value = userId;
+    if (nameEl) {
+        nameEl.textContent = userName;
+    }
     const parts = (currentRoute && typeof currentRoute === 'string' ? currentRoute : '')
         .split(',')
         .map(function (s) { return s.trim(); })
@@ -322,7 +364,8 @@ function editRoute(userId, currentRoute, userName) {
         alert('Page is still loading. Please try again in a second.');
         return;
     }
-    bootstrap.Modal.getOrCreateInstance(routeEl).show();
+    var modal = bootstrap.Modal.getOrCreateInstance(routeEl, { backdrop: true, keyboard: true, focus: true });
+    modal.show();
 }
 
 function submitCiRouteForm(event) {
@@ -333,23 +376,35 @@ function submitCiRouteForm(event) {
     if (!form) {
         return false;
     }
-    const userId = form.querySelector('[name="user_id"]').value;
+    const idField = form.querySelector('[name="user_id"]');
+    const userId = idField && idField.value;
+    const uid = parseInt(String(userId), 10);
+    if (!userId || Number.isNaN(uid)) {
+        alert('Missing user. Close the dialog and try Set routes / Edit again.');
+        return false;
+    }
     const assigned = Array.prototype.map.call(
         form.querySelectorAll('input[name="assigned_route"]:checked'),
         function (cb) { return cb.value; }
     );
     const modalEl = document.getElementById('routeModal');
+    const headers = manageUsersApiHeaders();
     fetch(UPDATE_CI_ROUTE_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
+        credentials: 'same-origin',
         body: JSON.stringify({
-            user_id: parseInt(userId, 10),
+            user_id: uid,
             assigned_routes: assigned
         })
     })
-    .then(function (r) { return r.json().catch(function () { return {}; }); })
-    .then(function (data) {
-        if (data.success) {
+    .then(function (r) {
+        return r.json()
+            .then(function (data) { return { ok: r.ok, status: r.status, data: data; })
+            .catch(function () { return { ok: r.ok, status: r.status, data: { error: r.statusText || 'Bad response' } }; });
+    })
+    .then(function (out) {
+        if (out.ok && out.data && out.data.success) {
             if (typeof bootstrap !== 'undefined' && modalEl) {
                 const inst = bootstrap.Modal.getInstance(modalEl);
                 if (inst) {
@@ -359,9 +414,10 @@ function submitCiRouteForm(event) {
             location.reload();
             return;
         }
-        alert((data && data.error) || 'Could not save routes. Check that the user is CI/BI and try again.');
+        const msg = (out.data && (out.data.error || out.data.message)) || ('HTTP ' + (out.status || 'error'));
+        alert(msg);
     })
-    .catch(function () { alert('Could not save routes. Please refresh the page and try again.'); });
+    .catch(function () { alert('Could not save routes. Check your connection and try again.'); });
     return false;
 }
 
@@ -376,11 +432,10 @@ function assignRole(userId, role) {
         return;
     }
     
-    fetch(`/assign_role/${userId}`, {
+    fetch('/assign_role/' + userId, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: manageUsersApiHeaders(),
+        credentials: 'same-origin',
         body: JSON.stringify({ role: role })
     })
     .then(response => response.json())
@@ -430,11 +485,10 @@ function changeUserRole(userId, newRole, userName) {
         return;
     }
     
-    fetch(`/assign_role/${userId}`, {
+    fetch('/assign_role/' + userId, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: manageUsersApiHeaders(),
+        credentials: 'same-origin',
         body: JSON.stringify({ role: newRole })
     })
     .then(response => response.json())
