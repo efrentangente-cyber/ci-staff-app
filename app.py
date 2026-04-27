@@ -294,12 +294,206 @@ _CI_ROUTE_LABELS = {
     'route_8_bayawan_mabinay': 'Bayawan → Mabinay',
 }
 
+# Defaults for address-based CI auto-assignment (merged with `ci_coverage_routes.keywords` from DB).
+_FALLBACK_ADDRESS_KEYWORDS = {
+    'route_1_bayawan_kalumboyan': ['kalumboyan', 'kalamtukan', 'malabugas', 'bugay', 'nangka'],
+    'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
+    'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
+    'route_4_bayawan_santa_catalina': [
+        'santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon',
+        'milagrosa', 'obat', 'talalak',
+    ],
+    'route_5_bayawan_center': [
+        'ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon',
+        'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba',
+        'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol',
+    ],
+    'route_6_bayawan_omod': ['omod', 'tamisu'],
+    'route_7_bayawan_tayawan': ['hilmantagon'],
+    'route_8_bayawan_mabinay': ['mabinay', 'bonbon', 'bongabong'],
+}
+
+# Seed rows for `ci_coverage_routes` (INSERT OR IGNORE / ON CONFLICT DO NOTHING); keywords stored as JSON array text.
+_CI_COVERAGE_SEED = [
+    (
+        'route_1_bayawan_kalumboyan', 'Bayawan → Kalumboyan', 10,
+        json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_1_bayawan_kalumboyan'], ensure_ascii=False),
+    ),
+    (
+        'route_2_bayawan_basay', 'Bayawan → Basay', 20,
+        json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_2_bayawan_basay'], ensure_ascii=False),
+    ),
+    (
+        'route_3_bayawan_sipalay', 'Bayawan → Sipalay', 30,
+        json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_3_bayawan_sipalay'], ensure_ascii=False),
+    ),
+    (
+        'route_4_bayawan_santa_catalina', 'Bayawan → Santa Catalina', 40,
+        json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_4_bayawan_santa_catalina'], ensure_ascii=False),
+    ),
+    (
+        'route_5_bayawan_center', 'Bayawan City Center', 50,
+        json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_5_bayawan_center'], ensure_ascii=False),
+    ),
+    (
+        'route_6_bayawan_omod', 'Bayawan → Omod', 60,
+        json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_6_bayawan_omod'], ensure_ascii=False),
+    ),
+    (
+        'route_7_bayawan_tayawan', 'Bayawan → Tayawan', 70,
+        json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_7_bayawan_tayawan'], ensure_ascii=False),
+    ),
+    (
+        'route_8_bayawan_mabinay', 'Bayawan → Mabinay', 80,
+        json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_8_bayawan_mabinay'], ensure_ascii=False),
+    ),
+]
+
+_ci_route_label_cache: dict | None = None
+
+
+def invalidate_ci_route_label_cache() -> None:
+    global _ci_route_label_cache
+    _ci_route_label_cache = None
+
+
+def get_ci_route_label_dict() -> dict:
+    """Display labels: DB `ci_coverage_routes` (active) merged over built-in fallback."""
+    global _ci_route_label_cache
+    if _ci_route_label_cache is not None:
+        return _ci_route_label_cache
+    out = dict(_CI_ROUTE_LABELS)
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            """
+            SELECT route_key, label
+            FROM ci_coverage_routes
+            WHERE is_active = 1
+            ORDER BY sort_order ASC, id ASC
+            """
+        ).fetchall()
+        for r in rows or []:
+            k = r['route_key']
+            lab = r['label']
+            if k and lab is not None:
+                out[str(k).strip()] = str(lab).strip()
+    except Exception as e:
+        app.logger.debug('get_ci_route_label_dict: %s', e)
+    _ci_route_label_cache = out
+    return out
+
+
+def get_ci_route_address_match_map() -> dict:
+    """route_key -> list of lowercase address keywords. DB keywords override/extend fallbacks for same key."""
+    merged = {k: list(v) for k, v in _FALLBACK_ADDRESS_KEYWORDS.items()}
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            "SELECT route_key, keywords FROM ci_coverage_routes WHERE is_active = 1"
+        ).fetchall()
+        for r in rows or []:
+            rk = r['route_key']
+            raw = (r['keywords'] or '') or ''
+            if not str(raw).strip():
+                continue
+            kws = []
+            try:
+                j = json.loads(raw)
+                if isinstance(j, list):
+                    kws = [str(x).lower() for x in j if str(x).strip()]
+            except Exception:
+                kws = [x.strip().lower() for x in str(raw).split(',') if x.strip()]
+            if not kws:
+                continue
+            merged[str(rk).strip()] = kws
+    except Exception as e:
+        app.logger.debug('get_ci_route_address_match_map: %s', e)
+    return merged
+
+
+def ensure_ci_coverage_routes_table():
+    """CI coverage areas: labels + optional keywords (JSON) for address-based assignment."""
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+        if db_type == 'sqlite':
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ci_coverage_routes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    route_key TEXT NOT NULL UNIQUE,
+                    label TEXT NOT NULL,
+                    keywords TEXT,
+                    sort_order INTEGER DEFAULT 0,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TEXT
+                )
+                """
+            )
+        else:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ci_coverage_routes (
+                    id SERIAL PRIMARY KEY,
+                    route_key TEXT NOT NULL UNIQUE,
+                    label TEXT NOT NULL,
+                    keywords TEXT,
+                    sort_order INTEGER DEFAULT 0,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        for route_key, label, order, kws in _CI_COVERAGE_SEED:
+            if db_type == 'sqlite':
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO ci_coverage_routes (route_key, label, sort_order, keywords, is_active)
+                    VALUES (?, ?, ?, ?, 1)
+                    """,
+                    (route_key, label, order, kws),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO ci_coverage_routes (route_key, label, sort_order, keywords, is_active)
+                    VALUES (?, ?, ?, ?, 1)
+                    ON CONFLICT (route_key) DO NOTHING
+                    """,
+                    (route_key, label, order, kws),
+                )
+        conn.commit()
+        conn.close()
+        print('✓ ci_coverage_routes table ensured')
+    except Exception as e:
+        print(f'⚠️  ci_coverage_routes migration warning: {e}')
+
+
+def list_ci_routes_for_ui():
+    """Rows for manage-users modals: { route_key, label }. No close on get_db()."""
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            """
+            SELECT route_key, label
+            FROM ci_coverage_routes
+            WHERE is_active = 1
+            ORDER BY sort_order ASC, id ASC
+            """
+        ).fetchall()
+        return [{'route_key': r['route_key'], 'label': r['label']} for r in rows]
+    except Exception as e:
+        app.logger.debug('list_ci_routes_for_ui: %s', e)
+        return [{'route_key': k, 'label': v} for k, v in _CI_ROUTE_LABELS.items()]
+
 
 @app.template_filter('ci_route_label')
 def ci_route_label_filter(rid):
     if not rid:
         return ''
-    return _CI_ROUTE_LABELS.get(str(rid).strip(), str(rid))
+    d = get_ci_route_label_dict()
+    return d.get(str(rid).strip(), str(rid))
 
 
 # Allowed file extensions for uploads
@@ -1372,6 +1566,7 @@ ensure_sms_templates_table()
 ensure_sms_sent_log_table()
 ensure_system_activity_log_table()
 ensure_user_login_sessions_table()
+ensure_ci_coverage_routes_table()
 
 
 # ── Asset minification / bundling ────────────────────────────────────────────
@@ -3302,15 +3497,8 @@ def submit_application():
                         if member_address:
                             address_lower = member_address.lower()
 
-                            # Define route matching logic
-                            route_matches = {
-                                'route_1_bayawan_kalumboyan': ['kalumboyan', 'kalamtukan', 'malabugas', 'bugay', 'nangka'],
-                                'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
-                                'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
-                                'route_4_bayawan_santa_catalina': ['santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon', 'milagrosa', 'obat', 'talalak'],
-                                'route_5_bayawan_center': ['ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon', 'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba', 'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol'],
-                                'route_6_bayawan_omod': ['omod', 'tamisu']
-                            }
+                            # Route keywords from ci_coverage_routes (DB) + fallbacks
+                            route_matches = get_ci_route_address_match_map()
 
                             # Find matching route
                             matched_route = None
@@ -6432,11 +6620,14 @@ def manage_users():
                                 (current_user.id,)).fetchone()
     unread_count = row['count'] if row else 0
     conn.close()
+
+    ci_routes = list_ci_routes_for_ui()
     
     return render_template('manage_users.html', 
                          pending_users=pending_users, 
                          active_users=active_users,
-                         unread_count=unread_count)
+                         unread_count=unread_count,
+                         ci_routes=ci_routes)
 
 @app.route('/approve_user/<int:user_id>', methods=['POST'])
 @login_required
@@ -6652,7 +6843,7 @@ def update_ci_route():
         return redirect(url_for('index'))
 
     def _allowed_route_set():
-        return set(_CI_ROUTE_LABELS.keys())
+        return set(get_ci_route_label_dict().keys())
 
     def _parts_from_json_body(data: dict) -> list:
         if not data:
@@ -6760,6 +6951,56 @@ def update_ci_route():
 
     flash('Route assigned successfully!', 'success')
     return redirect(url_for('manage_users'))
+
+
+@app.route('/api/admin/ci_coverage_routes', methods=['GET', 'POST'])
+@login_required
+def api_ci_coverage_routes():
+    """List coverage routes (GET) or create a custom route (POST: label, optional keywords)."""
+    if not (
+        current_user.role == 'admin'
+        or (current_user.role == 'loan_officer' and has_permission(current_user, 'manage_users'))
+    ):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    if request.method == 'GET':
+        return jsonify({'success': True, 'routes': list_ci_routes_for_ui()})
+
+    data = request.get_json(silent=True) or {}
+    label = (data.get('label') or '').strip()
+    if not label or len(label) > 200:
+        return jsonify({'success': False, 'error': 'Label is required (max 200 characters).'}), 400
+    raw_kw = data.get('keywords')
+    if isinstance(raw_kw, list):
+        kws = [str(x).strip() for x in raw_kw if str(x).strip()]
+    else:
+        kws = [x.strip() for x in str(raw_kw or '').split(',') if x.strip()]
+    keywords_json = json.dumps([x.lower() for x in kws], ensure_ascii=False) if kws else None
+    base = re.sub(r'[^a-z0-9]+', '_', label.lower())[:32].strip('_') or 'area'
+    route_key = f'route_{base}_{uuid.uuid4().hex[:8]}'
+    try:
+        conn = get_db()
+        row = conn.execute('SELECT COALESCE(MAX(sort_order), 0) AS m FROM ci_coverage_routes').fetchone()
+        next_order = int(row['m'] if row and row['m'] is not None else 0) + 10
+        conn.execute(
+            """
+            INSERT INTO ci_coverage_routes (route_key, label, sort_order, keywords, is_active)
+            VALUES (?, ?, ?, ?, 1)
+            """,
+            (route_key, label, next_order, keywords_json),
+        )
+        conn.commit()
+    except Exception as e:
+        app.logger.exception('api_ci_coverage_routes')
+        return jsonify({'success': False, 'error': str(e)}), 500
+    invalidate_ci_route_label_cache()
+    return jsonify(
+        {
+            'success': True,
+            'route': {'route_key': route_key, 'label': label},
+        }
+    )
+
 
 # REPORT GENERATION ROUTES
 @app.route('/reports')

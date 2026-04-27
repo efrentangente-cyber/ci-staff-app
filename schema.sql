@@ -131,3 +131,14 @@ CREATE TABLE system_settings (
     description TEXT,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- CI coverage areas (assign to CI/BI staff; optional keywords JSON for address-based auto-assignment)
+CREATE TABLE IF NOT EXISTS ci_coverage_routes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    route_key TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    keywords TEXT,
+    sort_order INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT
+);

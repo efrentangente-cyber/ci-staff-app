@@ -232,30 +232,23 @@
                     <p class="mb-2">Assign routes for: <strong id="edit_user_name"></strong></p>
                     <p class="small text-muted mb-3">Check all areas this investigator covers. You can choose more than one.</p>
                     <div class="list-group list-group-flush border rounded ci-route-checks" id="ci_route_checkbox_list">
+                        {% for r in ci_routes %}
                         <label class="list-group-item list-group-item-action py-2">
-                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_1_bayawan_kalumboyan"> Route 1: Bayawan → Kalumboyan
+                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="{{ r.route_key }}"> {{ r.label }}
                         </label>
-                        <label class="list-group-item list-group-item-action py-2">
-                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_2_bayawan_basay"> Route 2: Bayawan → Basay
-                        </label>
-                        <label class="list-group-item list-group-item-action py-2">
-                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_3_bayawan_sipalay"> Route 3: Bayawan → Sipalay
-                        </label>
-                        <label class="list-group-item list-group-item-action py-2">
-                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_4_bayawan_santa_catalina"> Route 4: Bayawan → Santa Catalina
-                        </label>
-                        <label class="list-group-item list-group-item-action py-2">
-                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_5_bayawan_center"> Route 5: Bayawan City Center
-                        </label>
-                        <label class="list-group-item list-group-item-action py-2">
-                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_6_bayawan_omod"> Route 6: Bayawan → Omod
-                        </label>
-                        <label class="list-group-item list-group-item-action py-2">
-                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_7_bayawan_tayawan"> Route 7: Bayawan → Tayawan
-                        </label>
-                        <label class="list-group-item list-group-item-action py-2">
-                            <input class="form-check-input me-2" type="checkbox" name="assigned_route" value="route_8_bayawan_mabinay"> Route 8: Bayawan → Mabinay
-                        </label>
+                        {% endfor %}
+                    </div>
+                    <div class="border rounded p-3 mt-3 bg-light">
+                        <button type="button" class="btn btn-sm btn-outline-success mb-2" id="toggleCreateRouteBtn" aria-expanded="false">
+                            <i class="bi bi-plus-lg" aria-hidden="true"></i> Create route
+                        </button>
+                        <div id="createRoutePanel" class="d-none">
+                            <label class="form-label small mb-1" for="newRouteLabel">New route name</label>
+                            <input type="text" class="form-control form-control-sm mb-2" id="newRouteLabel" maxlength="200" placeholder="e.g. Bayawan → New area" autocomplete="off">
+                            <label class="form-label small mb-1" for="newRouteKeywords">Address keywords (optional, comma-separated — used to auto-assign CI from member address)</label>
+                            <input type="text" class="form-control form-control-sm mb-2" id="newRouteKeywords" placeholder="e.g. barangay name, purok" autocomplete="off">
+                            <button type="button" class="btn btn-sm btn-primary" id="createRouteSubmitBtn">Save new route</button>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -283,6 +276,7 @@ body > .modal-backdrop.show {
 
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
+const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
 const ALLOWED_ASSIGNABLE_ROLES = new Set(['loan_staff', 'ci_staff']);
 
 function manageUsersApiHeaders() {
@@ -310,7 +304,60 @@ document.addEventListener('DOMContentLoaded', function () {
     if (m && m.parentNode !== document.body) {
         document.body.appendChild(m);
     }
+    var t = document.getElementById('toggleCreateRouteBtn');
+    var p = document.getElementById('createRoutePanel');
+    if (t && p) {
+        t.addEventListener('click', function () {
+            p.classList.toggle('d-none');
+            t.setAttribute('aria-expanded', p.classList.contains('d-none') ? 'false' : 'true');
+        });
+    }
+    var sb = document.getElementById('createRouteSubmitBtn');
+    if (sb) {
+        sb.addEventListener('click', submitCreateCiRoute);
+    }
 });
+
+function submitCreateCiRoute() {
+    var labelEl = document.getElementById('newRouteLabel');
+    var kwEl = document.getElementById('newRouteKeywords');
+    var label = (labelEl && labelEl.value ? labelEl.value : '').trim();
+    var keywords = kwEl && kwEl.value ? kwEl.value : '';
+    if (!label) {
+        alert('Enter a route name.');
+        return;
+    }
+    var btn = document.getElementById('createRouteSubmitBtn');
+    if (btn) {
+        btn.disabled = true;
+    }
+    fetch(CREATE_CI_ROUTE_URL, {
+        method: 'POST',
+        headers: manageUsersApiHeaders(),
+        credentials: 'same-origin',
+        body: JSON.stringify({ label: label, keywords: keywords })
+    })
+        .then(function (r) {
+            return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+        })
+        .then(function (out) {
+            if (btn) {
+                btn.disabled = false;
+            }
+            if (out.ok && out.data && out.data.success) {
+                location.reload();
+                return;
+            }
+            var msg = (out.data && (out.data.error || out.data.message)) || 'Could not create route';
+            alert(msg);
+        })
+        .catch(function () {
+            if (btn) {
+                btn.disabled = false;
+            }
+            alert('Could not create route. Check your connection.');
+        });
+}
 
 function searchUsers(tableType) {
     const input = document.getElementById(`search${tableType === 'pending' ? 'Pending' : 'Active'}`);
