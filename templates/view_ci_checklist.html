@@ -1486,15 +1486,15 @@
             <div class="print-photo-grid" role="list">
                 {% for photo in all_checklist_photos[:4] %}
                 <div class="print-photo-grid__cell" role="listitem">
-                    {% if photo and photo.is_image and photo.filename %}
+                    {% if photo and photo.is_image and photo.id %}
                     <div class="text-center mb-0" style="font-size:7pt; font-weight:700;">{% if photo.is_ci_upload %}CI/BI{% else %}LPS{% endif %}</div>
                     <div class="print-doc-slot w-100 text-center">
-                        <img src="{{ url_for('serve_upload', filename=photo.filename) }}" alt="" class="print-doc-photo" loading="eager"
+                        <img src="{{ url_for('view_loan_document', doc_id=photo.id) }}" alt="" class="print-doc-photo" loading="eager"
                              onerror="this.remove();">
                     </div>
                     <div class="text-muted small mt-1" style="font-size:7.5pt;">{{ photo.file_name }}</div>
                     {% elif photo and photo.filename %}
-                    <a class="small" href="{{ url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener"><i class="bi bi-file-earmark"></i> {{ photo.file_name }}</a>
+                    <a class="small" href="{{ url_for('view_loan_document', doc_id=photo.id) if photo.id else url_for('serve_upload', filename=photo.filename) }}" target="_blank" rel="noopener"><i class="bi bi-file-earmark"></i> {{ photo.file_name }}</a>
                     {% endif %}
                 </div>
                 {% endfor %}

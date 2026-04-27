@@ -109,7 +109,7 @@
                     {% endif %}
                 </div>
                 <div class="sidebar-user">{{ current_user.name }}</div>
-                <div class="sidebar-email">{{ current_user.role.replace('_', ' ').title() }}</div>
+                <div class="sidebar-email">{% if current_user.role in ['admin', 'loan_officer'] %}Dashboard{% else %}{{ current_user.role.replace('_', ' ').title() }}{% endif %}</div>
             </div>
             <nav class="sidebar-nav" aria-label="Main navigation">
                 <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">

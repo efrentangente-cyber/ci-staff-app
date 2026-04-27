@@ -82,20 +82,24 @@
                     {% set doc_path = (doc.file_path or '') %}
                     {% set doc_filename = doc_path.replace('\\', '/').split('/')[-1] %}
                     {% set doc_display_name = doc.file_name or doc_filename or 'document' %}
+                    {% set _lower_name = (doc.file_name or doc_filename or '')|lower %}
+                    {% set _is_img = _lower_name.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.heic', '.heif', '.svg')) %}
                     <div class="col-md-4">
                         <div class="card h-100">
-                            {% if doc_filename and doc_filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
-                            <!-- Image Preview -->
-                            <img src="{{ url_for('serve_upload', filename=doc_filename) }}" 
-                                 class="card-img-top" 
+                            {% if doc.id and _is_img %}
+                            <img src="{{ url_for('view_loan_document', doc_id=doc.id) }}"
+                                 class="card-img-top"
                                  style="height: 200px; object-fit: cover; cursor: pointer;"
-                                 onclick="openLightbox('{{ url_for('serve_upload', filename=doc_filename) }}', '{{ doc_display_name }}')"
+                                 onclick="openLightbox({{ url_for('view_loan_document', doc_id=doc.id)|tojson }}, {{ doc_display_name|tojson }})"
                                  alt="{{ doc_display_name }}"
+                                 loading="lazy"
                                  onerror="this.onerror=null; this.src='{{ url_for('static', filename='images/file-icon.png') }}'; this.style.objectFit='contain'; this.style.padding='20px';">
                             {% else %}
-                            <!-- File Icon for non-images -->
                             <div class="card-img-top d-flex align-items-center justify-content-center bg-light" style="height: 200px;">
-                                <i class="bi bi-file-earmark-pdf" style="font-size: 4rem; color: #dc3545;"></i>
+                                <a href="{{ url_for('view_loan_document', doc_id=doc.id) if doc.id else '#' }}" target="_blank" rel="noopener" class="text-decoration-none text-center">
+                                    <i class="bi bi-file-earmark-pdf" style="font-size: 4rem; color: #dc3545;"></i>
+                                    <div class="small text-primary mt-1">Open / preview</div>
+                                </a>
                             </div>
                             {% endif %}
                             <div class="card-body">

@@ -15,7 +15,7 @@ try:
 except Exception:
     pass
 
-from flask import Flask, g, has_request_context, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory, session
+from flask import Flask, g, has_request_context, render_template, request, redirect, url_for, flash, send_file, jsonify, send_from_directory, session, abort
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_socketio import SocketIO, emit, join_room, disconnect
 from flask_wtf.csrf import CSRFProtect, CSRFError
@@ -28,6 +28,7 @@ import os
 import uuid
 import re
 import json
+import mimetypes
 import time
 from datetime import datetime, timedelta
 import pytz
@@ -2994,7 +2995,7 @@ def loan_dashboard():
     conn = get_db()
     # Only fetch the columns the template reads — avoids transferring ci_checklist_data,
     # admin_notes, loan_officer_notes, and other wide TEXT columns from PostgreSQL.
-    # Newest first so recent submissions always appear (ASC + LIMIT was hiding new rows).
+    # Oldest first so new submissions appear at the bottom (full list per LPS — no LIMIT).
     applications = conn.execute('''
         SELECT la.id, la.status, la.member_name, la.loan_amount, la.loan_type,
                la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
@@ -3002,8 +3003,7 @@ def loan_dashboard():
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
         WHERE la.submitted_by = ?
-        ORDER BY la.submitted_at DESC
-        LIMIT 500
+        ORDER BY la.submitted_at ASC, la.id ASC
     ''', (current_user.id,)).fetchall()
     _t_q1 = _time.monotonic()
 
@@ -3184,6 +3184,13 @@ def submit_application():
                     return redirect(url_for('submit_application'))
 
                 conn = get_db()
+                removed = _purge_nonfinal_duplicate_applications(conn, member_name)
+                if removed:
+                    flash(
+                        f'Removed {removed} older open application(s) for this member name '
+                        '(submitted / assigned to CI / deferred only; completed and final decisions are kept).',
+                        'info',
+                    )
 
                 # Check if specific CI staff was selected
                 specific_ci_id = None
@@ -3525,7 +3532,7 @@ def ci_dashboard():
         return redirect(url_for('index'))
     conn = get_db()
     # Select only columns the CI dashboard template needs.
-    # Pending interviews first, then newest within each group (ASC + LIMIT hid new assignments).
+    # Oldest first so new assignments appear at the bottom of each section (no LIMIT).
     applications = conn.execute('''
         SELECT la.id, la.status, la.member_name, la.member_address, la.loan_amount,
                la.loan_type, la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
@@ -3533,9 +3540,7 @@ def ci_dashboard():
         FROM loan_applications la
         LEFT JOIN users u ON la.submitted_by = u.id
         WHERE la.assigned_ci_staff = ?
-        ORDER BY CASE WHEN la.status = 'assigned_to_ci' THEN 0 ELSE 1 END,
-                 la.submitted_at DESC
-        LIMIT 500
+        ORDER BY la.submitted_at ASC, la.id ASC
     ''', (current_user.id,)).fetchall()
     _t_q1 = _time.monotonic()
 
@@ -3877,19 +3882,24 @@ def view_ci_checklist(id):
 
         lps_photos = []
         ci_photos = []
-        image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')
+        image_exts = (
+            '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff',
+            '.heic', '.heif', '.svg',
+        )
         _asg = app_data.get('assigned_ci_staff')
         for doc in docs:
             d = dict(doc)
             path = (d.get('file_path') or '').replace('\\', '/')
             serve_key = (_upload_relpath_for_serve(d.get('file_path')) or (path.split('/')[-1] if path else '')).strip()
-            is_image = serve_key.lower().endswith(image_exts)
+            fn_for_type = (d.get('file_name') or serve_key or '').lower()
+            is_image = fn_for_type.endswith(image_exts)
             ub = d.get('uploaded_by')
             try:
                 is_ci_doc = int(_asg) == int(ub) if _asg is not None and ub is not None else False
             except (TypeError, ValueError):
                 is_ci_doc = str(_asg) == str(ub) if _asg is not None and ub is not None else False
             entry = {
+                'id': d.get('id'),
                 'file_name': d.get('file_name') or (serve_key.rsplit('/', 1)[-1] if serve_key else ''),
                 'filename': serve_key,
                 'is_image': is_image,
@@ -4103,12 +4113,12 @@ def admin_dashboard():
         )
 
         # --- Q1: Applications ready for admin review -------------------------
-        # Newest first so recent CI completions / direct submits are not cut off by LIMIT.
+        # Oldest first so new rows appear at the bottom of the table.
         applications = conn.execute(
             f'SELECT {_LA_COLS} FROM loan_applications la {_LA_JOIN}'
             " WHERE la.status IN ('ci_completed','approved','disapproved','deferred')"
             " OR (la.needs_ci_interview = 0 AND la.status = 'submitted')"
-            ' ORDER BY la.submitted_at DESC LIMIT 500'
+            ' ORDER BY la.submitted_at ASC, la.id ASC'
         ).fetchall()
         _t_q1 = _time.monotonic()
 
@@ -4116,7 +4126,7 @@ def admin_dashboard():
         in_process_applications = conn.execute(
             f'SELECT {_LA_COLS} FROM loan_applications la {_LA_JOIN}'
             " WHERE la.status IN ('submitted','assigned_to_ci')"
-            ' ORDER BY la.submitted_at DESC LIMIT 500'
+            ' ORDER BY la.submitted_at ASC, la.id ASC'
         ).fetchall()
         _t_q2 = _time.monotonic()
 
@@ -5074,6 +5084,62 @@ def unread_messages_count():
     return jsonify({'count': count})
 
 
+def _purge_nonfinal_duplicate_applications(conn, member_name):
+    """
+    Remove non-final rows with the same member name (trimmed, case-insensitive)
+    before a new submit so duplicate pipeline records are not kept.
+    Decrements CI workload when deleting assigned_to_ci rows.
+    Returns number of loan_applications rows deleted.
+    """
+    key = (member_name or '').strip()
+    if len(key) < 2:
+        return 0
+    rows = conn.execute(
+        '''
+        SELECT id, assigned_ci_staff, status FROM loan_applications
+        WHERE LOWER(TRIM(COALESCE(member_name, ''))) = LOWER(TRIM(?))
+          AND status IN ('submitted', 'assigned_to_ci', 'deferred')
+        ''',
+        (key,),
+    ).fetchall()
+    deleted = 0
+    for r in rows or []:
+        aid = r['id']
+        st = (r.get('status') or '').strip()
+        ci = r.get('assigned_ci_staff')
+        if st == 'assigned_to_ci' and ci:
+            try:
+                conn.execute(
+                    '''
+                    UPDATE users SET current_workload =
+                        CASE WHEN COALESCE(current_workload, 0) < 1 THEN 0
+                             ELSE COALESCE(current_workload, 0) - 1 END
+                    WHERE id=?
+                    ''',
+                    (ci,),
+                )
+            except Exception:
+                pass
+        for q in (
+            'DELETE FROM documents WHERE loan_application_id=?',
+            'DELETE FROM messages WHERE loan_application_id=?',
+        ):
+            try:
+                conn.execute(q, (aid,))
+            except Exception:
+                pass
+        try:
+            conn.execute('DELETE FROM sms_sent_log WHERE loan_application_id=?', (aid,))
+        except Exception:
+            pass
+        try:
+            conn.execute('DELETE FROM loan_applications WHERE id=?', (aid,))
+            deleted += 1
+        except Exception:
+            pass
+    return deleted
+
+
 def _insert_loan_application(
     conn,
     member_name,
@@ -5434,6 +5500,59 @@ def download_document(doc_id):
     except:
         flash('File not found on server', 'danger')
         return redirect(url_for('index'))
+
+
+@app.route('/view_document/<int:doc_id>')
+@login_required
+def view_loan_document(doc_id):
+    """
+    Serve a loan application document inline (images, PDF) using the path stored in DB.
+    CI/BI, LPS, admin, and loan officers are authorized per application; avoids broken
+    previews when only basename-based /uploads/... URLs do not match disk layout.
+    """
+    conn = get_db()
+    doc = conn.execute('SELECT * FROM documents WHERE id=?', (doc_id,)).fetchone()
+    conn.close()
+    if not doc:
+        abort(404)
+    app_id = doc['loan_application_id']
+    if not _user_can_access_application(current_user.id, current_user.role, app_id):
+        abort(403)
+    file_path = doc['file_path']
+    if not file_path:
+        abort(404)
+    upload_folder = os.path.abspath(app.config['UPLOAD_FOLDER'])
+    requested_path = os.path.abspath(str(file_path))
+    if not _is_path_within_directory(upload_folder, requested_path):
+        abort(403)
+    if not os.path.isfile(requested_path):
+        abort(404)
+    fname = (doc['file_name'] or '') or os.path.basename(requested_path)
+    mimetype, _ = mimetypes.guess_type(fname)
+    if not mimetype:
+        low = fname.lower()
+        if low.endswith(('.jpg', '.jpeg')):
+            mimetype = 'image/jpeg'
+        elif low.endswith('.png'):
+            mimetype = 'image/png'
+        elif low.endswith('.gif'):
+            mimetype = 'image/gif'
+        elif low.endswith('.webp'):
+            mimetype = 'image/webp'
+        elif low.endswith('.pdf'):
+            mimetype = 'application/pdf'
+        else:
+            mimetype = 'application/octet-stream'
+    try:
+        return send_file(
+            requested_path,
+            mimetype=mimetype,
+            as_attachment=False,
+            download_name=fname,
+            max_age=0,
+        )
+    except OSError:
+        abort(404)
 
 
 @app.route('/loan/application/<int:app_id>/document/<int:doc_id>/delete', methods=['POST'])
@@ -5913,7 +6032,7 @@ def ci_applications():
     apps = conn.execute('''
         SELECT * FROM loan_applications 
         WHERE assigned_ci_staff = ? 
-        ORDER BY submitted_at DESC
+        ORDER BY submitted_at ASC, id ASC
     ''', (current_user.id,)).fetchall()
     conn.close()
     
@@ -5946,7 +6065,7 @@ def api_download_applications():
     apps = conn.execute('''
         SELECT * FROM loan_applications 
         WHERE assigned_ci_staff = ? AND status = 'assigned_to_ci'
-        ORDER BY submitted_at DESC
+        ORDER BY submitted_at ASC, id ASC
     ''', (current_user.id,)).fetchall()
     conn.close()
     
@@ -7612,7 +7731,7 @@ def api_admin_applications():
         LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
         WHERE la.status IN ('ci_completed', 'approved', 'disapproved')
            OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
-        ORDER BY la.submitted_at ASC
+        ORDER BY la.submitted_at ASC, la.id ASC
     ''').fetchall()
     conn.close()
     
@@ -7630,7 +7749,7 @@ def api_loan_applications():
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
         WHERE la.submitted_by = ?
-        ORDER BY la.submitted_at DESC
+        ORDER BY la.submitted_at ASC, la.id ASC
     ''', (current_user.id,)).fetchall()
     conn.close()
     
@@ -7648,8 +7767,7 @@ def api_ci_applications():
         FROM loan_applications la
         LEFT JOIN users u ON la.submitted_by = u.id
         WHERE la.assigned_ci_staff = ?
-        ORDER BY CASE WHEN la.status = 'assigned_to_ci' THEN 0 ELSE 1 END,
-                 la.submitted_at DESC
+        ORDER BY la.submitted_at ASC, la.id ASC
     ''', (current_user.id,)).fetchall()
     conn.close()
     

@@ -172,10 +172,12 @@
                     {% for doc in documents %}
                     {% set doc_path = (doc.file_path or '') %}
                     {% set doc_filename = doc_path.replace('\\', '/').split('/')[-1] %}
+                    {% set _lower_name = (doc.file_name or doc_filename or '')|lower %}
+                    {% set _is_img = _lower_name.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.heic', '.heif', '.svg')) %}
                     <li class="list-group-item d-flex justify-content-between align-items-center gap-3">
                         <span class="d-flex align-items-center gap-2 flex-grow-1 min-width-0">
-                            {% if doc_filename and doc_filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
-                            <img src="{{ url_for('serve_upload', filename=doc_filename) }}" alt="{{ doc.file_name }}" style="width: 46px; height: 46px; object-fit: cover; border-radius: 8px;">
+                            {% if doc.id and _is_img %}
+                            <img src="{{ url_for('view_loan_document', doc_id=doc.id) }}" alt="{{ doc.file_name }}" style="width: 46px; height: 46px; object-fit: cover; border-radius: 8px;" loading="lazy">
                             {% else %}
                             <i class="bi bi-file-earmark"></i>
                             {% endif %}

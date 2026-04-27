@@ -84,19 +84,25 @@
                         {% set doc_path = (doc.file_path or '') %}
                         {% set doc_filename = doc_path.replace('\\', '/').split('/')[-1] %}
                         {% set doc_display_name = doc.file_name or doc_filename or 'document' %}
+                        {% set _lower_name = (doc.file_name or doc_filename or '')|lower %}
+                        {% set _is_img = _lower_name.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.heic', '.heif', '.svg')) %}
                         <div class="col-md-4 col-sm-6">
                             <div class="card h-100">
-                                {% if doc_filename and doc_filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
-                                <!-- Image Preview -->
-                                <img src="{{ url_for('serve_upload', filename=doc_filename) }}" 
-                                     class="card-img-top" 
+                                {% if doc.id and _is_img %}
+                                <!-- Image preview (authorized URL uses stored file_path) -->
+                                <img src="{{ url_for('view_loan_document', doc_id=doc.id) }}"
+                                     class="card-img-top"
                                      style="height: 200px; object-fit: cover; cursor: pointer;"
-                                     onclick="openImageModal('{{ url_for('serve_upload', filename=doc_filename) }}', '{{ doc_display_name }}')"
-                                     alt="{{ doc_display_name }}">
+                                     onclick="openImageModal({{ url_for('view_loan_document', doc_id=doc.id)|tojson }}, {{ doc_display_name|tojson }})"
+                                     alt="{{ doc_display_name }}"
+                                     loading="lazy">
                                 {% else %}
-                                <!-- PDF/Document Icon -->
+                                <!-- PDF / other -->
                                 <div class="card-img-top d-flex align-items-center justify-content-center bg-light" style="height: 200px;">
-                                    <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 4rem;"></i>
+                                    <a href="{{ url_for('view_loan_document', doc_id=doc.id) if doc.id else '#' }}" target="_blank" rel="noopener" class="text-decoration-none text-center {% if not doc.id %}disabled text-muted{% endif %}">
+                                        <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 4rem;"></i>
+                                        <div class="small text-primary mt-1">Open / preview</div>
+                                    </a>
                                 </div>
                                 {% endif %}
                                 <div class="card-body p-2">
