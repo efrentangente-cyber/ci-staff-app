@@ -1,5 +1,5 @@
-// DCCCO CI Staff App - Service Worker v8 - GET cache + offline shell (mutations queued in main thread)
-const CACHE_NAME = 'dccco-staff-v8';
+// DCCCO CI Staff App - Service Worker v9 - cache CI checklist/review for same UI offline
+const CACHE_NAME = 'dccco-staff-v9';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install
@@ -23,6 +23,7 @@ const CACHE_PAGES = [
   '/notifications',
   '/ci/application',
   '/ci/review',
+  '/ci/checklist', // wizard / summary / same flows as online when cached + outbox
   '/admin/application',
   '/loan/application',
   '/change_password',
