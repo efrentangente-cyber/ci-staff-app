@@ -1,6 +1,47 @@
 // Offline Sync Manager - Auto-download, offline processing, auto-upload
 // Real-time, instant UI response (<100ms), background operations
 
+const CI_STAFF_OFFLINE_DB = 'CIStaffOfflineDB';
+const CI_STAFF_OFFLINE_DB_VERSION = 1;
+
+/** Same shape as offline.html / Android asset: list table reads CIStaffOfflineDB.serverApplications */
+async function mirrorToCiStaffOfflineDB(appRow) {
+  if (!appRow || appRow.id == null) return;
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(CI_STAFF_OFFLINE_DB, CI_STAFF_OFFLINE_DB_VERSION);
+    request.onerror = () => reject(request.error);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('serverApplications')) {
+        const store = db.createObjectStore('serverApplications', { keyPath: 'serverId' });
+        store.createIndex('status', 'status', { unique: false });
+        store.createIndex('downloadedAt', 'downloadedAt', { unique: false });
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      try {
+        const tx = db.transaction(['serverApplications'], 'readwrite');
+        const store = tx.objectStore('serverApplications');
+        store.put({
+          serverId: appRow.id,
+          memberName: appRow.member_name,
+          memberAddress: appRow.member_address,
+          loanAmount: appRow.loan_amount,
+          loanPurpose: appRow.loan_purpose || '',
+          status: appRow.status,
+          submittedAt: appRow.submitted_at,
+          downloadedAt: new Date().toISOString()
+        });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      } catch (e) {
+        reject(e);
+      }
+    };
+  });
+}
+
 class OfflineSyncManager {
   constructor() {
     this.isOnline = navigator.onLine;
@@ -67,6 +108,11 @@ class OfflineSyncManager {
 
       // Save application to IndexedDB
       await dbManager.saveApplication(application);
+      try {
+        await mirrorToCiStaffOfflineDB(application);
+      } catch (e) {
+        console.warn('mirrorToCiStaffOfflineDB:', e);
+      }
 
       // Download and save documents (original quality)
       let downloadedDocs = 0;

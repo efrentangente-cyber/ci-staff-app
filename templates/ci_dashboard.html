@@ -61,28 +61,28 @@
         <div class="stat-card-icon blue">
             <i class="bi bi-clipboard-check"></i>
         </div>
-        <h3>{{ applications|length }}</h3>
+        <h3 id="ciStatTotal">{{ applications|length }}</h3>
         <p>Total Assigned</p>
     </div>
     <div class="stat-card">
         <div class="stat-card-icon yellow">
             <i class="bi bi-hourglass-split"></i>
         </div>
-        <h3>{{ applications|selectattr('status', 'equalto', 'assigned_to_ci')|list|length }}</h3>
+        <h3 id="ciStatPending">{{ applications|selectattr('status', 'equalto', 'assigned_to_ci')|list|length }}</h3>
         <p>Pending Interview</p>
     </div>
     <div class="stat-card">
         <div class="stat-card-icon blue">
             <i class="bi bi-check-circle-fill"></i>
         </div>
-        <h3>{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }}</h3>
+        <h3 id="ciStatCompleted">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }}</h3>
         <p>Completed</p>
     </div>
     <div class="stat-card">
         <div class="stat-card-icon yellow">
             <i class="bi bi-percent"></i>
         </div>
-        <h3>{{ "%.0f"|format((applications|selectattr('status', 'equalto', 'ci_completed')|list|length / applications|length * 100) if applications|length > 0 else 0) }}%</h3>
+        <h3 id="ciStatRate">{{ "%.0f"|format((applications|selectattr('status', 'equalto', 'ci_completed')|list|length / applications|length * 100) if applications|length > 0 else 0) }}%</h3>
         <p>Completion Rate</p>
     </div>
 </div>
@@ -343,4 +343,5 @@ function clearSearch(tableType) {
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='realtime-dashboard.js') }}" defer></script>
+<script src="{{ url_for('static', filename='ci-dashboard-offline.js') }}?v=1" defer></script>
 {% endblock %}
