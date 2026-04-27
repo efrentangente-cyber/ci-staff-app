@@ -79,9 +79,8 @@ def naive_utc_iso_z(dt=None):
 
 app = Flask(__name__)
 
-# Official cooperative name (matches seal: DAVAO CITY COMMUNITY MULTI-PURPOSE COOPERATIVE).
-# Injected into all Jinja templates as org_full_name, org_abbr, org_print_caps.
-ORG_FULL_NAME = 'Davao City Community Multi-Purpose Cooperative'
+# Official cooperative name (injected into Jinja as org_full_name, org_abbr, org_print_caps).
+ORG_FULL_NAME = 'Dumaguete City Community Multi-Purpose Cooperative'
 ORG_ABBR = 'DCCCO'
 
 # Performance logger — emits WARNING lines visible in Render logs.

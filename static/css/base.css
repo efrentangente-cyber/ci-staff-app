@@ -257,8 +257,7 @@ body.dark-mode .sidebar-header {
 }
 
 body.dark-mode .sidebar-user,
-body.dark-mode .sidebar-email,
-body.dark-mode .sidebar-org-name {
+body.dark-mode .sidebar-email {
     color: #ffffff;
 }
 
@@ -352,16 +351,6 @@ body.dark-mode .bottom-nav a.active {
 .sidebar-email {
     font-size: 12px;
     opacity: 0.8;
-}
-
-.sidebar-org-name {
-    font-size: 10px;
-    line-height: 1.25;
-    opacity: 0.78;
-    margin-top: 8px;
-    padding: 0 8px;
-    text-align: center;
-    font-weight: 500;
 }
 
 .sidebar-nav {

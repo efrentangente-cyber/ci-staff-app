@@ -105,12 +105,11 @@
                     {% if current_user.profile_photo %}
                     <img src="{{ url_for('serve_upload', filename=current_user.profile_photo.split('/')[-1].split('\\')[-1]) }}" alt="{{ current_user.name }}" style="object-fit: cover;">
                     {% else %}
-                    <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="{{ org_full_name }}">
+                    <img src="{{ url_for('static', filename='images/logo.jpg') }}" alt="{{ org_abbr }} cooperative logo">
                     {% endif %}
                 </div>
                 <div class="sidebar-user">{{ current_user.name }}</div>
                 <div class="sidebar-email">{{ current_user.role.replace('_', ' ').title() }}</div>
-                <div class="sidebar-org-name" title="{{ org_full_name }}">{{ org_full_name }}</div>
             </div>
             <nav class="sidebar-nav" aria-label="Main navigation">
                 <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
