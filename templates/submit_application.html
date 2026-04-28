@@ -68,7 +68,10 @@
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Contact Number</label>
-                    <input type="text" name="member_contact" id="member_contact" class="form-control" autocomplete="tel">
+                    <input type="text" name="member_contact" id="member_contact" class="form-control" autocomplete="tel"
+                           inputmode="numeric" maxlength="11" placeholder="09751762630"
+                           pattern="(09[0-9]{9})?" title="Optional: exactly 11 digits starting with 09">
+                    <small class="text-muted">11 digits, Philippine mobile (e.g. 09751762630). Leave blank if not available.</small>
                 </div>
             </div>
             <div class="mb-3">
@@ -248,6 +251,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const contact = document.getElementById('member_contact');
     const address = document.getElementById('member_address');
 
+    if (contact) {
+        contact.addEventListener('input', function () {
+            var v = contact.value.replace(/\D/g, '').slice(0, 11);
+            if (contact.value !== v) {
+                contact.value = v;
+            }
+        });
+    }
+
     function showPrefillBanner() {
         if (banner) banner.style.display = 'block';
     }
@@ -260,7 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function syncFromRecord(rec) {
         if (!rec) return;
         if (contact && (rec.member_contact || '').trim()) {
-            contact.value = (rec.member_contact || '').trim();
+            contact.value = (rec.member_contact || '').replace(/\D/g, '').slice(0, 11);
         }
         if (address && (rec.member_address || '').trim()) {
             address.value = (rec.member_address || '').trim();
@@ -358,7 +370,7 @@ document.addEventListener('DOMContentLoaded', function() {
             renderExistingLoanTypeDropdown(data.applications || []);
 
             if (contact && !contact.value.trim() && (data.member_contact || '').trim()) {
-                contact.value = (data.member_contact || '').trim();
+                contact.value = (data.member_contact || '').replace(/\D/g, '').slice(0, 11);
                 any = true;
             }
             if (address && !address.value.trim() && (data.member_address || '').trim()) {

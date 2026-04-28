@@ -25,7 +25,7 @@
       <div class="formal-page-signoff__sigspace{% if ci_signature_url %} formal-page-signoff__sigspace--with-img{% else %} formal-page-signoff__sigspace--no-img{% endif %}" aria-label="CI or BI signature">
         {% if ci_signature_url %}
         <div class="formal-page-signoff__imgbox">
-          <img src="{{ ci_signature_url|e }}" alt="" class="formal-page-signoff__img" loading="eager" decoding="async" fetchpriority="high" onerror="this.remove()">
+          <img src="{{ ci_signature_url|e }}" alt="" class="formal-page-signoff__img" loading="eager" decoding="async" fetchpriority="high">
         </div>
         {% endif %}
       </div>

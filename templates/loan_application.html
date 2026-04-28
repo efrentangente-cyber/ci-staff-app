@@ -85,7 +85,11 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Contact Number</label>
-                            <input type="text" name="member_contact" class="form-control" value="{{ application.member_contact or '' }}" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                            <input type="text" name="member_contact" id="member_contact_loan" class="form-control"
+                                   value="{{ application.member_contact or '' }}"
+                                   {% if can_edit %}inputmode="numeric" maxlength="11" placeholder="09751762630" pattern="(09[0-9]{9})?" title="Optional: exactly 11 digits starting with 09"{% endif %}
+                                   {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                            {% if can_edit %}<small class="text-muted">11 digits starting with 09 (e.g. 09751762630). Leave blank if unknown.</small>{% endif %}
                         </div>
                     </div>
                     <div class="mb-3">
@@ -242,6 +246,15 @@
 <script>
 // Wait for addresses to load, then setup autocomplete
 document.addEventListener('DOMContentLoaded', function() {
+    var mcIn = document.getElementById('member_contact_loan');
+    if (mcIn && !mcIn.readOnly) {
+        mcIn.addEventListener('input', function () {
+            var v = mcIn.value.replace(/\D/g, '').slice(0, 11);
+            if (mcIn.value !== v) {
+                mcIn.value = v;
+            }
+        });
+    }
     // Check if addressDatabase is loaded
     if (typeof addressDatabase === 'undefined' || addressDatabase.length === 0) {
         console.error('Address database not loaded!');

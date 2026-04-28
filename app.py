@@ -3023,6 +3023,27 @@ def _split_member_name(full_name):
     return {'last': parts[-1], 'first': parts[0], 'middle': ' '.join(parts[1:-1])}
 
 
+def _sanitize_optional_ph_mobile_input(raw):
+    """
+    Philippine mobile numbers: exactly 11 digits, format 09XXXXXXXXX (e.g. 09751762630).
+    Accepts spaces/dashes; normalizes +63/639… and plain 9XXXXXXXXX (10 digits) to 09…
+    Returns '' if empty; normalized string if valid; None if invalid when non-empty.
+    """
+    text = (raw or '').strip()
+    if not text:
+        return ''
+    d = ''.join(c for c in text if c.isdigit())
+    if not d:
+        return None
+    if len(d) == 12 and d.startswith('63'):
+        d = '0' + d[2:]
+    elif len(d) == 10 and d.startswith('9'):
+        d = '0' + d
+    if len(d) == 11 and d.startswith('09'):
+        return d
+    return None
+
+
 def _split_address(addr):
     """Best-effort split for pre-filling CI address fields."""
     if not addr:
@@ -3566,7 +3587,14 @@ def submit_application():
         if request.method == 'POST':
             try:
                 member_name = (request.form.get('member_name') or '').strip()
-                member_contact = (request.form.get('member_contact') or '').strip()
+                member_contact = _sanitize_optional_ph_mobile_input(request.form.get('member_contact'))
+                if member_contact is None:
+                    flash(
+                        'Contact number must be 11 digits starting with 09 (e.g. 09751762630). '
+                        'Leave blank if unknown.',
+                        'danger',
+                    )
+                    return redirect(url_for('submit_application'))
                 member_address = (request.form.get('member_address') or '').strip()
                 loan_amount = (request.form.get('loan_amount') or '').strip()
                 # Support both the visible typeahead field and hidden selected value.
@@ -4157,6 +4185,10 @@ def _coalesce_ci_staff_display(app_data, checklist_data):
     name = (app_data.get('ci_staff_name') or '').strip()
     if not name:
         return
+
+    def _norm_placeholder(s):
+        return ' '.join((s or '').lower().strip().split())
+
     generic = {
         'ci staff',
         'ci/bi',
@@ -4172,10 +4204,28 @@ def _coalesce_ci_staff_display(app_data, checklist_data):
         '—',
         '-',
         'tbd',
+        'prepared ci staff',
+        'prepared by ci staff',
+        'ci staff prepared',
+        'credit investigator staff',
+        'ci bi staff',
     }
+
+    def _is_placeholder(raw):
+        raw = (raw or '').strip()
+        if not raw:
+            return True
+        tl = _norm_placeholder(raw)
+        if tl in generic:
+            return True
+        # One-line wizard boilerplate still containing only variant CI staff wording.
+        if 'ci staff' in tl and len(tl) <= 72:
+            return True
+        return False
+
     for key in ('prepared_by', 'assess_prepared_by'):
-        raw = (checklist_data.get(key) or '').strip()
-        if not raw or raw.lower() in generic:
+        raw = checklist_data.get(key)
+        if _is_placeholder(raw):
             checklist_data[key] = name
 
 
@@ -4226,6 +4276,16 @@ def _resolve_ci_signature_for_print(app_data):
             fn = src
         if fn:
             return url_for('serve_signature', filename=fn)
+
+    # Basename fallback when stored paths use odd separators or prefixes extraction missed.
+    prof_tail = prof.split('/')[-1].split('?')[0].split('#')[0]
+    raw_tail = raw.replace('\\', '/').split('/')[-1].split('?')[0].split('#')[0] if raw else ''
+    for tail in (prof_tail, raw_tail):
+        tail = unquote((tail or '').strip())
+        if not tail or '..' in tail:
+            continue
+        if re.search(r'\.(png|jpe?g|gif|webp|bmp|svg)$', tail, re.I):
+            return url_for('serve_signature', filename=tail)
     return None
 
 
@@ -4255,6 +4315,26 @@ def view_ci_checklist(id):
             return redirect(url_for('admin_dashboard'))
 
         app_data = dict(app_row)
+
+        _assign_uid = app_data.get('assigned_ci_staff')
+        try:
+            _assign_uid = int(_assign_uid) if _assign_uid is not None else None
+        except (TypeError, ValueError):
+            _assign_uid = None
+        if _assign_uid:
+            need_name = not (app_data.get('ci_staff_name') or '').strip()
+            need_sigpath = not (app_data.get('ci_signature_path') or '').strip()
+            if need_name or need_sigpath:
+                urow = conn.execute(
+                    'SELECT COALESCE(name, "") AS n, COALESCE(signature_path, "") AS sp FROM users WHERE id=?',
+                    (_assign_uid,),
+                ).fetchone()
+                if urow:
+                    ud = dict(urow)
+                    if need_name:
+                        app_data['ci_staff_name'] = (ud.get('n') or '').strip()
+                    if need_sigpath:
+                        app_data['ci_signature_path'] = (ud.get('sp') or '').strip()
 
         app_data['ci_signature'] = _resolve_ci_signature_for_print(app_data)
 
@@ -4887,7 +4967,16 @@ def loan_application(id):
         
         try:
             member_name = request.form['member_name']
-            member_contact = request.form.get('member_contact')
+            _mc_raw = request.form.get('member_contact')
+            member_contact = _sanitize_optional_ph_mobile_input(_mc_raw)
+            if member_contact is None:
+                conn.close()
+                flash(
+                    'Contact number must be 11 digits starting with 09 (e.g. 09751762630). '
+                    'Leave blank if unknown.',
+                    'danger',
+                )
+                return redirect(url_for('loan_application', id=id))
             member_address = request.form.get('member_address')
             loan_amount = request.form.get('loan_amount')
             loan_type = request.form.get('loan_type')
