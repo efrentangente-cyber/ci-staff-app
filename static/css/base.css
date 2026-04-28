@@ -642,6 +642,18 @@ body.dark-mode .bottom-nav a.active {
     background: #8b95a5;
 }
 
+/* Manage Users — route checkbox dropdown (Popper uses strategy:fixed in JS; cells stay scroll-safe) */
+.table-responsive.table-scroll-5 td.route-assign-cell {
+    max-width: 280px;
+    overflow: visible !important;
+    white-space: normal !important;
+    vertical-align: top;
+}
+
+.route-assign-dd-menu.show {
+    z-index: 1060 !important;
+}
+
 /* Buttons */
 .btn-primary {
     background: var(--primary-blue);

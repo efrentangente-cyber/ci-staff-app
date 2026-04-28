@@ -12,7 +12,7 @@
 
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> 
-        <strong>Super Admin Control:</strong> Grant or revoke full access permissions for credit officers to manage users and system settings.
+        <strong>Super Admin Control:</strong> Grant or revoke permissions for credit officers (Manage Users, System Settings, Loan Types).
     </div>
 
     <div class="row">
@@ -29,13 +29,15 @@
                                 <tr>
                                     <th>Name</th>
                                     <th>Email</th>
-                                    <th width="200px">Manage Users</th>
-                                    <th width="200px">System Settings</th>
+                                    <th width="180px">Manage Users</th>
+                                    <th width="180px">System Settings</th>
+                                    <th width="180px">Loan Types</th>
                                     <th width="100px">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for officer in loan_officers %}
+                                {% set _pcheck = ',' ~ ((officer.permissions or '').replace(' ', '')) ~ ',' %}
                                 <tr>
                                     <td>
                                         <strong>{{ officer.name }}</strong>
@@ -47,10 +49,10 @@
                                             <input class="form-check-input" 
                                                    type="checkbox" 
                                                    id="manage_users_toggle_{{ officer.id }}"
-                                                   {% if officer.permissions and 'manage_users' in officer.permissions %}checked{% endif %}
+                                                   {% if ',manage_users,' in _pcheck %}checked{% endif %}
                                                    onchange="togglePermission({{ officer.id }}, 'manage_users', this.checked, '{{ officer.name }}')">
                                             <label class="form-check-label" for="manage_users_toggle_{{ officer.id }}">
-                                                {% if officer.permissions and 'manage_users' in officer.permissions %}
+                                                {% if ',manage_users,' in _pcheck %}
                                                 <span class="badge bg-success">
                                                     <i class="bi bi-check-circle"></i> Granted
                                                 </span>
@@ -68,10 +70,30 @@
                                             <input class="form-check-input" 
                                                    type="checkbox" 
                                                    id="system_settings_toggle_{{ officer.id }}"
-                                                   {% if officer.permissions and 'system_settings' in officer.permissions %}checked{% endif %}
+                                                   {% if ',system_settings,' in _pcheck %}checked{% endif %}
                                                    onchange="togglePermission({{ officer.id }}, 'system_settings', this.checked, '{{ officer.name }}')">
                                             <label class="form-check-label" for="system_settings_toggle_{{ officer.id }}">
-                                                {% if officer.permissions and 'system_settings' in officer.permissions %}
+                                                {% if ',system_settings,' in _pcheck %}
+                                                <span class="badge bg-success">
+                                                    <i class="bi bi-check-circle"></i> Granted
+                                                </span>
+                                                {% else %}
+                                                <span class="badge bg-secondary">
+                                                    <i class="bi bi-x-circle"></i> Denied
+                                                </span>
+                                                {% endif %}
+                                            </label>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="form-check form-switch d-inline-block">
+                                            <input class="form-check-input" 
+                                                   type="checkbox" 
+                                                   id="manage_loan_types_toggle_{{ officer.id }}"
+                                                   {% if ',manage_loan_types,' in _pcheck %}checked{% endif %}
+                                                   onchange="togglePermission({{ officer.id }}, 'manage_loan_types', this.checked, '{{ officer.name }}')">
+                                            <label class="form-check-label" for="manage_loan_types_toggle_{{ officer.id }}">
+                                                {% if ',manage_loan_types,' in _pcheck %}
                                                 <span class="badge bg-success">
                                                     <i class="bi bi-check-circle"></i> Granted
                                                 </span>
@@ -115,7 +137,7 @@
                                                                type="checkbox" 
                                                                name="manage_users" 
                                                                id="manage_users_{{ officer.id }}"
-                                                               {% if officer.permissions and 'manage_users' in officer.permissions %}checked{% endif %}>
+                                                               {% if ',manage_users,' in _pcheck %}checked{% endif %}>
                                                         <label class="form-check-label" for="manage_users_{{ officer.id }}">
                                                             <strong><i class="bi bi-people"></i> Manage Users</strong>
                                                             <br>
@@ -130,12 +152,27 @@
                                                                type="checkbox" 
                                                                name="system_settings" 
                                                                id="system_settings_{{ officer.id }}"
-                                                               {% if officer.permissions and 'system_settings' in officer.permissions %}checked{% endif %}>
+                                                               {% if ',system_settings,' in _pcheck %}checked{% endif %}>
                                                         <label class="form-check-label" for="system_settings_{{ officer.id }}">
                                                             <strong><i class="bi bi-gear"></i> System Settings</strong>
                                                             <br>
                                                             <small class="text-muted">
-                                                                Configure system settings, manage loan types, view system statistics
+                                                                Configure system-wide settings, activity logs, and application overview
+                                                            </small>
+                                                        </label>
+                                                    </div>
+
+                                                    <div class="form-check mb-3">
+                                                        <input class="form-check-input" 
+                                                               type="checkbox" 
+                                                               name="manage_loan_types" 
+                                                               id="manage_loan_types_{{ officer.id }}"
+                                                               {% if ',manage_loan_types,' in _pcheck %}checked{% endif %}>
+                                                        <label class="form-check-label" for="manage_loan_types_{{ officer.id }}">
+                                                            <strong><i class="bi bi-tags"></i> Loan Types</strong>
+                                                            <br>
+                                                            <small class="text-muted">
+                                                                Add, edit, enable, or disable loan product types used on application forms
                                                             </small>
                                                         </label>
                                                     </div>
@@ -176,7 +213,7 @@
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <h6><i class="bi bi-people text-primary"></i> Manage Users</h6>
                             <ul class="small">
                                 <li>Approve or reject new user registrations</li>
@@ -185,13 +222,19 @@
                                 <li>Access user management interface</li>
                             </ul>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <h6><i class="bi bi-gear text-primary"></i> System Settings</h6>
                             <ul class="small">
-                                <li>Configure system-wide settings</li>
-                                <li>Manage loan types and categories</li>
-                                <li>View system statistics and reports</li>
-                                <li>Access system configuration panel</li>
+                                <li>System activity logs and quick admin links</li>
+                                <li>Application status overview</li>
+                                <li>Force logout and maintenance tools where shown</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6><i class="bi bi-tags text-primary"></i> Loan Types</h6>
+                            <ul class="small">
+                                <li>Open <strong>Loan Types</strong> to manage product names used on loan applications</li>
+                                <li>Granted automatically if System Settings is on (legacy), or toggle alone for types-only access</li>
                             </ul>
                         </div>
                     </div>
@@ -252,7 +295,8 @@
 // Toggle permission inline
 function togglePermission(userId, permissionType, isGranted, userName) {
     const action = isGranted ? 'grant' : 'revoke';
-    const permissionName = permissionType === 'manage_users' ? 'Manage Users' : 'System Settings';
+    const permLabels = { manage_users: 'Manage Users', system_settings: 'System Settings', manage_loan_types: 'Loan Types' };
+    const permissionName = permLabels[permissionType] || permissionType;
     
     if (!confirm(`${action.toUpperCase()} "${permissionName}" permission for ${userName}?`)) {
         // Revert toggle if cancelled

@@ -67,8 +67,6 @@
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start';
-    btn.setAttribute('data-bs-toggle', 'dropdown');
-    btn.setAttribute('data-bs-auto-close', 'outside');
     btn.setAttribute('aria-expanded', 'false');
 
     function updateBtn() {
@@ -132,6 +130,21 @@
 
     wrap.appendChild(btn);
     wrap.appendChild(menu);
+
+    if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
+      try {
+        new bootstrap.Dropdown(btn, {
+          autoClose: 'outside',
+          boundary: document.body,
+          popperConfig: function (defaultBsPopperConfig) {
+            defaultBsPopperConfig.strategy = 'fixed';
+            return defaultBsPopperConfig;
+          }
+        });
+      } catch (ddErr) {
+        console.warn('route-assign Dropdown init:', ddErr);
+      }
+    }
 
     select.classList.add('visually-hidden');
     select.classList.remove('route-assign-await-js');

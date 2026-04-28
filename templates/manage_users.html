@@ -19,6 +19,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
     border: 0 !important;
 }
 .route-assign-compact .dropdown-toggle { max-width: 100%; text-align: left; }
+.route-assign-dd-menu .form-check { padding-left: 1.65rem; }
 </style>
 {% endblock %}
 
@@ -107,7 +108,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
                                 <option value="ci_staff" {% if user.role == 'ci_staff' %}selected{% endif %}>CI/BI</option>
                             </select>
                         </td>
-                        <td style="max-width: 280px;">
+                        <td class="route-assign-cell">
                             {% if user.role == 'ci_staff' or not user.role %}
                             <div class="ci-route-wrap" data-user-id="{{ user.id }}">
                                 <select multiple

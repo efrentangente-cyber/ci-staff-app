@@ -598,10 +598,55 @@ def _limiter_exempt_static():
 # Configure Resend
 resend.api_key = os.getenv('RESEND_API_KEY')
 
+
+def _normalize_permission_list(raw):
+    """Turn stored permissions (comma-separated string or list) into a list of tokens."""
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple, set)):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    return [x.strip() for x in str(raw).split(',') if x.strip()]
+
+
+def has_permission(user, permission):
+    """Check if user has specific permission (loan_officer comma-separated flags; admin always yes)."""
+    if getattr(user, 'role', None) == 'admin':
+        return True
+    if getattr(user, 'role', None) == 'loan_officer':
+        plist = _normalize_permission_list(getattr(user, 'permissions', None))
+        return permission in plist
+    return False
+
+
+def can_manage_loan_types(user):
+    """Loan Types UI + APIs: admin, or officer with manage_loan_types OR system_settings (legacy bundle)."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'role', None) == 'admin':
+        return True
+    if getattr(user, 'role', None) == 'loan_officer':
+        return has_permission(user, 'manage_loan_types') or has_permission(user, 'system_settings')
+    return False
+
+
 # Add template helper function
 @app.context_processor
 def utility_processor():
     from flask_wtf.csrf import generate_csrf
+
+    def user_perm_list(user):
+        if not user or not getattr(user, 'is_authenticated', False):
+            return []
+        if getattr(user, 'role', None) == 'admin':
+            return ['manage_users', 'system_settings', 'manage_loan_types']
+        return _normalize_permission_list(getattr(user, 'permissions', None))
+
+    def user_has_perm(user, permission_name):
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        if getattr(user, 'role', None) == 'admin':
+            return True
+        return permission_name in user_perm_list(user)
     
     def get_user_by_id(user_id):
         if not user_id:
@@ -647,6 +692,8 @@ def utility_processor():
         org_full_name=ORG_FULL_NAME,
         org_abbr=ORG_ABBR,
         org_print_caps=ORG_FULL_NAME.upper(),
+        user_perm_list=user_perm_list,
+        user_has_perm=user_has_perm,
     )
 
 
@@ -1135,15 +1182,6 @@ def send_verification_email(to_email, code, user_name):
         return False
 
 # Removed old get_db() function - now using database.py
-
-def has_permission(user, permission):
-    """Check if user has specific permission"""
-    if user.role == 'admin':
-        return True  # Super admin has all permissions
-    if user.role == 'loan_officer':
-        if hasattr(user, 'permissions') and user.permissions:
-            return permission in user.permissions
-    return False
 
 
 def can_access_manage_users_actions():
@@ -7589,6 +7627,8 @@ def update_permissions(user_id):
             permissions.append('manage_users')
         if request.form.get('system_settings'):
             permissions.append('system_settings')
+        if request.form.get('manage_loan_types'):
+            permissions.append('manage_loan_types')
         
         # Update user permissions
         permissions_str = ','.join(permissions) if permissions else None
@@ -7625,7 +7665,11 @@ def get_user_permissions(user_id):
         if not user:
             return jsonify({'success': False, 'error': 'User not found'}), 404
         
-        permissions = user['permissions'].split(',') if user['permissions'] else []
+        permissions = (
+            [p.strip() for p in user['permissions'].split(',') if p.strip()]
+            if user['permissions']
+            else []
+        )
         return jsonify({'success': True, 'permissions': permissions})
     
     except Exception as e:
@@ -7643,7 +7687,7 @@ def update_permissions_inline(user_id):
         permissions = data.get('permissions', [])
         
         # Validate permissions
-        valid_permissions = ['manage_users', 'system_settings']
+        valid_permissions = ['manage_users', 'system_settings', 'manage_loan_types']
         for perm in permissions:
             if perm not in valid_permissions:
                 return jsonify({'success': False, 'error': f'Invalid permission: {perm}'}), 400
@@ -8491,8 +8535,8 @@ def api_ci_applications():
 @app.route('/admin/loan-types')
 @login_required
 def manage_loan_types():
-    if current_user.role != 'admin':
-        flash('Unauthorized - Admin access required', 'danger')
+    if not can_manage_loan_types(current_user):
+        flash('Unauthorized — Loan Types requires permission from Manage Permissions (Loan Types or System Settings).', 'danger')
         return redirect(url_for('index'))
     
     conn = get_db()
@@ -8515,7 +8559,7 @@ def get_loan_types():
 @app.route('/api/loan-types/add', methods=['POST'])
 @login_required
 def add_loan_type():
-    if current_user.role != 'admin':
+    if not can_manage_loan_types(current_user):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     data = request.get_json()
@@ -8548,7 +8592,7 @@ def add_loan_type():
 @app.route('/api/loan-types/update/<int:id>', methods=['POST'])
 @login_required
 def update_loan_type(id):
-    if current_user.role != 'admin':
+    if not can_manage_loan_types(current_user):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     data = request.get_json()
@@ -8587,7 +8631,7 @@ def update_loan_type(id):
 @app.route('/api/loan-types/toggle/<int:id>', methods=['POST'])
 @login_required
 def toggle_loan_type(id):
-    if current_user.role != 'admin':
+    if not can_manage_loan_types(current_user):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     conn = get_db()
@@ -8607,7 +8651,7 @@ def toggle_loan_type(id):
 @app.route('/api/loan-types/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_loan_type(id):
-    if current_user.role != 'admin':
+    if not can_manage_loan_types(current_user):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     conn = get_db()

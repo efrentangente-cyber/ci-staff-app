@@ -15,7 +15,7 @@
         {% endif %}
     </div>
 
-    {% set _can_tools = (current_user.role == 'admin') or (current_user.role == 'loan_officer' and current_user.permissions and 'system_settings' in current_user.permissions) %}
+    {% set _can_tools = user_has_perm(current_user, 'system_settings') %}
     {% if not _can_tools %}
     <div class="alert alert-danger">
         <i class="bi bi-exclamation-triangle"></i> You do not have access to this page.
