@@ -402,5 +402,5 @@ function clearSearch(tableType) {
 {% endblock %}
 {% block scripts %}
 <script>window.__LPS_USER_ID = {{ current_user.id | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=2" defer></script>
 {% endblock %}

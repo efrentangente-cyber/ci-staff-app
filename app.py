@@ -1708,7 +1708,7 @@ def _build_minified_assets():
     _js_bundles = [
         (
             'js/app-core.min.js',
-            ['csrf-protection.js', 'session-security.js', 'offline-request-queue.js'],
+            ['csrf-protection.js', 'session-security.js', 'tab-close-logout.js', 'offline-request-queue.js'],
         ),
         (
             'js/ci-pwa.min.js',
@@ -8440,41 +8440,57 @@ def reset_password(token):
 @app.route('/api/admin/applications')
 @login_required
 def api_admin_applications():
+    """Dashboard-shaped snapshot for realtime refresh (matches admin_dashboard queries)."""
     if current_user.role not in ['admin', 'loan_officer']:
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     conn = get_db()
-    applications = conn.execute('''
-        SELECT la.*, 
-               u1.name as loan_staff_name,
-               u2.name as ci_staff_name
-        FROM loan_applications la
-        LEFT JOIN users u1 ON la.submitted_by = u1.id
-        LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id
-        WHERE la.status IN ('ci_completed', 'approved', 'disapproved')
-           OR (la.needs_ci_interview = 0 AND la.status = 'submitted')
-        ORDER BY la.submitted_at ASC, la.id ASC
-    ''').fetchall()
+    _LA_COLS = (
+        'la.id, la.status, la.member_name, la.loan_amount, la.loan_type,'
+        ' la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,'
+        ' u1.name AS loan_staff_name, u2.name AS ci_staff_name'
+    )
+    _LA_JOIN = (
+        'FROM loan_applications la'
+        ' LEFT JOIN users u1 ON la.submitted_by = u1.id'
+        ' LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id'
+    )
+    applications = conn.execute(
+        f'SELECT {_LA_COLS} {_LA_JOIN}'
+        " WHERE la.status IN ('ci_completed','approved','disapproved','deferred')"
+        " OR (la.needs_ci_interview = 0 AND la.status = 'submitted')"
+        ' ORDER BY la.submitted_at ASC, la.id ASC'
+    ).fetchall()
+    in_process_applications = conn.execute(
+        f'SELECT {_LA_COLS} {_LA_JOIN}'
+        " WHERE la.status IN ('submitted','assigned_to_ci')"
+        ' ORDER BY la.submitted_at ASC, la.id ASC'
+    ).fetchall()
     conn.close()
-    
-    return jsonify([dict(app) for app in applications])
+
+    return jsonify({
+        'applications': [dict(app) for app in applications],
+        'in_process_applications': [dict(app) for app in in_process_applications],
+    })
 
 @app.route('/api/loan/applications')
 @login_required
 def api_loan_applications():
     if current_user.role != 'loan_staff':
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     conn = get_db()
     applications = conn.execute('''
-        SELECT la.*, u.name as ci_staff_name 
+        SELECT la.id, la.status, la.member_name, la.loan_amount, la.loan_type,
+               la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
+               u.name as ci_staff_name
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
         WHERE la.submitted_by = ?
         ORDER BY la.submitted_at ASC, la.id ASC
     ''', (current_user.id,)).fetchall()
     conn.close()
-    
+
     return jsonify([dict(app) for app in applications])
 
 @app.route('/api/ci/applications')
@@ -8482,17 +8498,19 @@ def api_loan_applications():
 def api_ci_applications():
     if current_user.role != 'ci_staff':
         return jsonify({'error': 'Unauthorized'}), 403
-    
+
     conn = get_db()
     applications = conn.execute('''
-        SELECT la.*, u.name as loan_staff_name
+        SELECT la.id, la.status, la.member_name, la.member_address, la.loan_amount,
+               la.loan_type, la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
+               u.name as loan_staff_name
         FROM loan_applications la
         LEFT JOIN users u ON la.submitted_by = u.id
         WHERE la.assigned_ci_staff = ?
         ORDER BY la.submitted_at ASC, la.id ASC
     ''', (current_user.id,)).fetchall()
     conn.close()
-    
+
     return jsonify([dict(app) for app in applications])
 
 # LOAN TYPES MANAGEMENT ROUTES

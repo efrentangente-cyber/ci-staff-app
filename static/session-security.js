@@ -1,5 +1,6 @@
-// Session security — server ties the cookie to one active login session (ends on Log out
-// or idle timeout). Not device/IP-based; users can use multiple tabs on the same browser.
+// Session security — server ties the cookie to one active login session (ends on Log out,
+// idle timeout, or when the last tab closes — see tab-close-logout.js). Not device/IP-based;
+// multiple tabs share one sign-in until all are closed or you use Log out.
 (function() {
     'use strict';
 
