@@ -4,6 +4,64 @@ let currentPage = 1;
 const totalPages = 6; // Updated to include Cash Flow page (2.5)
 let checklistData = {};
 
+/** Never persist CSRF in drafts — restoring an old token causes "Security token mismatch" on submit. */
+const _DRAFT_SKIP_FIELDS = new Set(['csrf_token', 'checklist_data']);
+
+function draftStorageKey() {
+    const id = typeof window.__CI_APP_ID__ !== 'undefined' ? window.__CI_APP_ID__ : null;
+    const parsed =
+        id != null && id !== ''
+            ? String(id)
+            : (window.location.pathname.match(/\/wizard\/(\d+)/) || [])[1];
+    return parsed ? 'ci_checklist_draft_' + parsed : 'ci_checklist_draft';
+}
+
+function migrateLegacyDraftKey() {
+    try {
+        const key = draftStorageKey();
+        if (key === 'ci_checklist_draft') return;
+        const legacy = localStorage.getItem('ci_checklist_draft');
+        if (legacy && !localStorage.getItem(key)) {
+            localStorage.setItem(key, legacy);
+            localStorage.removeItem('ci_checklist_draft');
+        }
+    } catch (e) { /* quota / private mode */ }
+}
+
+function syncCsrfIntoForm(form) {
+    if (!form) return;
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    const tok = meta && meta.getAttribute('content');
+    if (!tok) return;
+    let inp = form.querySelector('input[name="csrf_token"]');
+    if (!inp) {
+        inp = document.createElement('input');
+        inp.type = 'hidden';
+        inp.name = 'csrf_token';
+        form.appendChild(inp);
+    }
+    inp.value = tok;
+}
+
+async function probeSessionAlive() {
+    try {
+        const r = await fetch(window.location.pathname, {
+            method: 'HEAD',
+            credentials: 'same-origin',
+            redirect: 'manual',
+            cache: 'no-store',
+        });
+        // Redirect to login => session gone
+        if (r.status >= 300 && r.status < 400) return false;
+        if (r.status === 401 || r.status === 403) return false;
+        // Server errors: still attempt POST (server will respond); avoid blocking on flaky probes
+        if (r.status >= 500) return true;
+        return r.ok || r.status === 405 || r.status === 204;
+    } catch (e) {
+        return true;
+    }
+}
+
 function buildChecklistPayloadFromForm() {
     const form = document.getElementById('ciChecklistForm');
     if (!form) return {};
@@ -12,6 +70,7 @@ function buildChecklistPayloadFromForm() {
     const fields = form.querySelectorAll('input[name], select[name], textarea[name]');
     fields.forEach((field) => {
         if (!field.name || field.type === 'file') return;
+        if (_DRAFT_SKIP_FIELDS.has(field.name)) return;
         if (field.type === 'checkbox') {
             payload[field.name] = field.checked;
         } else if (field.type === 'radio') {
@@ -203,15 +262,29 @@ function updateProgressBar() {
 function saveCurrentPageData() {
     // Save full form state so DB gets complete payload (checkboxes optional).
     checklistData = buildChecklistPayloadFromForm();
-    localStorage.setItem('ci_checklist_draft', JSON.stringify(checklistData));
+    try {
+        localStorage.setItem(draftStorageKey(), JSON.stringify(checklistData));
+    } catch (e) {
+        console.warn('Draft save failed (storage full?):', e);
+    }
 }
 
 // Load saved data
 function loadSavedData() {
-    const saved = localStorage.getItem('ci_checklist_draft');
+    migrateLegacyDraftKey();
+    let saved = null;
+    try {
+        saved = localStorage.getItem(draftStorageKey());
+    } catch (e) {
+        saved = null;
+    }
     if (saved) {
         try {
             checklistData = JSON.parse(saved);
+            if (checklistData && typeof checklistData === 'object') {
+                delete checklistData.csrf_token;
+                delete checklistData.checklist_data;
+            }
             populateFormData();
         } catch (e) {
             console.error('Error loading saved data:', e);
@@ -222,6 +295,7 @@ function loadSavedData() {
 // Populate form with saved data
 function populateFormData() {
     Object.keys(checklistData).forEach(key => {
+        if (_DRAFT_SKIP_FIELDS.has(key)) return;
         const input = document.querySelector(`[name="${key}"]`);
         if (input) {
             if (input.type === 'checkbox') {
@@ -240,11 +314,17 @@ function populateFormData() {
     updateAllComputations();
 }
 
-// Auto-save every 30 seconds
+// Auto-save every 30 seconds + when tab hides / unload (session drop / accidental close)
 function setupAutoSave() {
     setInterval(() => {
         saveCurrentPageData();
     }, 30000);
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) saveCurrentPageData();
+    });
+    window.addEventListener('pagehide', function () {
+        saveCurrentPageData();
+    });
 }
 
 // Previous page
@@ -269,48 +349,94 @@ function nextPage() {
     }
 }
 
-// Submit form
+// Submit form (GPS → session probe → sync CSRF → POST). Inline template override removed — single implementation.
 function submitChecklist() {
-    saveCurrentPageData();
-    
-    // Get Excel spreadsheet data
-    let excelData = null;
-    if (window.excelSheet) {
-        excelData = window.excelSheet.exportData();
-    }
-    
-    // Add Excel data to checklist data
-    checklistData.excel_cashflow = excelData;
+    const signatureInput = document.getElementById('ci_signature');
+    const hasReg =
+        window.__CI_HAS_REGISTERED_SIGNATURE__ === true ||
+        window.__CI_HAS_REGISTERED_SIGNATURE__ === 'true';
 
-    // Ensure hidden payload has full form state before submit.
-    document.getElementById('checklist_data').value = JSON.stringify(checklistData);
-    
-    // Check if online
+    if (!hasReg && (!signatureInput || !signatureInput.value)) {
+        alert('Please update your signature in Change Password page before submitting.');
+        return;
+    }
+
     if (!navigator.onLine) {
-        // Save offline
-        const signature = document.getElementById('ci_signature').value;
+        saveCurrentPageData();
+        let excelData = null;
+        if (window.excelSheet) excelData = window.excelSheet.exportData();
+        checklistData = buildChecklistPayloadFromForm();
+        if (excelData) checklistData.excel_cashflow = excelData;
+        document.getElementById('checklist_data').value = JSON.stringify(checklistData);
+
+        const signature = signatureInput ? signatureInput.value : '';
         const latitude = document.getElementById('ci_latitude').value;
         const longitude = document.getElementById('ci_longitude').value;
-        const applicationId = parseInt(window.location.pathname.split('/').pop());
-        
-        syncManager.saveChecklistOffline(
-            applicationId,
-            checklistData,
-            signature,
-            latitude,
-            longitude
-        ).then(() => {
-            alert('Checklist saved offline. Will upload when connection is available.');
-            window.location.href = '/ci/dashboard';
-        }).catch(err => {
-            alert('Failed to save offline: ' + err.message);
-        });
-        
-        return false;
+        const applicationId = parseInt(window.location.pathname.split('/').pop(), 10);
+
+        if (typeof syncManager !== 'undefined' && syncManager.saveChecklistOffline) {
+            syncManager
+                .saveChecklistOffline(applicationId, checklistData, signature, latitude, longitude)
+                .then(() => {
+                    alert('Checklist saved offline. Will upload when connection is available.');
+                    window.location.href = '/ci/dashboard';
+                })
+                .catch((err) => {
+                    alert('Failed to save offline: ' + (err && err.message ? err.message : err));
+                });
+        } else {
+            alert('You appear offline. Stay on this page until your connection returns, then submit again.');
+        }
+        return;
     }
-    
-    // Online - submit normally
-    document.getElementById('ciChecklistForm').submit();
+
+    async function finalizeOnlineSubmit() {
+        saveCurrentPageData();
+        let excelData = null;
+        if (window.excelSheet) excelData = window.excelSheet.exportData();
+        checklistData = buildChecklistPayloadFromForm();
+        if (excelData) checklistData.excel_cashflow = excelData;
+        document.getElementById('checklist_data').value = JSON.stringify(checklistData);
+
+        const alive = await probeSessionAlive();
+        if (!alive) {
+            alert(
+                'Your session expired or you were signed out. Your draft is saved on this device — sign in again and reopen this checklist.',
+            );
+            return;
+        }
+
+        const form = document.getElementById('ciChecklistForm');
+        syncCsrfIntoForm(form);
+        form.submit();
+    }
+
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            function (position) {
+                document.getElementById('ci_latitude').value = position.coords.latitude;
+                document.getElementById('ci_longitude').value = position.coords.longitude;
+                const dl = document.getElementById('display_latitude');
+                const dn = document.getElementById('display_longitude');
+                if (dl) dl.textContent = position.coords.latitude.toFixed(6);
+                if (dn) dn.textContent = position.coords.longitude.toFixed(6);
+                finalizeOnlineSubmit();
+            },
+            function () {
+                if (
+                    confirm(
+                        'Could not get GPS location. Do you want to submit without location data?',
+                    )
+                ) {
+                    finalizeOnlineSubmit();
+                }
+            },
+        );
+    } else if (
+        confirm('Geolocation is not supported by your browser. Do you want to submit without location data?')
+    ) {
+        finalizeOnlineSubmit();
+    }
 }
 
 // Computation functions for Page 3

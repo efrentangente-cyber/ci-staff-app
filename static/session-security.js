@@ -1,6 +1,6 @@
 // Session security — server ties the cookie to one active login session (ends on Log out
-// or idle timeout). tab-close-logout.js posts /logout only when the last app tab closes (tab X),
-// not during in-app navigation (links/forms are detected to avoid false logouts).
+// or idle timeout). tab-close-logout.js only maintains a lightweight cross-tab heartbeat map;
+// it does not POST /logout on unload (that caused false logouts during normal navigation).
 (function() {
     'use strict';
 
@@ -24,53 +24,12 @@
     metaExpires.content = '0';
     document.head.appendChild(metaExpires);
 
-    function loginUrl() {
-        const m = document.querySelector('meta[name="login-url"]');
-        const u = m && m.getAttribute('content');
-        return (u && u.trim()) ? u.trim() : '/login';
-    }
-
-    function isBackForwardNavigation() {
-        try {
-            const nav = performance.getEntriesByType('navigation')[0];
-            if (nav && nav.type === 'back_forward') {
-                return true;
-            }
-        } catch (e) {}
-        try {
-            if (performance.navigation && performance.navigation.type === 2) {
-                return true;
-            }
-        } catch (e2) {}
-        return false;
-    }
-
-    function revalidateSessionAfterHistory() {
-        fetch('/api/session_status', { credentials: 'same-origin', cache: 'no-store' })
-            .then(function (res) {
-                if (res.status === 401) {
-                    window.location.replace(loginUrl());
-                    return;
-                }
-                if (!res.ok) {
-                    window.location.reload();
-                }
-            })
-            .catch(function () {
-                window.location.reload();
-            });
-    }
-
-    // bfcache: tab restored from memory without a network request — reload for a real response.
-    // back/forward without bfcache: still probe the server so an ended session cannot use history
-    // to stay on an authenticated URL with a stale document.
+    // bfcache: tab restored without a network round-trip — reload so Flask runs enforce_single_active_login.
+    // Do NOT fetch /api/session_status on back_forward here: fetch follows redirects as 200 HTML (never 401),
+    // and catch() reload caused annoying full refreshes on flaky networks — felt like random logouts / flicker.
     window.addEventListener('pageshow', function (event) {
         if (event.persisted) {
             window.location.reload();
-            return;
-        }
-        if (isBackForwardNavigation()) {
-            revalidateSessionAfterHistory();
         }
     });
 }());

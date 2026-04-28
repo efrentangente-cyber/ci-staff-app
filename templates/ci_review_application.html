@@ -111,8 +111,10 @@
                                     </p>
                                     <small class="text-muted">{{ doc.uploaded_at|fmt_datetime('%Y-%m-%d %H:%M') }}</small>
                                     <div class="mt-2">
-                                        <a href="{{ url_for('download_document', doc_id=doc.id) }}" 
-                                           class="btn btn-sm btn-primary w-100">
+                                        <a href="{{ url_for('download_document', doc_id=doc.id) }}"
+                                           class="btn btn-sm btn-primary w-100"
+                                           target="_blank" rel="noopener"
+                                           download="{{ doc_display_name }}">
                                             <i class="bi bi-download"></i> Download
                                         </a>
                                     </div>

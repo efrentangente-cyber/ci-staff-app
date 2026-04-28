@@ -116,10 +116,14 @@ class CashFlowCalculator {
         sectionDiv.dataset.sectionIndex = sectionIndex;
         sectionDiv.dataset.sectionType = section.type;
 
-        // Section title
-        const title = document.createElement('div');
-        title.className = 'section-title';
-        title.textContent = section.title;
+        // Section title — editable (stored when saving cash flow data)
+        const title = document.createElement('input');
+        title.type = 'text';
+        title.className = 'section-title-input form-control mb-2';
+        title.dataset.role = 'section-title';
+        title.value = section.title || '';
+        title.placeholder = 'Section name';
+        title.addEventListener('input', () => this.saveData());
         sectionDiv.appendChild(title);
 
         // Create table
@@ -172,6 +176,7 @@ class CashFlowCalculator {
 
         // Show cost of goods if applicable
         if (section.showCostOfGoods) {
+            const pct = section.costPercentage != null ? section.costPercentage : 80;
             const costDiv = document.createElement('div');
             costDiv.className = 'cost-summary mt-3';
             costDiv.innerHTML = `
@@ -181,7 +186,11 @@ class CashFlowCalculator {
                         <td><input type="number" id="total_sales_${sectionIndex}" readonly class="form-control" value="0"></td>
                     </tr>
                     <tr>
-                        <td><strong>COST OF GOODS SOLD (${section.costPercentage}%):</strong></td>
+                        <td><strong>COGS rate (% of sales):</strong></td>
+                        <td><input type="number" id="cogs_percent_${sectionIndex}" min="0" max="100" step="0.01" class="form-control" value="${pct}" title="Editable — default 80%"></td>
+                    </tr>
+                    <tr>
+                        <td><strong>COST OF GOODS SOLD:</strong></td>
                         <td><input type="number" id="cost_of_goods_${sectionIndex}" readonly class="form-control" value="0"></td>
                     </tr>
                     <tr style="background: #f0f0f0;">
@@ -191,6 +200,10 @@ class CashFlowCalculator {
                 </table>
             `;
             sectionDiv.appendChild(costDiv);
+            const pctInput = document.getElementById(`cogs_percent_${sectionIndex}`);
+            if (pctInput) {
+                pctInput.addEventListener('input', () => this.calculateSection(sectionIndex));
+            }
         }
 
         container.appendChild(sectionDiv);
@@ -302,7 +315,14 @@ class CashFlowCalculator {
             const costInput = document.getElementById(`cost_of_goods_${sectionIndex}`);
             const grossInput = document.getElementById(`gross_sales_${sectionIndex}`);
             
-            const costPercentage = 80; // Default 80%
+            let costPercentage = 80;
+            const pctEl = document.getElementById(`cogs_percent_${sectionIndex}`);
+            if (pctEl) {
+                const pv = parseFloat(pctEl.value);
+                if (!Number.isNaN(pv)) {
+                    costPercentage = Math.min(100, Math.max(0, pv));
+                }
+            }
             const costOfGoods = sectionTotal * (costPercentage / 100);
             const grossSales = sectionTotal - costOfGoods;
             
@@ -435,8 +455,9 @@ class CashFlowCalculator {
 
         // Save all section data
         document.querySelectorAll('.cashflow-section').forEach(section => {
+            const titleEl = section.querySelector('[data-role="section-title"]');
             const sectionData = {
-                title: section.querySelector('.section-title').textContent,
+                title: titleEl ? titleEl.value : (section.querySelector('.section-title')?.textContent || ''),
                 type: section.dataset.sectionType,
                 rows: []
             };

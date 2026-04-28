@@ -71,6 +71,121 @@
             .sort(appSort);
     }
 
+    /** Writable mirror DB — same DB name/version as readMirrorApplications; creates store if missing. */
+    function openMirrorDbWritable() {
+        return new Promise(function (resolve, reject) {
+            if (!window.indexedDB) {
+                reject(new Error('IndexedDB unavailable'));
+                return;
+            }
+            var req = indexedDB.open(MIRROR_DB, MIRROR_VER);
+            req.onerror = function () {
+                reject(req.error);
+            };
+            req.onupgradeneeded = function (ev) {
+                var db = ev.target.result;
+                if (!db.objectStoreNames.contains(MIRROR_STORE)) {
+                    db.createObjectStore(MIRROR_STORE, { keyPath: 'serverId' });
+                }
+            };
+            req.onsuccess = function () {
+                resolve(req.result);
+            };
+        });
+    }
+
+    function dictToMirrorRow(app) {
+        if (!app || app.id == null) {
+            return null;
+        }
+        return {
+            serverId: app.id,
+            memberName: app.member_name || '',
+            memberAddress: app.member_address || '',
+            status: app.status || '',
+            submittedAt: app.submitted_at || ''
+        };
+    }
+
+    function saveMirrorApplicationsFromDicts(appDicts) {
+        var rows = [];
+        if (appDicts && appDicts.length) {
+            var i;
+            for (i = 0; i < appDicts.length; i++) {
+                var r = dictToMirrorRow(appDicts[i]);
+                if (r) {
+                    rows.push(r);
+                }
+            }
+        }
+        if (!rows.length) {
+            return Promise.resolve(0);
+        }
+        return openMirrorDbWritable().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                try {
+                    var tx = db.transaction([MIRROR_STORE], 'readwrite');
+                    var st = tx.objectStore(MIRROR_STORE);
+                    var j;
+                    for (j = 0; j < rows.length; j++) {
+                        st.put(rows[j]);
+                    }
+                    tx.oncomplete = function () {
+                        try {
+                            db.close();
+                        } catch (eClose) {
+                            void 0;
+                        }
+                        resolve(rows.length);
+                    };
+                    tx.onerror = function () {
+                        try {
+                            db.close();
+                        } catch (eClose2) {
+                            void 0;
+                        }
+                        reject(tx.error);
+                    };
+                } catch (e) {
+                    try {
+                        db.close();
+                    } catch (eClose3) {
+                        void 0;
+                    }
+                    reject(e);
+                }
+            });
+        });
+    }
+
+    /**
+     * Fetch JSON APIs without following redirects into HTML login pages (was confusing / looked like random logout).
+     */
+    function fetchCiApiJson(url) {
+        return fetch(url, {
+            credentials: 'same-origin',
+            redirect: 'manual',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(function (r) {
+            if (r.type === 'opaqueredirect') {
+                window.location.href = '/login';
+                return null;
+            }
+            if (r.status >= 300 && r.status < 400) {
+                window.location.href = '/login';
+                return null;
+            }
+            if (r.status === 401 || r.status === 403) {
+                window.location.href = '/login';
+                return null;
+            }
+            if (!r.ok) {
+                return Promise.reject(new Error('HTTP ' + r.status));
+            }
+            return r.json();
+        });
+    }
+
     function readMirrorApplications() {
         return new Promise(function (resolve) {
             if (!window.indexedDB) {
@@ -284,18 +399,14 @@
     }
 
     function runCiDashboardHydration() {
-        if (typeof window.dbManager === 'undefined' || !window.dbManager) {
-            return Promise.resolve();
-        }
-        if (typeof window.dbManager.getAllApplications !== 'function') {
-            return Promise.resolve();
-        }
+        var idbPromise =
+            window.dbManager && typeof window.dbManager.getAllApplications === 'function'
+                ? window.dbManager.getAllApplications().catch(function () {
+                      return [];
+                  })
+                : Promise.resolve([]);
 
-        return window.dbManager
-            .getAllApplications()
-            .catch(function () {
-                return [];
-            })
+        return idbPromise
             .then(function (idbApps) {
                 return readMirrorApplications().then(function (mirrorApps) {
                     var idb = idbApps || [];
@@ -343,11 +454,74 @@
         }
         _hydrateScheduled = setTimeout(function () {
             _hydrateScheduled = null;
-            waitForDbManager(6000).then(function () {
+            waitForDbManager(400).then(function () {
                 return runCiDashboardHydration();
             });
         }, 0);
     }
+
+    window.syncManager = {
+        downloadApplication: function (appId) {
+            var id = parseInt(appId, 10);
+            if (!id) {
+                return;
+            }
+            fetchCiApiJson('/api/ci_application/' + id)
+                .then(function (data) {
+                    if (!data || !data.application) {
+                        return null;
+                    }
+                    return saveMirrorApplicationsFromDicts([data.application]).then(function () {
+                        return data.application;
+                    });
+                })
+                .then(function (app) {
+                    if (!app) {
+                        return;
+                    }
+                    alert('Application #' + id + ' saved for offline review.');
+                    window.dispatchEvent(
+                        new CustomEvent('offline-data-updated', {
+                            detail: { applications: [app] }
+                        })
+                    );
+                    scheduleHydration();
+                })
+                .catch(function (err) {
+                    alert('Download failed: ' + (err && err.message ? err.message : err));
+                });
+        },
+        downloadAllPending: function () {
+            fetchCiApiJson('/api/ci/download_applications')
+                .then(function (data) {
+                    if (!data || !data.success || !data.applications) {
+                        alert('Nothing to download or the server returned an error.');
+                        return null;
+                    }
+                    var apps = data.applications;
+                    if (!apps.length) {
+                        alert('No pending applications to cache offline.');
+                        return null;
+                    }
+                    return saveMirrorApplicationsFromDicts(apps).then(function () {
+                        return apps;
+                    });
+                })
+                .then(function (apps) {
+                    if (!apps || !apps.length) {
+                        return;
+                    }
+                    alert('Saved ' + apps.length + ' pending application(s) for offline use.');
+                    window.dispatchEvent(
+                        new CustomEvent('offline-data-updated', { detail: { applications: apps } })
+                    );
+                    scheduleHydration();
+                })
+                .catch(function (err) {
+                    alert('Download failed: ' + (err && err.message ? err.message : err));
+                });
+        }
+    };
 
     function onOfflineDataUpdated(ev) {
         var apps = ev.detail && ev.detail.applications;

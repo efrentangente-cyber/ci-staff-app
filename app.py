@@ -1984,7 +1984,9 @@ def _parse_dt(value):
 def _is_session_stale(last_seen_value):
     last_seen_dt = _parse_dt(last_seen_value)
     if last_seen_dt is None:
-        return True
+        # Missing/unparsable last_seen must NOT force logout — common after migrations or clock quirks.
+        # Valid tokens still pass enforce; after_request heartbeat refreshes last_seen on HTML responses.
+        return False
     if last_seen_dt.tzinfo is not None:
         now_dt = datetime.now(last_seen_dt.tzinfo)
     else:
@@ -2009,6 +2011,11 @@ def _login_blocked_by_active_session(row) -> bool:
     if is_active != 1:
         return False
     ls = row['last_seen'] if 'last_seen' in row.keys() else None
+    # Missing last_seen: reclaim row (same class as stale for sign-in-from-login-screen).
+    if ls is None:
+        return False
+    if isinstance(ls, str) and not str(ls).strip():
+        return False
     if _is_session_stale(ls):
         return False
     return True

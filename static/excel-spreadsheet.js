@@ -2167,11 +2167,12 @@ class ExcelSpreadsheet {
         this.setCellValue(`A${totalRow}`, 'TOTAL SALES');
         this.setCellValue(`D${totalRow}`, `=SUM(D6:D${totalRow - 1})`);
         
-        // Cost of Goods Sold (merged label)
+        // Cost of Goods Sold — editable COGS rate in column C (default 80%), amount in column D
         const cogsRow = totalRow + 1;
-        this.mergedCells[`A${cogsRow}`] = { colspan: 3, rowspan: 1 };
-        this.setCellValue(`A${cogsRow}`, 'COST OF GOODS SOLD (80%)');
-        this.setCellValue(`D${cogsRow}`, `=D${totalRow}*0.8`);
+        this.mergedCells[`A${cogsRow}`] = { colspan: 2, rowspan: 1 };
+        this.setCellValue(`A${cogsRow}`, 'COGS (% of sales)');
+        this.setCellValue(`C${cogsRow}`, '80');
+        this.setCellValue(`D${cogsRow}`, `=D${totalRow}*(C${cogsRow}/100)`);
         
         // Gross Sales (merged label)
         const grossRow = cogsRow + 1;
@@ -2204,9 +2205,8 @@ class ExcelSpreadsheet {
         
         expenses.forEach((expense, index) => {
             const row = expensesStartRow + 1 + index;
-            this.mergedCells[`A${row}`] = { colspan: 3, rowspan: 1 };
+            // Single column label (like PRODUCT rows) — fully editable; amounts in column D
             this.setCellValue(`A${row}`, expense);
-            // D column left blank for amount
         });
         
         // Total Operating Expenses (merged label)
