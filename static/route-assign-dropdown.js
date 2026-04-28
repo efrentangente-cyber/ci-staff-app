@@ -1,6 +1,6 @@
 /**
  * Compact route assignment UI: replaces a tall <select multiple> with a Bootstrap dropdown
- * (checkbox list). Add class "route-assign-multiselect" or data-route-assign="compact" on the select.
+ * (checkbox list). Targets: .route-assign-multiselect, [data-route-assign="compact"], or .ci-route-select.
  *
  * Example:
  *   <select name="assigned_route_ids" multiple class="form-select form-select-sm route-assign-multiselect">...</select>
@@ -74,16 +74,25 @@
       var n = selectedCount(select);
       btn.innerHTML =
         '<i class="bi bi-signpost-split" aria-hidden="true"></i> ' +
-        (n ? 'Routes (' + n + ')' : 'Routes');
+        (n ? 'Select routes (' + n + ')' : 'Select routes');
       var titles = [];
       Array.prototype.forEach.call(select.options, function (o) {
         if (o.selected && o.value) {
           titles.push(optLabel(o));
         }
       });
-      btn.title = titles.length ? titles.join('; ') : 'Choose routes';
+      btn.title = titles.length ? titles.join('; ') : 'Choose coverage routes';
     }
     updateBtn();
+
+    function syncDisabledFromSelect() {
+      var dis = !!select.disabled;
+      btn.disabled = dis;
+      menu.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        cb.disabled = dis;
+      });
+      done.disabled = dis;
+    }
 
     var menu = document.createElement('div');
     menu.className = 'dropdown-menu shadow-sm route-assign-dd-menu p-2';
@@ -130,6 +139,14 @@
     select.parentNode.insertBefore(wrap, select);
 
     hideHintNear(select);
+    syncDisabledFromSelect();
+
+    try {
+      var mo = new MutationObserver(syncDisabledFromSelect);
+      mo.observe(select, { attributes: true, attributeFilter: ['disabled'] });
+    } catch (e) {
+      void e;
+    }
 
     menu.addEventListener('change', function (ev) {
       var t = ev.target;
@@ -157,7 +174,9 @@
   function init() {
     document
       .querySelectorAll(
-        'select.route-assign-multiselect[multiple], select[data-route-assign="compact"][multiple]'
+        'select.ci-route-select[multiple]:not([data-route-assign-enhanced]), ' +
+          'select.route-assign-multiselect[multiple]:not([data-route-assign-enhanced]), ' +
+          'select[data-route-assign="compact"][multiple]:not([data-route-assign-enhanced])'
       )
       .forEach(enhance);
   }

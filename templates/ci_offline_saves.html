@@ -60,7 +60,7 @@
                         {% elif row.status == 'dismissed' %}<span class="badge bg-secondary">dismissed</span>
                         {% else %}<span class="badge bg-light text-dark">{{ row.status }}</span>{% endif %}
                     </td>
-                    <td class="text-nowrap small">{{ row.updated_at or row.created_at }}</td>
+                    <td class="text-nowrap small">{{ (row.updated_at or row.created_at)|fmt_datetime('%d-%m-%Y %H:%M') }}</td>
                     <td class="text-end text-nowrap">
                         {% if row.status != 'dismissed' and row.loan_application_id %}
                         <a class="btn btn-sm btn-primary" href="{{ url_for('ci_offline_saves_continue', pkg_id=row.id) }}">Continue</a>

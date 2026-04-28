@@ -1,6 +1,5 @@
-// Session security — server controls sign-out (single device + idle timeout). No forced
-// client logout or "single browser tab" lock, so users can work across tabs, read docs,
-// and complete long checklists without being interrupted.
+// Session security — server ties the cookie to one active login session (ends on Log out
+// or idle timeout). Not device/IP-based; users can use multiple tabs on the same browser.
 (function() {
     'use strict';
 

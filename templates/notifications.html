@@ -163,38 +163,26 @@ body.dark-mode .notification-item.notification-unread .notification-message {
 
 <script>
 (function(){
-    /** DB stores UTC; tooltip = browser-local absolute; text = live relative (refreshes every 30s). */
-    function formatRelative(d) {
-        var rtf = new Intl.RelativeTimeFormat(document.documentElement.lang || undefined, { numeric: 'auto' });
-        var secsTotal = Math.round((d.getTime() - Date.now()) / 1000);
-        var a = Math.abs(secsTotal);
-        if (a < 60) return rtf.format(secsTotal, 'second');
-        var mins = Math.round(secsTotal / 60);
-        if (Math.abs(mins) < 60) return rtf.format(mins, 'minute');
-        var hrs = Math.round(secsTotal / 3600);
-        if (Math.abs(hrs) < 24) return rtf.format(hrs, 'hour');
-        var days = Math.round(secsTotal / 86400);
-        if (Math.abs(days) < 7) return rtf.format(days, 'day');
-        var weeks = Math.round(days / 7);
-        if (Math.abs(weeks) < 5) return rtf.format(weeks, 'week');
-        var months = Math.round(days / 30);
-        if (Math.abs(months) < 12) return rtf.format(months, 'month');
-        return rtf.format(Math.round(days / 365), 'year');
+    /** DB stores UTC ISO in datetime; show browser-local numeric DD-MM-YYYY HH:mm (no month names). */
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function formatNumericLocal(d) {
+        return pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear() + ' ' +
+            pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
-    function tickRelative() {
-        var dtf = new Intl.DateTimeFormat(navigator.language, { dateStyle: 'medium', timeStyle: 'short' });
+    function tickNumeric() {
         document.querySelectorAll('time.notification-time.js-notif-relative[datetime]').forEach(function(el) {
             var iso = el.getAttribute('datetime');
             if (!iso) return;
             var d = new Date(iso);
             if (isNaN(d.getTime())) return;
-            try { el.setAttribute('title', dtf.format(d)); } catch (e) {}
-            try { el.textContent = formatRelative(d); } catch (e2) {}
+            var s = formatNumericLocal(d);
+            el.setAttribute('title', s);
+            el.textContent = s;
         });
     }
     document.addEventListener('DOMContentLoaded', function(){
-        tickRelative();
-        setInterval(tickRelative, 30000);
+        tickNumeric();
+        setInterval(tickNumeric, 30000);
     });
 })();
 document.addEventListener('DOMContentLoaded', function() {

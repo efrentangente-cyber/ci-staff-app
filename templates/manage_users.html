@@ -1,0 +1,532 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users{% endblock %}
+{% block layout_feature_scripts %}{% include 'includes/assets_datatable.html' %}{% endblock %}
+
+<!-- Route column: checkbox dropdown (route-assign-dropdown.js) -->
+
+{% block content %}
+<div class="top-bar">
+    <div>
+        <h2 class="mb-0"><i class="bi bi-people" aria-hidden="true"></i> Manage Users</h2>
+        <p class="text-muted small mb-0 mt-1 d-none d-md-block">Approve new accounts and find users quickly with the search boxes.</p>
+    </div>
+    <div class="top-bar-actions">
+        <div class="user-menu-container">
+            <button class="btn btn-outline-secondary user-menu-btn" type="button" aria-label="Account and logout menu">
+                <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
+            </button>
+            <div class="user-menu-dropdown">
+                <div class="user-menu-header">
+                    <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                </div>
+                <a class="user-menu-item" href="{{ url_for('change_password') }}">
+                    <i class="bi bi-key"></i> Account Settings
+                </a>
+                <div class="user-menu-divider"></div>
+                <a class="user-menu-item text-danger" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<details class="content-card mb-3" id="ciCreateRouteWrap">
+    <summary class="content-card-header mb-0" style="cursor: pointer;">
+        <strong><i class="bi bi-plus-circle"></i> Create new coverage route</strong>
+        <span class="small text-muted ms-2">(optional — reloads page; new routes appear in all dropdowns)</span>
+    </summary>
+    <div class="content-card-body border-top">
+        <label class="form-label small mb-1" for="newRouteLabel">Route name</label>
+        <input type="text" class="form-control form-control-sm mb-2" id="newRouteLabel" maxlength="200" placeholder="e.g. Bayawan → New area" autocomplete="off">
+        <label class="form-label small mb-1" for="newRouteKeywords">Address keywords (optional, comma-separated)</label>
+        <input type="text" class="form-control form-control-sm mb-2" id="newRouteKeywords" placeholder="e.g. barangay name, purok" autocomplete="off">
+        <button type="button" class="btn btn-sm btn-primary" id="createRouteSubmitBtn">Save new route</button>
+    </div>
+</details>
+
+<!-- Pending Approvals -->
+<div class="content-card">
+    <div class="content-card-header">
+        <h5><i class="bi bi-clock-history"></i> Pending Approvals</h5>
+        <div class="d-flex align-items-center gap-2">
+            <div class="input-group" style="max-width: 250px;">
+                <input type="text" class="form-control form-control-sm" id="searchPending" placeholder="Name, email, or role" onkeyup="searchUsers('pending')" aria-label="Filter pending users">
+                <button class="btn btn-sm btn-outline-secondary" type="button" aria-label="Search" tabindex="-1">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                </button>
+            </div>
+            <span class="badge bg-warning" id="pendingCount">{{ pending_users|length }} Pending</span>
+        </div>
+    </div>
+    <div class="content-card-body">
+        {% if pending_users %}
+        <div class="table-responsive table-scroll-5">
+            <table class="table table-hover" id="pendingTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Route</th>
+                        <th>Type</th>
+                        <th>Registered</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in pending_users %}
+                    <tr>
+                        <td><i class="bi bi-person-circle"></i> {{ user.name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            <!-- Role Assignment Dropdown -->
+                            <select class="form-select form-select-sm" 
+                                    onchange="assignRole({{ user.id }}, this.value)" 
+                                    style="width: auto; min-width: 150px;">
+                                <option value="" {% if not user.role %}selected{% endif %}>Select Role...</option>
+                                <option value="loan_staff" {% if user.role == 'loan_staff' %}selected{% endif %}>LPS</option>
+                                <option value="ci_staff" {% if user.role == 'ci_staff' %}selected{% endif %}>CI/BI</option>
+                            </select>
+                        </td>
+                        <td style="max-width: 280px;">
+                            {% if user.role == 'ci_staff' or not user.role %}
+                            <div class="ci-route-wrap" data-user-id="{{ user.id }}">
+                                <select multiple
+                                        class="form-select form-select-sm ci-route-select route-assign-multiselect route-select-{{ user.id }}"
+                                        data-user-id="{{ user.id }}"
+                                        data-user-name="{{ user.name|e }}"
+                                        aria-label="Coverage routes for {{ user.name }}"
+                                        {% if user.role != 'ci_staff' %}disabled title="Select CI/BI role first"{% endif %}>
+                                    {% set _sel = user.assigned_route|route_tokens if user.assigned_route else [] %}
+                                    {% for r in ci_routes %}
+                                    <option value="{{ r.route_key }}" {% if r.route_key in _sel %}selected{% endif %}>{{ r.label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button"
+                                        class="btn btn-sm btn-primary mt-1 w-100 save-ci-routes"
+                                        onclick="saveRoutesFromSelect({{ user.id }})"
+                                        {% if user.role != 'ci_staff' %}disabled{% endif %}>Save routes</button>
+                            </div>
+                            {% else %}
+                            <small class="text-muted">N/A</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.approval_type == 'password_reset' %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-key"></i> Password Reset
+                            </span>
+                            {% else %}
+                            <span class="badge bg-primary">
+                                <i class="bi bi-person-plus"></i> New Account
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.created_at|fmt_datetime('%d-%m-%Y') }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('approve_user', user_id=user.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Approve this user?')">
+                                    <i class="bi bi-check-circle"></i> Approve
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('disapprove_user', user_id=user.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Disapprove this user?')">
+                                    <i class="bi bi-x-circle"></i> Disapprove
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            <i class="bi bi-check-circle" style="font-size: 48px;"></i>
+            <p class="mt-2">No pending approvals</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Active Users -->
+<div class="content-card mt-4">
+    <div class="content-card-header">
+        <h5><i class="bi bi-people-fill"></i> Active Users</h5>
+        <div class="d-flex align-items-center gap-2">
+            <div class="input-group" style="max-width: 250px;">
+                <input type="text" class="form-control form-control-sm" id="searchActive" placeholder="Name, email, or role" onkeyup="searchUsers('active')" aria-label="Filter active users">
+                <button class="btn btn-sm btn-outline-secondary" type="button" aria-label="Search" tabindex="-1">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                </button>
+            </div>
+            <span class="badge bg-success" id="activeCount">{{ active_users|length }} Active</span>
+        </div>
+    </div>
+    <div class="content-card-body">
+        <div class="table-responsive table-scroll-5">
+            <table class="table table-hover" id="activeTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Route</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in active_users %}
+                    <tr>
+                        <td><i class="bi bi-person-check-fill"></i> {{ user.name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            {% if user.role %}
+                            {% if user.role in ['loan_staff', 'ci_staff'] %}
+                            <select class="form-select form-select-sm" 
+                                    onchange='changeUserRole({{ user.id }}, this.value, {{ user.name|tojson }})' 
+                                    style="width: auto; min-width: 150px;">
+                                <option value="loan_staff" {% if user.role == 'loan_staff' %}selected{% endif %}>LPS</option>
+                                <option value="ci_staff" {% if user.role == 'ci_staff' %}selected{% endif %}>CI/BI</option>
+                            </select>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ user.role.replace('_', ' ').upper() }}</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="badge bg-secondary">
+                                <i class="bi bi-question-circle"></i> Not Assigned
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td style="max-width: 280px;">
+                            {% if user.role == 'ci_staff' %}
+                            <div class="ci-route-wrap" data-user-id="{{ user.id }}">
+                                <select multiple
+                                        class="form-select form-select-sm ci-route-select route-assign-multiselect"
+                                        data-user-id="{{ user.id }}"
+                                        data-user-name="{{ user.name|e }}"
+                                        aria-label="Coverage routes for {{ user.name }}">
+                                    {% set _sel = user.assigned_route|route_tokens if user.assigned_route else [] %}
+                                    {% for r in ci_routes %}
+                                    <option value="{{ r.route_key }}" {% if r.route_key in _sel %}selected{% endif %}>{{ r.label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-sm btn-primary mt-1 w-100 save-ci-routes" onclick="saveRoutesFromSelect({{ user.id }})">Save routes</button>
+                            </div>
+                            {% else %}
+                            <small class="text-muted">N/A</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle-fill"></i> Active
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.role != 'admin' %}
+                            <form method="POST" action="{{ url_for('deactivate_user', user_id=user.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Deactivate this user?')">
+                                    <i class="bi bi-pause-circle"></i> Deactivate
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+.table-scroll-5 {
+    max-height: 320px;
+    overflow-y: auto;
+}
+</style>
+
+<script>
+const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
+const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
+const ALLOWED_ASSIGNABLE_ROLES = new Set(['loan_staff', 'ci_staff']);
+
+function manageUsersCsrfToken() {
+    if (typeof window.getCSRFToken === 'function') {
+        const t = window.getCSRFToken();
+        if (t) {
+            return t;
+        }
+    }
+    const m = document.querySelector('meta[name="csrf-token"]');
+    if (m && m.getAttribute('content')) {
+        return m.getAttribute('content');
+    }
+    return '';
+}
+
+function manageUsersApiHeaders() {
+    const h = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+    };
+    const t = manageUsersCsrfToken();
+    if (t) {
+        h['X-CSRFToken'] = t;
+    }
+    return h;
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var sb = document.getElementById('createRouteSubmitBtn');
+    if (sb) {
+        sb.addEventListener('click', submitCreateCiRoute);
+    }
+});
+
+function submitCreateCiRoute() {
+    var labelEl = document.getElementById('newRouteLabel');
+    var kwEl = document.getElementById('newRouteKeywords');
+    var label = (labelEl && labelEl.value ? labelEl.value : '').trim();
+    var keywords = kwEl && kwEl.value ? kwEl.value : '';
+    if (!label) {
+        alert('Enter a route name.');
+        return;
+    }
+    var btn = document.getElementById('createRouteSubmitBtn');
+    if (btn) {
+        btn.disabled = true;
+    }
+    fetch(CREATE_CI_ROUTE_URL, {
+        method: 'POST',
+        headers: manageUsersApiHeaders(),
+        credentials: 'same-origin',
+        body: JSON.stringify({ label: label, keywords: keywords, csrf_token: manageUsersCsrfToken() })
+    })
+        .then(function (r) {
+            return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+        })
+        .then(function (out) {
+            if (btn) {
+                btn.disabled = false;
+            }
+            if (out.ok && out.data && out.data.success) {
+                location.reload();
+                return;
+            }
+            var msg = (out.data && (out.data.error || out.data.message)) || 'Could not create route';
+            alert(msg);
+        })
+        .catch(function () {
+            if (btn) {
+                btn.disabled = false;
+            }
+            alert('Could not create route. Check your connection.');
+        });
+}
+
+function searchUsers(tableType) {
+    const input = document.getElementById(`search${tableType === 'pending' ? 'Pending' : 'Active'}`);
+    const q = (input && input.value ? input.value : '').toLowerCase().trim();
+    const table = document.getElementById(`${tableType === 'pending' ? 'pending' : 'active'}Table`);
+    if (!table) return;
+    const tbody = table.getElementsByTagName('tbody')[0];
+    if (!tbody) return;
+    const rows = tbody.getElementsByTagName('tr');
+    let visibleCount = 0;
+    for (let i = 0; i < rows.length; i++) {
+        if (!q) {
+            rows[i].style.display = '';
+            visibleCount++;
+            continue;
+        }
+        const cells = rows[i].getElementsByTagName('td');
+        let found = false;
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().includes(q)) { found = true; break; }
+        }
+        rows[i].style.display = found ? '' : 'none';
+        if (found) visibleCount++;
+    }
+    const countBadge = document.getElementById(`${tableType === 'pending' ? 'pending' : 'active'}Count`);
+    if (countBadge) {
+        countBadge.textContent = `${visibleCount} ${q ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Active')}`;
+    }
+}
+
+function saveRoutesFromSelect(userId) {
+    var wrap = document.querySelector('.ci-route-wrap[data-user-id="' + userId + '"]');
+    var sel = wrap ? wrap.querySelector('select.ci-route-select') : document.querySelector('select.ci-route-select[data-user-id="' + userId + '"]');
+    if (!sel) {
+        alert('Route control not found.');
+        return;
+    }
+    if (sel.disabled) {
+        alert('Select CI/BI role first, then choose routes and click Save routes.');
+        return;
+    }
+    var assigned = Array.prototype.map.call(sel.selectedOptions || [], function (o) { return o.value; });
+    var uid = parseInt(String(userId), 10);
+    if (Number.isNaN(uid)) {
+        alert('Invalid user.');
+        return;
+    }
+    var fd = new FormData();
+    fd.append('csrf_token', manageUsersCsrfToken() || '');
+    fd.append('user_id', String(uid));
+    assigned.forEach(function (v) { fd.append('assigned_route', v); });
+    var headers = {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+    };
+    var ctk = manageUsersCsrfToken();
+    if (ctk) {
+        headers['X-CSRFToken'] = ctk;
+    }
+    var btn = wrap ? wrap.querySelector('button.save-ci-routes') : null;
+    if (btn) {
+        btn.disabled = true;
+    }
+    fetch(UPDATE_CI_ROUTE_URL, {
+        method: 'POST',
+        headers: headers,
+        credentials: 'same-origin',
+        body: fd
+    })
+        .then(function (r) {
+            return r.json()
+                .then(function (data) { return { ok: r.ok, status: r.status, data: data }; })
+                .catch(function () { return { ok: r.ok, status: r.status, data: { error: r.statusText || 'Bad response' } }; });
+        })
+        .then(function (out) {
+            if (btn) {
+                btn.disabled = false;
+            }
+            if (out.ok && out.data && out.data.success) {
+                location.reload();
+                return;
+            }
+            var msg = (out.data && (out.data.error || out.data.message)) || ('HTTP ' + (out.status || 'error'));
+            alert(msg);
+        })
+        .catch(function () {
+            if (btn) {
+                btn.disabled = false;
+            }
+            alert('Could not save routes. Check your connection and try again.');
+        });
+}
+
+// Assign role to pending user
+function assignRole(userId, role) {
+    if (!role) {
+        alert('Please select a role');
+        return;
+    }
+    if (!ALLOWED_ASSIGNABLE_ROLES.has(role)) {
+        alert('Only LPS and CI/BI roles are allowed.');
+        return;
+    }
+    
+    fetch('/assign_role/' + userId, {
+        method: 'POST',
+        headers: manageUsersApiHeaders(),
+        credentials: 'same-origin',
+        body: JSON.stringify({ role: role, csrf_token: manageUsersCsrfToken() })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const wrap = document.querySelector('.ci-route-wrap[data-user-id="' + userId + '"]');
+            if (wrap) {
+                const routeSel = wrap.querySelector('select.ci-route-select');
+                const saveBtn = wrap.querySelector('button.save-ci-routes');
+                if (role === 'ci_staff') {
+                    if (routeSel) {
+                        routeSel.disabled = false;
+                        routeSel.removeAttribute('title');
+                    }
+                    if (saveBtn) {
+                        saveBtn.disabled = false;
+                    }
+                } else {
+                    if (routeSel) {
+                        routeSel.disabled = true;
+                        routeSel.setAttribute('title', 'Select CI/BI role first');
+                    }
+                    if (saveBtn) {
+                        saveBtn.disabled = true;
+                    }
+                }
+            }
+            
+            // Show success message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show';
+            alert.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+            alert.innerHTML = `
+                <strong>Success!</strong> Role assigned successfully.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+            setTimeout(() => alert.remove(), 3000);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to assign role');
+    });
+}
+
+// Change role for active user (migration)
+function changeUserRole(userId, newRole, userName) {
+    if (!ALLOWED_ASSIGNABLE_ROLES.has(newRole)) {
+        alert('Only LPS and CI/BI roles are allowed.');
+        location.reload();
+        return;
+    }
+    if (!confirm(`Change role for ${userName} to ${newRole.replace('_', ' ').toUpperCase()}?`)) {
+        // Revert dropdown if cancelled
+        location.reload();
+        return;
+    }
+    
+    fetch('/assign_role/' + userId, {
+        method: 'POST',
+        headers: manageUsersApiHeaders(),
+        credentials: 'same-origin',
+        body: JSON.stringify({ role: newRole, csrf_token: manageUsersCsrfToken() })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show';
+            alert.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; min-width: 300px;';
+            alert.innerHTML = `
+                <strong>Success!</strong> Role changed successfully. Reloading page...
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            alert('Error: ' + data.error);
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to change role');
+        location.reload();
+    });
+}
+
+</script>
+{% endblock %}

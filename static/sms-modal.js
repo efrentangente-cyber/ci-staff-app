@@ -128,11 +128,9 @@ function selectTemplate(templateId, message) {
 
 // Fill template variables with actual data
 function fillTemplateVariables(message) {
-    const today = new Date().toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-    });
+    const _d = new Date();
+    const _p = function (n) { return (n < 10 ? '0' : '') + n; };
+    const today = _p(_d.getDate()) + '-' + _p(_d.getMonth() + 1) + '-' + _d.getFullYear();
     
     return message
         .replace(/{member_name}/g, currentMemberName)

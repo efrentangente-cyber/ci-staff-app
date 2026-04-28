@@ -22,6 +22,11 @@ warnings.filterwarnings(
     message=r'.*eventlet worker is.*[Dd]eprecated.*',
     category=DeprecationWarning,
 )
+warnings.filterwarnings(
+    'ignore',
+    message=r'.*Eventlet is deprecated.*',
+    category=DeprecationWarning,
+)
 
 # Call monkey_patch() early so geventlet.py's own call becomes a no-op and the
 # warning is never printed (eventlet skips re-patching already-patched modules).
