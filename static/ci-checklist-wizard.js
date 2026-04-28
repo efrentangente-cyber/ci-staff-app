@@ -92,7 +92,8 @@ document.addEventListener('DOMContentLoaded', function() {
     updateProgressBar();
     setupAutoSave();
     setupComputationListeners();
-    
+    bindComputedFieldEditing();
+
     // Load Excel data if available
     setTimeout(() => {
         loadExcelData();
@@ -439,6 +440,48 @@ function submitChecklist() {
     }
 }
 
+// Computation page — fields normally filled by formulas; user can override any total (locks prevent overwrite until reset/sync).
+const COMPUTED_FIELD_NAMES = [
+    'net_pay',
+    'total_gross_income',
+    'total_loan_amortizations',
+    'total_before_new',
+    'new_loan_final',
+    'total_other_obligations',
+    'net_disposable_income',
+    'debt_expense_ratio',
+    'loan_amortization_limit',
+];
+const computedManualLocks = new Set();
+
+function clearComputationManualLocks() {
+    computedManualLocks.clear();
+}
+
+/** Restore formula-driven totals from inputs above (clears manual overrides). */
+function resetComputationFormulas() {
+    clearComputationManualLocks();
+    updateAllComputations();
+}
+
+if (typeof window !== 'undefined') {
+    window.resetComputationFormulas = resetComputationFormulas;
+}
+
+function bindComputedFieldEditing() {
+    COMPUTED_FIELD_NAMES.forEach((name) => {
+        document.querySelectorAll(`[name="${name}"]`).forEach((el) => {
+            el.addEventListener(
+                'input',
+                function (e) {
+                    if (e.isTrusted) computedManualLocks.add(name);
+                },
+                { passive: true, capture: true },
+            );
+        });
+    });
+}
+
 // Computation functions for Page 3
 function setupComputationListeners() {
     // Income section
@@ -488,9 +531,10 @@ function getNumericValue(name) {
 
 function setComputedValue(name, value) {
     const input = document.querySelector(`[name="${name}"]`);
-    if (input) {
-        input.value = value.toFixed(2);
-    }
+    if (!input) return;
+    if (computedManualLocks.has(name)) return;
+    const n = Number(value);
+    input.value = Number.isFinite(n) ? n.toFixed(2) : '';
 }
 
 function updateNetPay() {
@@ -704,7 +748,9 @@ function syncExcelToComputation() {
         console.log('Excel sheet not available for sync');
         return;
     }
-    
+
+    clearComputationManualLocks();
+
     try {
         const cells = window.excelSheet.cells;
 

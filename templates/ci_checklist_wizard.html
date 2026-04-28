@@ -87,6 +87,15 @@ nav[style*="position: fixed"][style*="bottom"],
     margin-right: 5px;
 }
 
+/* Page 3 — computation totals (formula-backed but editable) */
+.ci-comp-result-input {
+    font-weight: 700 !important;
+    background: #f4f4f4 !important;
+}
+.ci-comp-highlight-input {
+    background: #fffdf0 !important;
+}
+
 /* Field devices (phone / tablet): readable type, touch targets, table scroll */
 @media (max-width: 768px) {
     .container-fluid.py-3 {
@@ -645,23 +654,27 @@ nav[style*="position: fixed"][style*="bottom"],
                     <h4>{{ org_print_caps }}</h4>
                     <small>COMPUTATION OF DEBT AND EXPENSE-TO-INCOME RATIO</small>
                 </div>
+                <p class="small text-muted no-print mb-2">
+                    All amounts below are editable. Totals in shaded rows normally follow the formulas from your inputs; if you change a total by hand, it will stay until you use <strong>Apply formulas</strong> or return from the Cash Flow sheet (which refreshes formulas).
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1" onclick="resetComputationFormulas()">Apply formulas</button>
+                </p>
 
                 <table class="form-table-paper">
                     <tr>
                         <td>Name of Member:</td>
-                        <td colspan="3"><input type="text" name="comp_member_name" value="{{ application.member_name }}" readonly></td>
+                        <td colspan="3"><input type="text" name="comp_member_name" value="{{ application.member_name }}" class="ci-comp-editable-cell"></td>
                     </tr>
                     <tr>
                         <td>Membership Classification:</td>
-                        <td><input type="text" name="comp_membership"></td>
+                        <td><input type="text" name="comp_membership" class="ci-comp-editable-cell"></td>
                         <td>Applied Loan:</td>
-                        <td><input type="text" name="comp_loan_type" value="{{ application.loan_type }}" readonly></td>
+                        <td><input type="text" name="comp_loan_type" value="{{ application.loan_type }}" class="ci-comp-editable-cell"></td>
                     </tr>
                     <tr>
                         <td>Occupation:</td>
-                        <td><input type="text" name="comp_occupation"></td>
+                        <td><input type="text" name="comp_occupation" class="ci-comp-editable-cell"></td>
                         <td>Applied Amount:</td>
-                        <td><input type="number" name="comp_applied_amount" value="{{ application.loan_amount }}" readonly></td>
+                        <td><input type="number" name="comp_applied_amount" value="{{ application.loan_amount }}" step="0.01" class="ci-comp-editable-cell"></td>
                     </tr>
                 </table>
 
@@ -689,7 +702,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     </tr>
                     <tr style="background: #f0f0f0;">
                         <td colspan="3"><strong>Net Pay:</strong></td>
-                        <td><input type="number" name="net_pay" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                        <td><input type="number" name="net_pay" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input"></td>
                     </tr>
                 </table>
 
@@ -713,7 +726,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     </tr>
                     <tr style="background: #f0f0f0;">
                         <td colspan="3"><strong>Total Gross Income:</strong></td>
-                        <td><input type="number" name="total_gross_income" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                        <td><input type="number" name="total_gross_income" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input"></td>
                     </tr>
                 </table>
 
@@ -747,7 +760,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     </tr>
                     <tr style="background: #f0f0f0;">
                         <td colspan="3"><strong>Sub-total:</strong></td>
-                        <td><input type="number" name="total_loan_amortizations" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                        <td><input type="number" name="total_loan_amortizations" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input"></td>
                     </tr>
                 </table>
 
@@ -766,7 +779,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     </tr>
                     <tr style="background: #f0f0f0;">
                         <td colspan="2"><strong>Total Loans/Amortizations before New Loan:</strong></td>
-                        <td><input type="number" name="total_before_new" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                        <td><input type="number" name="total_before_new" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input"></td>
                     </tr>
                 </table>
 
@@ -781,7 +794,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     </tr>
                     <tr style="background: #f0f0f0;">
                         <td colspan="2"><strong>New Loan:</strong></td>
-                        <td><input type="number" name="new_loan_final" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                        <td><input type="number" name="new_loan_final" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input"></td>
                     </tr>
                 </table>
 
@@ -809,11 +822,11 @@ nav[style*="position: fixed"][style*="bottom"],
                     </tr>
                     <tr style="background: #f0f0f0;">
                         <td colspan="2"><strong>TOTAL LOAN AMORTIZATIONS & OTHER OBLIGATIONS/EXPENSES:</strong></td>
-                        <td><input type="number" name="total_other_obligations" step="0.01" value="0" readonly style="background: #f0f0f0; font-weight: bold;"></td>
+                        <td><input type="number" name="total_other_obligations" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input"></td>
                     </tr>
                     <tr style="background: #ffffcc;">
                         <td colspan="2"><strong>Net Disposable Income:</strong></td>
-                        <td><input type="number" name="net_disposable_income" step="0.01" value="0" readonly style="background: #ffffcc; font-weight: bold;"></td>
+                        <td><input type="number" name="net_disposable_income" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input ci-comp-highlight-input"></td>
                     </tr>
                 </table>
 
@@ -821,11 +834,11 @@ nav[style*="position: fixed"][style*="bottom"],
                 <table class="form-table-paper">
                     <tr style="background: #ffffcc;">
                         <td colspan="2"><strong>Debt & Expense to Income Ratio (80% maximum):</strong></td>
-                        <td><input type="number" name="debt_expense_ratio" step="0.01" value="0" readonly style="background: #ffffcc; font-weight: bold;"> %</td>
+                        <td><input type="number" name="debt_expense_ratio" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input ci-comp-highlight-input"> %</td>
                     </tr>
                     <tr style="background: #ffffcc;">
                         <td colspan="2"><strong>Total Loan Amortization Limit (80% of Total Gross Income):</strong></td>
-                        <td><input type="number" name="loan_amortization_limit" step="0.01" value="0" readonly style="background: #ffffcc; font-weight: bold;"></td>
+                        <td><input type="number" name="loan_amortization_limit" step="0.01" value="0" oninput="updateAllComputations()" class="ci-comp-result-input ci-comp-highlight-input"></td>
                     </tr>
                 </table>
 
@@ -1272,7 +1285,7 @@ nav[style*="position: fixed"][style*="bottom"],
 window.__CI_APP_ID__ = {{ application.id }};
 window.__CI_HAS_REGISTERED_SIGNATURE__ = {{ 'true' if current_user.signature_path else 'false' }};
 </script>
-<script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}?v=20260429-draft-csrf-submit"></script>
+<script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}?v=20260430-comp-editable"></script>
 <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
 

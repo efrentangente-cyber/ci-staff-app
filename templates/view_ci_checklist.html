@@ -462,6 +462,23 @@
         max-height: none !important;
     }
     .no-print { display: none !important; }
+    /*
+     * Ink saver: grayscale each formal sheet except page 7 (evidence photos).
+     * Apply filter per .print-page — NOT on html/body (Chromium can rasterize multipage prints badly).
+     */
+    .print-page:not(.print-page--p7) {
+        filter: grayscale(100%) contrast(1.06);
+    }
+    .print-page--p7 {
+        filter: none !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .print-page--p7 .print-doc-photo,
+    .print-page--p7 .print-photo-grid img {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
     .print-page--photos { page-break-inside: avoid !important; }
     .print-page {
         page-break-after: always !important;
