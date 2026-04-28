@@ -513,11 +513,11 @@
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=6" defer></script>
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=7" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
     <script src="{{ url_for('static', filename='session-security.js') }}?v=20260427-history-session" defer></script>
-    <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=1" defer></script>
+    <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=2" defer></script>
     <script src="{{ url_for('static', filename='offline-request-queue.js') }}?v=1" defer></script>
     {% endif %}
     

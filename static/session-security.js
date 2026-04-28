@@ -1,6 +1,6 @@
-// Session security — server ties the cookie to one active login session (ends on Log out,
-// idle timeout, or when the last tab closes — see tab-close-logout.js). Not device/IP-based;
-// multiple tabs share one sign-in until all are closed or you use Log out.
+// Session security — server ties the cookie to one active login session (ends on Log out
+// or idle timeout). tab-close-logout.js only keeps a lightweight tab heartbeat (no auto-logout
+// on navigate — MPAs cannot distinguish tab-close from link navigation reliably).
 (function() {
     'use strict';
 
