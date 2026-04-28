@@ -58,14 +58,15 @@
     if (select.dataset.routeAssignEnhanced === '1') {
       return;
     }
+    try {
     select.dataset.routeAssignEnhanced = '1';
 
     var wrap = document.createElement('div');
-    wrap.className = 'dropdown route-assign-compact d-inline-block';
+    wrap.className = 'dropdown route-assign-compact w-100';
 
     var btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'btn btn-sm btn-outline-secondary dropdown-toggle';
+    btn.className = 'btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start';
     btn.setAttribute('data-bs-toggle', 'dropdown');
     btn.setAttribute('data-bs-auto-close', 'outside');
     btn.setAttribute('aria-expanded', 'false');
@@ -81,18 +82,9 @@
           titles.push(optLabel(o));
         }
       });
-      btn.title = titles.length ? titles.join('; ') : 'Choose coverage routes';
+      btn.title = titles.length ? titles.join('; ') : 'Open list and tick routes';
     }
     updateBtn();
-
-    function syncDisabledFromSelect() {
-      var dis = !!select.disabled;
-      btn.disabled = dis;
-      menu.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-        cb.disabled = dis;
-      });
-      done.disabled = dis;
-    }
 
     var menu = document.createElement('div');
     menu.className = 'dropdown-menu shadow-sm route-assign-dd-menu p-2';
@@ -112,7 +104,7 @@
       inp.type = 'checkbox';
       inp.className = 'form-check-input';
       inp.id = uid;
-      inp.dataset.routeValue = opt.value;
+      inp.setAttribute('data-route-value', opt.value);
       inp.checked = opt.selected;
       var lab = document.createElement('label');
       lab.className = 'form-check-label small';
@@ -125,14 +117,24 @@
 
     var done = document.createElement('button');
     done.type = 'button';
-    done.className = 'btn btn-sm btn-primary w-100 mt-2';
-    done.textContent = 'Done';
+    done.className = 'btn btn-sm btn-outline-secondary w-100 mt-2';
+    done.textContent = 'Close';
     menu.appendChild(done);
+
+    function syncDisabledFromSelect() {
+      var dis = !!select.disabled;
+      btn.disabled = dis;
+      menu.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+        cb.disabled = dis;
+      });
+      done.disabled = dis;
+    }
 
     wrap.appendChild(btn);
     wrap.appendChild(menu);
 
     select.classList.add('visually-hidden');
+    select.classList.remove('route-assign-await-js');
     select.setAttribute('tabindex', '-1');
     select.setAttribute('aria-hidden', 'true');
 
@@ -150,10 +152,14 @@
 
     menu.addEventListener('change', function (ev) {
       var t = ev.target;
-      if (!t || !t.matches || !t.matches('input[type="checkbox"][data-route-value]')) {
+      if (!t || t.type !== 'checkbox') {
         return;
       }
-      syncCheckbox(select, t.getAttribute('data-route-value'), t.checked);
+      var rv = t.getAttribute('data-route-value');
+      if (rv == null || rv === '') {
+        return;
+      }
+      syncCheckbox(select, rv, t.checked);
       updateBtn();
     });
 
@@ -169,6 +175,11 @@
     });
 
     updateBtn();
+    } catch (err) {
+      console.warn('route-assign-dropdown enhance:', err);
+      select.classList.remove('route-assign-await-js');
+      select.removeAttribute('data-route-assign-enhanced');
+    }
   }
 
   function init() {
@@ -181,9 +192,16 @@
       .forEach(enhance);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
+  function boot() {
     init();
+    window.setTimeout(init, 250);
   }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+  window.addEventListener('load', function () {
+    window.setTimeout(init, 100);
+  });
 })();

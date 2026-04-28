@@ -3,7 +3,24 @@
 {% block title %}Manage Users{% endblock %}
 {% block layout_feature_scripts %}{% include 'includes/assets_datatable.html' %}{% endblock %}
 
-<!-- Route column: checkbox dropdown (route-assign-dropdown.js) -->
+{% block styles %}
+<style>
+/* Hide native tall <select multiple> until route-assign-dropdown.js builds checkbox dropdown */
+.ci-route-wrap { position: relative; min-height: 2.75rem; }
+select.ci-route-select.route-assign-await-js[multiple] {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+.route-assign-compact .dropdown-toggle { max-width: 100%; text-align: left; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="top-bar">
@@ -94,7 +111,7 @@
                             {% if user.role == 'ci_staff' or not user.role %}
                             <div class="ci-route-wrap" data-user-id="{{ user.id }}">
                                 <select multiple
-                                        class="form-select form-select-sm ci-route-select route-assign-multiselect route-select-{{ user.id }}"
+                                        class="form-select form-select-sm ci-route-select route-assign-multiselect route-assign-await-js route-select-{{ user.id }}"
                                         data-user-id="{{ user.id }}"
                                         data-user-name="{{ user.name|e }}"
                                         aria-label="Coverage routes for {{ user.name }}"
@@ -205,7 +222,7 @@
                             {% if user.role == 'ci_staff' %}
                             <div class="ci-route-wrap" data-user-id="{{ user.id }}">
                                 <select multiple
-                                        class="form-select form-select-sm ci-route-select route-assign-multiselect"
+                                        class="form-select form-select-sm ci-route-select route-assign-multiselect route-assign-await-js"
                                         data-user-id="{{ user.id }}"
                                         data-user-name="{{ user.name|e }}"
                                         aria-label="Coverage routes for {{ user.name }}">
