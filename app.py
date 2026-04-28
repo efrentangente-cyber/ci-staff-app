@@ -24,6 +24,13 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from database import get_db, get_database_type, is_postgresql  # Use database abstraction layer
+from io import BytesIO
+from document_helpers import (
+    blob_bytes,
+    ensure_documents_blob_columns,
+    insert_loan_document_row,
+    mime_type_from_document_row,
+)
 import os
 import uuid
 import re
@@ -1582,6 +1589,7 @@ ensure_system_activity_log_table()
 ensure_user_login_sessions_table()
 ensure_ci_coverage_routes_table()
 ensure_ci_offline_packages_table()
+ensure_documents_blob_columns()
 
 
 # ── Asset minification / bundling ────────────────────────────────────────────
@@ -3514,8 +3522,9 @@ def submit_application():
                             unique_filename = f"{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
                             filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
                             file.save(filepath)
-                            conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
-                                       (app_id, filename, filepath, current_user.id))
+                            insert_loan_document_row(
+                                conn, app_id, filepath, filename, current_user.id
+                            )
 
                 # Assign to CI staff
                 if needs_ci:
@@ -3993,11 +4002,11 @@ def ci_review_application(id):
         conn.close()
         return redirect(url_for('ci_dashboard'))
     
-    # Get uploaded documents
+    # Get uploaded documents (all rows; thumbnails served via view_loan_document)
     try:
         documents = conn.execute(
             'SELECT id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at'
-            ' FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC LIMIT 100',
+            ' FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC',
             (id,),
         ).fetchall()
     except Exception as doc_err:
@@ -4156,7 +4165,7 @@ def view_ci_checklist(id):
         # Gather LPS-submitted reference photos and any CI uploads.
         docs = conn.execute(
             'SELECT id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at'
-            ' FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC LIMIT 100',
+            ' FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC',
             (id,)
         ).fetchall()
 
@@ -4284,9 +4293,8 @@ def submit_ci_checklist(id):
                 unique_filename = f"{id}_ci_{uuid.uuid4().hex[:8]}_{filename}"
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
                 file.save(filepath)
-                conn.execute(
-                    'INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
-                    (id, filename, filepath, current_user.id)
+                insert_loan_document_row(
+                    conn, id, filepath, filename, current_user.id
                 )
 
         try:
@@ -4607,11 +4615,11 @@ def admin_application(id):
             return redirect(url_for('admin_application', id=id))
     
     try:
-        # Only fetch columns; documents table may have large file paths but rarely huge data.
+        # Select metadata only — avoid pulling BLOB columns into this page.
         documents = conn.execute(
             'SELECT id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at'
             ' FROM documents WHERE loan_application_id=?'
-            ' ORDER BY uploaded_at DESC LIMIT 100',
+            ' ORDER BY uploaded_at DESC',
             (id,)
         ).fetchall()
     except Exception as doc_err:
@@ -4816,8 +4824,9 @@ def loan_application(id):
                         unique_filename = f"{id}_{uuid.uuid4().hex[:8]}_{filename}"
                         filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
                         file.save(filepath)
-                        conn.execute('INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)',
-                                   (id, filename, filepath, current_user.id))
+                        insert_loan_document_row(
+                            conn, id, filepath, filename, current_user.id
+                        )
             
             # Update CI staff assignment if changed
             old_ci_staff = app_data['assigned_ci_staff']
@@ -4914,8 +4923,12 @@ def loan_application(id):
             flash(f'Error updating application: {str(e)}', 'danger')
             return redirect(url_for('loan_application', id=id))
     
-    # GET request - show form
-    documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=?', (id,)).fetchall()
+    # GET request - show form (exclude file_data BLOBs from listing)
+    documents = conn.execute(
+        'SELECT id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at, mime_type '
+        'FROM documents WHERE loan_application_id=? ORDER BY uploaded_at ASC',
+        (id,),
+    ).fetchall()
     messages = conn.execute('''
         SELECT m.*, u.name as sender_name 
         FROM messages m
@@ -5847,7 +5860,17 @@ def download_document(doc_id):
     if not _user_can_access_application(current_user.id, current_user.role, doc['loan_application_id']):
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
-    
+
+    bd = blob_bytes(doc)
+    if bd is not None:
+        mime = mime_type_from_document_row(doc)
+        return send_file(
+            BytesIO(bd),
+            mimetype=mime,
+            as_attachment=True,
+            download_name=(doc['file_name'] or 'document').strip() or 'document',
+        )
+
     # Validate file path is within upload folder (prevent path traversal)
     file_path = doc['file_path']
     upload_folder = os.path.abspath(app.config['UPLOAD_FOLDER'])
@@ -5859,7 +5882,7 @@ def download_document(doc_id):
     
     try:
         return send_file(file_path, as_attachment=True, download_name=doc['file_name'])
-    except:
+    except Exception:
         flash('File not found on server', 'danger')
         return redirect(url_for('index'))
 
@@ -5868,9 +5891,8 @@ def download_document(doc_id):
 @login_required
 def view_loan_document(doc_id):
     """
-    Serve a loan application document inline (images, PDF) using the path stored in DB.
-    CI/BI, LPS, admin, and loan officers are authorized per application; avoids broken
-    previews when only basename-based /uploads/... URLs do not match disk layout.
+    Serve a loan application document inline (images, PDF).
+    Prefer bytes in DB (file_data) when present; else filesystem path.
     """
     conn = get_db()
     doc = conn.execute('SELECT * FROM documents WHERE id=?', (doc_id,)).fetchone()
@@ -5880,6 +5902,22 @@ def view_loan_document(doc_id):
     app_id = doc['loan_application_id']
     if not _user_can_access_application(current_user.id, current_user.role, app_id):
         abort(403)
+
+    bd = blob_bytes(doc)
+    fname = (doc['file_name'] or '') or 'document'
+    if bd is not None:
+        mt = mime_type_from_document_row(doc, fname)
+        try:
+            return send_file(
+                BytesIO(bd),
+                mimetype=mt,
+                as_attachment=False,
+                download_name=fname,
+                max_age=0,
+            )
+        except Exception:
+            abort(404)
+
     file_path = doc['file_path']
     if not file_path:
         abort(404)
@@ -6407,12 +6445,16 @@ def ci_application_api(id):
         return jsonify({'error': 'Unauthorized'}), 403
     conn = get_db()
     app = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
-    documents = conn.execute('SELECT * FROM documents WHERE loan_application_id=?', (id,)).fetchall()
+    documents = conn.execute(
+        'SELECT id, loan_application_id, file_name, file_path, uploaded_by, uploaded_at, mime_type '
+        'FROM documents WHERE loan_application_id=? ORDER BY uploaded_at DESC',
+        (id,),
+    ).fetchall()
     conn.close()
     
     return jsonify({
         'application': dict(app) if app else None,
-        'documents': [dict(doc) for doc in documents]
+        'documents': [dict(doc) for doc in documents],
     })
 
 # OFFLINE PWA API ENDPOINTS

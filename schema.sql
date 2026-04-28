@@ -58,6 +58,8 @@ CREATE TABLE documents (
     file_path TEXT NOT NULL,
     uploaded_by INTEGER NOT NULL,
     uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    mime_type TEXT,
+    file_data BLOB,
     FOREIGN KEY (loan_application_id) REFERENCES loan_applications(id),
     FOREIGN KEY (uploaded_by) REFERENCES users(id)
 );

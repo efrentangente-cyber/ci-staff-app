@@ -13,6 +13,7 @@ from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
 from database import get_db
+from document_helpers import insert_loan_document_row
 
 
 def _upload_root():
@@ -134,12 +135,12 @@ def init_offline_interview_api(app, csrf):
                         unique_filename = f"{app_id}_interview_{uuid.uuid4().hex[:8]}_{filename}"
                         filepath = os.path.join(upload_root, unique_filename)
                         file.save(filepath)
-                        conn.execute(
-                            """
-                            INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by)
-                            VALUES (?, ?, ?, ?)
-                            """,
-                            (app_id, filename, filepath, current_user.id),
+                        insert_loan_document_row(
+                            conn,
+                            app_id,
+                            filepath,
+                            filename,
+                            current_user.id,
                         )
 
                     try:
