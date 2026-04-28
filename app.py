@@ -606,10 +606,10 @@ def utility_processor():
     def get_user_by_id(user_id):
         if not user_id:
             return None
-        conn = get_db()
-        user = conn.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-        conn.close()
-        return user
+        try:
+            return get_db().execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        except Exception:
+            return None
     
     def secure_token(resource_type, resource_id):
         """Generate a secure token for hiding IDs in URLs"""
@@ -620,8 +620,8 @@ def utility_processor():
         return generate_csrf()
 
     # Inject unread message count into every template automatically.
-    # get_unread_message_count() has a 60 s in-process cache; on cache-miss it
-    # calls get_db() which reuses the request-scoped connection (no extra round-trip).
+    # get_unread_message_count() uses COUNT_CACHE_TTL in-process cache; on cache-miss it
+    # uses get_db() — same request-scoped connection as the route (do not close inside helpers).
     message_unread_count = 0
     try:
         import time as _t
@@ -676,17 +676,14 @@ def get_unread_message_count(user_id):
     cached = _get_cached_count(_message_count_cache, user_id)
     if cached is not None:
         return cached
-    conn = get_db()
+    row = None
     try:
-        row = conn.execute('''
+        row = get_db().execute('''
             SELECT COUNT(*) as count FROM direct_messages
             WHERE receiver_id = ? AND is_read = 0
         ''', (user_id,)).fetchone()
     except Exception:
-        # Backward compatibility when direct_messages table/columns are not fully migrated.
         row = None
-    finally:
-        conn.close()
     count = row['count'] if row else 0
     _set_cached_count(_message_count_cache, user_id, count)
     return count
@@ -696,24 +693,20 @@ def get_unread_notification_count(user_id):
     cached = _get_cached_count(_notification_count_cache, user_id)
     if cached is not None:
         return cached
-    conn = get_db()
+    row = None
     try:
-        row = conn.execute(
+        row = get_db().execute(
             "SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
             (user_id,)
         ).fetchone()
     except Exception:
         try:
-            # Backward compatibility for deployments where notifications.message does not exist yet.
-            row = conn.execute(
+            row = get_db().execute(
                 "SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0",
                 (user_id,)
             ).fetchone()
         except Exception:
-            # Last resort: treat as no unread notifications instead of crashing routes.
             row = None
-    finally:
-        conn.close()
     count = row['count'] if row else 0
     _set_cached_count(_notification_count_cache, user_id, count)
     return count
@@ -871,16 +864,16 @@ online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timesta
 
 # Tiny in-memory caches to reduce repeated COUNT(*) queries per user (message + notification badges).
 try:
-    _COUNT_CACHE_TTL_SECONDS = int((os.getenv('COUNT_CACHE_TTL_SECONDS') or '60').strip() or '60')
+    _COUNT_CACHE_TTL_SECONDS = int((os.getenv('COUNT_CACHE_TTL_SECONDS') or '90').strip() or '90')
 except ValueError:
-    _COUNT_CACHE_TTL_SECONDS = 60
+    _COUNT_CACHE_TTL_SECONDS = 90
 _count_cache_lock = eventlet.semaphore.Semaphore()
 # Skip user_login_sessions SELECT on rapid GET navigations (seconds). POST/PUT/PATCH/DELETE always validate.
 # Set SESSION_ENFORCE_GET_MIN_SEC=0 to check every request (slowest, strictest).
 try:
-    _ENFORCE_GET_MIN_SEC = float((os.getenv('SESSION_ENFORCE_GET_MIN_SEC') or '4').strip() or '4')
+    _ENFORCE_GET_MIN_SEC = float((os.getenv('SESSION_ENFORCE_GET_MIN_SEC') or '12').strip() or '12')
 except ValueError:
-    _ENFORCE_GET_MIN_SEC = 4.0
+    _ENFORCE_GET_MIN_SEC = 12.0
 _ENFORCE_GET_MIN_SEC = max(0.0, _ENFORCE_GET_MIN_SEC)
 _notification_count_cache = {}
 _message_count_cache = {}
@@ -898,9 +891,9 @@ _SESSION_STALE_HOURS = max(1.0, min(72.0, _SESSION_STALE_HOURS))
 _SINGLE_LOGIN_STALE_SECONDS = int(_SESSION_STALE_HOURS * 3600)
 # How often to update last_seen in the DB (keeps long single-page work from going stale).
 try:
-    _SESSION_TOUCH_MIN_SEC = int((os.getenv('SESSION_TOUCH_MIN_SEC') or '30').strip() or '30')
+    _SESSION_TOUCH_MIN_SEC = int((os.getenv('SESSION_TOUCH_MIN_SEC') or '45').strip() or '45')
 except ValueError:
-    _SESSION_TOUCH_MIN_SEC = 30
+    _SESSION_TOUCH_MIN_SEC = 45
 _SESSION_TOUCH_MIN_SEC = max(15, min(600, _SESSION_TOUCH_MIN_SEC))
 
 # Serve static files — fallback only (WhiteNoise handles /static/… before Flask).
@@ -3366,13 +3359,7 @@ def loan_dashboard():
     ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
     _t_q2 = _time.monotonic()
 
-    unread_count_row = conn.execute(
-        "SELECT COUNT(*) as count FROM notifications"
-        " WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-        (current_user.id,)
-    ).fetchone()
-    unread_count = unread_count_row['count'] if unread_count_row else 0
-    conn.close()
+    unread_count = get_unread_notification_count(current_user.id)
 
     _total = _time.monotonic() - _t0
     if _total > 0.5:
@@ -3910,7 +3897,6 @@ def ci_dashboard():
     _t_q1 = _time.monotonic()
 
     unread_count = get_unread_notification_count(current_user.id)
-    conn.close()
 
     _total = _time.monotonic() - _t0
     if _total > 0.5:
@@ -4525,19 +4511,8 @@ def admin_dashboard():
         ).fetchall()
         _t_q3 = _time.monotonic()
 
-        # --- Q4: Unread notification count -----------------------------------
-        # Uses idx_notifications_user_read_created; the LIKE filter runs on the
-        # small result set after the index narrows by user_id + is_read.
-        row = conn.execute(
-            "SELECT COUNT(*) AS count FROM notifications"
-            " WHERE user_id = ? AND is_read = 0"
-            " AND message NOT LIKE 'New message from%'",
-            (current_user.id,)
-        ).fetchone()
-        unread_count = row['count'] if row else 0
+        unread_count = get_unread_notification_count(current_user.id)
         _t_q4 = _time.monotonic()
-
-        conn.close()
 
         # Normalise submitted_at to string so templates can slice it safely
         def _norm_dt(rows):
@@ -4735,7 +4710,6 @@ def admin_application(id):
         messages = []
 
     ci_staff_list = fetch_ci_staff_list(conn, include_pending=False)
-    conn.close()
 
     unread_count = get_unread_notification_count(current_user.id)
 
