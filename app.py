@@ -1481,6 +1481,16 @@ def ensure_system_activity_log_table():
                 )
                 '''
             )
+            try:
+                conn.execute(
+                    'ALTER TABLE system_activity_log ADD COLUMN IF NOT EXISTS actor_user_id INTEGER'
+                )
+                conn.execute(
+                    'ALTER TABLE system_activity_log ADD COLUMN IF NOT EXISTS metadata TEXT'
+                )
+            except Exception:
+                pass
+            conn.commit()
         else:
             conn.execute(
                 '''
@@ -1495,7 +1505,29 @@ def ensure_system_activity_log_table():
                 )
                 '''
             )
-        conn.commit()
+            conn.commit()
+            # Migrate older SQLite installs that lacked actor_user_id/metadata.
+            try:
+                col_rows = conn.execute('PRAGMA table_info(system_activity_log)').fetchall()
+                existing_cols = set()
+                for cr in col_rows:
+                    nm = (
+                        cr['name']
+                        if isinstance(cr, dict) or hasattr(cr, 'keys')
+                        else cr[1]
+                    )
+                    existing_cols.add(nm)
+                if 'actor_user_id' not in existing_cols:
+                    conn.execute(
+                        'ALTER TABLE system_activity_log ADD COLUMN actor_user_id INTEGER'
+                    )
+                if 'metadata' not in existing_cols:
+                    conn.execute(
+                        'ALTER TABLE system_activity_log ADD COLUMN metadata TEXT'
+                    )
+                conn.commit()
+            except Exception as mig_exc:
+                app.logger.debug('system_activity_log column migrate: %s', mig_exc)
         conn.close()
         _system_activity_log_table_ready = True
         print("✓ system_activity_log table ensured")
@@ -7256,7 +7288,9 @@ def system_settings():
 
     # Default limit 50; filtered views allow up to 200.
     _log_limit = 200 if any([log_role, log_name, log_action, log_from, log_to]) else 50
-    sql_logs = 'SELECT id, role, full_name, action, created_at FROM system_activity_log'
+    sql_logs = (
+        'SELECT id, role, full_name, action, actor_user_id, created_at FROM system_activity_log'
+    )
     if where:
         sql_logs += ' WHERE ' + ' AND '.join(where)
     sql_logs += f' ORDER BY created_at DESC LIMIT {_log_limit}'
@@ -7307,6 +7341,98 @@ def system_settings():
             'to': log_to,
         },
     )
+
+
+def _redirect_back_to_system_settings_logs():
+    """Return to filtered Recent Logs; prefer safe same-origin referrer."""
+    from urllib.parse import urlparse
+
+    ref = (request.referrer or '').strip()
+    try:
+        cand = urlparse(ref)
+        here = urlparse(request.url_root)
+        if (
+            cand.scheme in ('http', 'https')
+            and cand.netloc == here.netloc
+            and '/system_settings' in (cand.path or '')
+        ):
+            base = ref.split('#')[0]
+            return redirect(base + '#logs-section')
+    except Exception:
+        pass
+    return redirect(url_for('system_settings') + '#logs-section')
+
+
+@app.route('/system_settings/force_logout/<int:target_user_id>', methods=['POST'])
+@login_required
+def system_settings_force_logout_user(target_user_id):
+    """Super admin only: invalidate DB-backed sessions so the user is signed out on next request."""
+    if current_user.role != 'admin':
+        flash('Only the super administrator can force sign-out from activity logs.', 'danger')
+        return redirect(url_for('system_settings') + '#logs-section')
+
+    if target_user_id == current_user.id:
+        flash('To sign yourself out, use Sign out from the menu.', 'info')
+        return redirect(url_for('system_settings') + '#logs-section')
+
+    conn = get_db()
+    row = None
+    try:
+        row = conn.execute(
+            'SELECT id, role, name, email FROM users WHERE id = ? LIMIT 1',
+            (target_user_id,),
+        ).fetchone()
+        if not row:
+            flash('User not found.', 'warning')
+            return redirect(url_for('system_settings') + '#logs-section')
+        role_norm = str(row['role'] or '').strip().lower()
+        if role_norm == 'admin':
+            flash('Cannot force sign out another super admin account.', 'warning')
+            return redirect(url_for('system_settings') + '#logs-section')
+        display_name = row['name'] if 'name' in row.keys() else ''
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    try:
+        _deactivate_user_session(target_user_id, None)
+        conn = get_db()
+        conn.execute(
+            'UPDATE users SET is_online = 0, last_seen = ? WHERE id = ?',
+            (now_ph().isoformat(), target_user_id),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        app.logger.exception('system_settings_force_logout_user: %s', exc)
+        flash('Could not invalidate sessions. Try again.', 'danger')
+        return _redirect_back_to_system_settings_logs()
+
+    try:
+        _log_system_activity(
+            current_user.role.replace('_', ' ').upper() if current_user.role else 'ADMIN',
+            getattr(current_user, 'name', None)
+            or getattr(current_user, 'email', None)
+            or 'Admin',
+            'FORCE SIGN OUT USER',
+            actor_user_id=current_user.id,
+            metadata={
+                'target_user_id': target_user_id,
+                'target_name': dict(row).get('name') if row else None,
+            },
+        )
+    except Exception:
+        pass
+
+    flash(
+        '{0} will be signed out when their browser makes the next request.'.format(
+            (display_name or '').strip() or f'User #{target_user_id}',
+        ),
+        'success',
+    )
+    return _redirect_back_to_system_settings_logs()
 
 
 @app.route('/system_settings/dedupe_member_applications', methods=['POST'])

@@ -90,6 +90,11 @@
                         </div>
                     </form>
 
+                    {% if current_user.role == 'admin' %}
+                    <p class="small text-muted mb-2">
+                        <i class="bi bi-shield-check"></i> As super admin you can invalidate another user&apos;s sessions with <strong>Sign out</strong> in the Sessions column (they are signed out on their next navigation or refresh).
+                    </p>
+                    {% endif %}
                     <div class="table-responsive table-scroll-compact">
                         <table class="table table-sm table-striped align-middle">
                             <thead class="table-light">
@@ -97,6 +102,9 @@
                                     <th style="width: 150px;">Role</th>
                                     <th>Full Name</th>
                                     <th style="width: 140px;">Action</th>
+                                    {% if current_user.role == 'admin' %}
+                                    <th style="width: 140px;">Sessions</th>
+                                    {% endif %}
                                     <th style="width: 180px;">Timestamp</th>
                                 </tr>
                             </thead>
@@ -115,6 +123,27 @@
                                             <span class="badge bg-info-subtle text-info border">{{ log.action }}</span>
                                             {% endif %}
                                         </td>
+                                        {% if current_user.role == 'admin' %}
+                                        <td class="text-nowrap">
+                                            {% if log.actor_user_id %}
+                                                {% set aid = log.actor_user_id|int %}
+                                                {% if aid and aid != current_user.id %}
+                                                <form method="post" action="{{ url_for('system_settings_force_logout_user', target_user_id=aid) }}"
+                                                      class="d-inline m-0"
+                                                      onsubmit="return confirm('Sign out ALL sessions for this user? They must log in again.');">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" title="Invalidate server-side login for this user">
+                                                        <i class="bi bi-box-arrow-right" aria-hidden="true"></i> Sign out
+                                                    </button>
+                                                </form>
+                                                {% else %}
+                                                <span class="text-muted">—</span>
+                                                {% endif %}
+                                            {% else %}
+                                            <span class="text-muted">—</span>
+                                            {% endif %}
+                                        </td>
+                                        {% endif %}
                                         <td>
                                             {% if log.created_at %}
                                                 {{ log.created_at|activity_log_ts }}
@@ -126,7 +155,7 @@
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">No activity logs found for selected filters.</td>
+                                        <td colspan="{% if current_user.role == 'admin' %}5{% else %}4{% endif %}" class="text-center text-muted py-4">No activity logs found for selected filters.</td>
                                     </tr>
                                 {% endif %}
                             </tbody>
