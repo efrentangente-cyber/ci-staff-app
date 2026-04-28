@@ -3174,28 +3174,48 @@ def logout():
     Always allow logout without raising server errors.
     This route must succeed even when session/user state is partially broken.
     """
-    user_id = session.get('_user_id')
     auth_session_token = session.get('auth_session_token')
+    legacy_sid = session.get('_user_id')
+    actor_uid = None
     actor_name = None
     actor_role = None
     try:
-        if user_id is not None:
+        # Resolve identity while Flask-Login still knows the user (session key layout varies by version).
+        try:
+            if getattr(current_user, 'is_authenticated', False):
+                actor_uid = int(getattr(current_user, 'id'))
+                actor_name = getattr(current_user, 'name', None)
+                actor_role = getattr(current_user, 'role', None)
+        except (TypeError, ValueError, AttributeError):
+            actor_uid = None
+
+        if actor_uid is None:
+            for _key in ('_user_id', 'user_id'):
+                raw = session.get(_key)
+                if raw is not None:
+                    try:
+                        actor_uid = int(raw)
+                        break
+                    except (TypeError, ValueError):
+                        continue
+
+        if actor_uid is not None:
             try:
                 conn = get_db()
                 try:
-                    try:
+                    if not actor_name or not actor_role:
                         user_row = conn.execute(
                             'SELECT name, role FROM users WHERE id=? LIMIT 1',
-                            (user_id,),
+                            (actor_uid,),
                         ).fetchone()
                         if user_row:
-                            actor_name = user_row['name'] if 'name' in user_row.keys() else None
-                            actor_role = user_row['role'] if 'role' in user_row.keys() else None
-                    except Exception:
-                        pass
+                            if not actor_name:
+                                actor_name = user_row['name'] if 'name' in user_row.keys() else None
+                            if not actor_role:
+                                actor_role = user_row['role'] if 'role' in user_row.keys() else None
                     conn.execute(
                         'UPDATE users SET last_seen=?, is_online=0 WHERE id=?',
-                        (now_ph().isoformat(), user_id),
+                        (now_ph().isoformat(), actor_uid),
                     )
                     conn.commit()
                 finally:
@@ -3203,7 +3223,6 @@ def logout():
             except Exception as online_err:
                 app.logger.debug('logout online/offline update skipped: %s', online_err)
 
-        # Fallback identity if DB lookup was unavailable.
         if not actor_name:
             actor_name = getattr(current_user, 'name', None) or 'System User'
         if not actor_role:
@@ -3214,7 +3233,7 @@ def logout():
             str(actor_role).replace('_', ' ').upper(),
             str(actor_name),
             'LOG OUT',
-            actor_user_id=int(user_id) if user_id is not None and str(user_id).isdigit() else None,
+            actor_user_id=actor_uid,
         )
 
         # Clear AI chat history from session if present.
@@ -3226,8 +3245,14 @@ def logout():
         except Exception as logout_err:
             app.logger.debug('logout_user failed, forcing session clear: %s', logout_err)
 
-        if user_id is not None:
-            _deactivate_user_session(user_id, auth_session_token)
+        deactivate_uid = actor_uid
+        if deactivate_uid is None and legacy_sid is not None:
+            try:
+                deactivate_uid = int(legacy_sid)
+            except (TypeError, ValueError):
+                deactivate_uid = None
+        if deactivate_uid is not None:
+            _deactivate_user_session(deactivate_uid, auth_session_token)
 
         # Clear any remaining session keys to avoid stale auth state.
         session.clear()

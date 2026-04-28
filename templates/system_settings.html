@@ -7,6 +7,12 @@
             <h4 class="mb-1"><i class="bi bi-gear"></i> System Settings</h4>
             <small class="text-muted">Activity logs, quick links, and application status overview.</small>
         </div>
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-2" title="Sign out and record LOG OUT in Recent Logs">
+            <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+            Sign out
+        </a>
+        {% endif %}
     </div>
 
     {% set _can_tools = (current_user.role == 'admin') or (current_user.role == 'loan_officer' and current_user.permissions and 'system_settings' in current_user.permissions) %}
