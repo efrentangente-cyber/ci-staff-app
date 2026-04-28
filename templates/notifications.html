@@ -53,7 +53,12 @@
                 </div>
                 <div class="notification-content">
                     <p class="notification-message">{% if not notif.is_read %}<span class="badge bg-primary me-1 align-middle">New</span>{% endif %}{{ notif.message }}</p>
-                    <small class="notification-time">{{ notif.created_at|fmt_datetime('%Y-%m-%d %H:%M') }}</small>
+                    {% set tz_iso = notif.created_at|utc_iso_z %}
+                    {% if tz_iso %}
+                    <time class="notification-time js-notif-relative" datetime="{{ tz_iso }}">{{ notif.created_at|activity_log_ts }}</time>
+                    {% else %}
+                    <small class="notification-time">{{ notif.created_at|activity_log_ts }}</small>
+                    {% endif %}
                 </div>
             </a>
             {% endfor %}
@@ -157,6 +162,41 @@ body.dark-mode .notification-item.notification-unread .notification-message {
 </style>
 
 <script>
+(function(){
+    /** DB stores UTC; tooltip = browser-local absolute; text = live relative (refreshes every 30s). */
+    function formatRelative(d) {
+        var rtf = new Intl.RelativeTimeFormat(document.documentElement.lang || undefined, { numeric: 'auto' });
+        var secsTotal = Math.round((d.getTime() - Date.now()) / 1000);
+        var a = Math.abs(secsTotal);
+        if (a < 60) return rtf.format(secsTotal, 'second');
+        var mins = Math.round(secsTotal / 60);
+        if (Math.abs(mins) < 60) return rtf.format(mins, 'minute');
+        var hrs = Math.round(secsTotal / 3600);
+        if (Math.abs(hrs) < 24) return rtf.format(hrs, 'hour');
+        var days = Math.round(secsTotal / 86400);
+        if (Math.abs(days) < 7) return rtf.format(days, 'day');
+        var weeks = Math.round(days / 7);
+        if (Math.abs(weeks) < 5) return rtf.format(weeks, 'week');
+        var months = Math.round(days / 30);
+        if (Math.abs(months) < 12) return rtf.format(months, 'month');
+        return rtf.format(Math.round(days / 365), 'year');
+    }
+    function tickRelative() {
+        var dtf = new Intl.DateTimeFormat(navigator.language, { dateStyle: 'medium', timeStyle: 'short' });
+        document.querySelectorAll('time.notification-time.js-notif-relative[datetime]').forEach(function(el) {
+            var iso = el.getAttribute('datetime');
+            if (!iso) return;
+            var d = new Date(iso);
+            if (isNaN(d.getTime())) return;
+            try { el.setAttribute('title', dtf.format(d)); } catch (e) {}
+            try { el.textContent = formatRelative(d); } catch (e2) {}
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        tickRelative();
+        setInterval(tickRelative, 30000);
+    });
+})();
 document.addEventListener('DOMContentLoaded', function() {
     var btn = document.getElementById('markAllReadBtn');
     if (btn) {

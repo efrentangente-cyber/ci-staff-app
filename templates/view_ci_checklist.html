@@ -21,20 +21,20 @@
 <div class="formal-page-signoff" aria-label="Attestation and signatures">
   <div class="formal-page-signoff__inner">
     <div class="formal-page-signoff__col">
-      <div class="formal-page-signoff__sigspace{% if ci_signature_url %} formal-page-signoff__sigspace--with-img{% endif %}"{% if not ci_signature_url %} aria-hidden="true"{% endif %}>
+      <p class="formal-page-signoff__label">Prepared by:</p>
+      <div class="formal-page-signoff__sigspace{% if ci_signature_url %} formal-page-signoff__sigspace--with-img{% else %} formal-page-signoff__sigspace--no-img{% endif %}" aria-label="CI or BI signature">
         {% if ci_signature_url %}
         <div class="formal-page-signoff__imgbox">
           <img src="{{ ci_signature_url|e }}" alt="" class="formal-page-signoff__img" loading="eager" decoding="async" fetchpriority="high" onerror="this.remove()">
         </div>
         {% endif %}
       </div>
-      <p class="formal-page-signoff__label">Prepared by:</p>
       <p class="formal-page-signoff__name">{{ _prep }}</p>
       <p class="formal-page-signoff__title">CI / BI</p>
     </div>
     <div class="formal-page-signoff__col formal-page-signoff__col--right">
-      <div class="formal-page-signoff__sigspace" aria-hidden="true"></div>
       <p class="formal-page-signoff__label">Checked by:</p>
+      <div class="formal-page-signoff__sigspace formal-page-signoff__sigspace--no-img formal-page-signoff__sigspace--wetonly" aria-label="Credit officer wet signature"></div>
       <p class="formal-page-signoff__name">{{ _chk }}</p>
       <p class="formal-page-signoff__title">CREDIT OFFICER</p>
     </div>
@@ -51,11 +51,13 @@
 <div class="deir-2col-signoff" aria-label="DEIR sign-off">
   <div class="deir-2col-signoff__col">
     <p class="deir-2col-signoff__label">Prepared by:</p>
-    {% if ci_signature_url %}
-    <div class="deir-2col-signoff__imgwrap">
-      <img src="{{ ci_signature_url|e }}" alt="" class="deir-2col-signoff__img" loading="eager" decoding="async" fetchpriority="high">
+    <div class="deir-2col-signoff__sigblock{% if ci_signature_url %} deir-2col-signoff__sigblock--hasimg{% endif %}">
+      {% if ci_signature_url %}
+      <div class="deir-2col-signoff__imgwrap">
+        <img src="{{ ci_signature_url|e }}" alt="" class="deir-2col-signoff__img" loading="eager" decoding="async" fetchpriority="high">
+      </div>
+      {% endif %}
     </div>
-    {% endif %}
     <p class="deir-2col-signoff__name">{{ _prep }}</p>
     <p class="deir-2col-signoff__title">CIBI / LPS / FLMS</p>
   </div>
@@ -202,7 +204,7 @@
 .deir-2col-signoff {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 1.5rem;
   margin-top: 1.5rem;
   padding-top: 0.5rem;
@@ -213,7 +215,20 @@
 .deir-2col-signoff__col { flex: 1; min-width: 0; }
 .deir-2col-signoff__col--right { text-align: right; }
 .deir-2col-signoff__label, .deir-2col-signoff__title { font-size: 9.5pt; margin: 0; }
-.deir-2col-signoff__imgwrap { margin: 0.1rem 0 0.35rem 0; max-width: 240px; }
+.deir-2col-signoff__sigblock {
+  min-height: 2.85rem;
+  border-bottom: 1pt solid #000;
+  margin: 0.1rem 0 0.4rem 0;
+  display: flex;
+  align-items: flex-end;
+  max-width: 280px;
+}
+.deir-2col-signoff__sigblock--hasimg {
+  min-height: 0;
+  border-bottom: none;
+  margin-bottom: 0.35rem;
+}
+.deir-2col-signoff__imgwrap { margin: 0; max-width: 240px; }
 .deir-2col-signoff__img { display: block; max-width: 100%; max-height: 120px; width: auto; height: auto; object-fit: contain; }
 .deir-2col-signoff__name {
   font-size: 11pt;
@@ -328,7 +343,7 @@
 .formal-page-signoff__inner {
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 1.25rem 2rem;
 }
 .formal-page-signoff__col {
@@ -342,15 +357,24 @@
 .formal-page-signoff__sigspace {
     min-height: 2.75rem;
     border-bottom: 1pt solid #000;
-    margin-bottom: 0.5rem;
+    margin: 0.2rem 0 0.4rem 0;
+    box-sizing: border-box;
+}
+/* Wet signature pad when no JPG/PNG capture — line sits directly above printed CI/BI name */
+.formal-page-signoff__sigspace--no-img:not(.formal-page-signoff__sigspace--with-img) {
+    min-height: 2.85rem;
+}
+.formal-page-signoff__sigspace--wetonly {
+    min-height: 2.85rem;
 }
 .formal-page-signoff__sigspace--with-img {
-    min-height: 3.5rem;
+    min-height: auto;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     align-items: flex-start;
-    padding-bottom: 0.25rem;
+    padding-bottom: 0.2rem;
+    border-bottom: 1pt solid #000;
 }
 .formal-page-signoff__imgbox {
     width: 100%;
@@ -367,8 +391,9 @@
 }
 .formal-page-signoff__label {
     font-size: 10.5pt;
-    margin: 0 0 0.1rem 0;
-    font-weight: 400;
+    margin: 0;
+    padding: 0 0 0.15rem 0;
+    font-weight: 700;
     color: #000;
 }
 .formal-page-signoff__name {
@@ -466,18 +491,48 @@
         print-color-adjust: exact !important;
         display: block !important;
     }
-    /* Cash flow: use normal block flow in print (flex+avoid can confuse pagination) */
+    /* Cash flow: keep entire page 6 (banner + grid + attestation) on one physical sheet */
+    .card.print-page.print-cashflow-block {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
     .card.print-page.print-cashflow-block,
     .card.print-page.print-cashflow-block .card-body {
         display: block !important;
-        page-break-inside: auto !important;
-        break-inside: auto !important;
+    }
+    .print-cashflow-sheet {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
     }
     .print-cashflow-excel-tile {
         min-height: 0;
     }
-    .card.print-page.print-cashflow-block .formal-page-signoff {
-        margin-top: 0.5rem;
+    .print-cashflow-block .formal-page-signoff {
+        margin-top: 0.35rem !important;
+        padding-top: 0.55rem !important;
+    }
+    .print-cashflow-block .formal-page-signoff__sigspace--no-img {
+        min-height: 2.35rem !important;
+    }
+    .print-cashflow-block .formal-page-signoff__sigspace--with-img {
+        min-height: 2.65rem !important;
+    }
+    .print-cashflow-block .formal-page-signoff__img {
+        max-height: 95px !important;
+    }
+    .print-cashflow-block .formal-page-signoff__label { font-size: 9.5pt !important; }
+    .print-cashflow-block .formal-page-signoff__name { font-size: 10.5pt !important; }
+    .print-cashflow-block .formal-page-signoff__title { font-size: 8.5pt !important; }
+    .print-cashflow-block .card-header {
+        padding: 4px 8px !important;
+    }
+    .print-cashflow-block .card-header .print-dccco-title {
+        margin: 0.1rem 0 !important;
+        font-size: 0.95rem !important;
+    }
+    .print-cashflow-block .card-header small.d-block {
+        font-size: 0.65rem !important;
+        margin-top: 0 !important;
     }
     .print-photo-grid, .print-photo-grid__cell { break-inside: avoid !important; page-break-inside: avoid !important; }
     .reco-mcc-bar, .reco-bod-bar {
@@ -1317,6 +1372,8 @@
         </div>
         <div class="card-body" style="padding-top:0.4rem !important;">
             <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
+            <!-- One printable unit: spreadsheet + signatures so pagination cannot split expense rows from attestations -->
+            <div class="print-cashflow-sheet">
             <div class="print-cashflow-excel-tile" id="print-cf-excel-tile-p6">
                 <div id="excel-view-container"></div>
             </div>
@@ -1454,8 +1511,7 @@
                 .excel-cell-view.has-formula { background: #f8f9fa; font-weight: 500; }
                 .excel-cell-view.merged-cell-view { background: #f8f9fa; text-align: center; font-weight: 600; }
                 @media print {
-                    @page { size: auto; margin: 5mm; }
-                    .print-cashflow-block { page-break-inside: auto !important; }
+                    /* Margins inherited from root @media print — keep spreadsheet + sign-offs atomic */
                     .print-cashflow-excel-tile, .print-cashflow-excel-tile .excel-container-view { max-height: none !important; overflow: visible !important; }
                     #excel-view-container .excel-table-view thead,
                     #excel-view-container .excel-corner,
@@ -1465,13 +1521,14 @@
                         display: none !important; width: 0 !important; height: 0 !important; padding: 0 !important; border: 0 !important; font-size: 0 !important; visibility: hidden !important;
                     }
                     #excel-view-container .excel-table-view td {
-                        border: none !important; font-size: 10pt !important; padding: 4px 5px !important; background: transparent !important; color: #000 !important;
+                        border: none !important; font-size: 7.5pt !important; line-height: 1.2 !important; padding: 1px 4px !important; background: transparent !important; color: #000 !important;
                     }
                     #excel-view-container .excel-table-view { border: none !important; width: 100% !important; }
                 }
             </style>
             {{ formal_page_signoff(application.ci_signature) }}
             <p class="print-checklist-pagenum">Page 6 of 7</p>
+            </div>
         </div>
     </div>
 

@@ -85,6 +85,40 @@ def naive_utc_iso_z(dt=None):
     return dt.isoformat() + 'Z'
 
 
+def db_instant_iso_z_for_js(value):
+    """
+    Normalize DB-stored UTC instants (naive datetime or ISO string) to ISO-8601 with Z
+    for JavaScript Date / relative time. Empty string if unparseable.
+    """
+    if value is None:
+        return ''
+    dt = None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return ''
+        try:
+            s_norm = s.replace('Z', '+00:00')
+            if 'T' not in s_norm and len(s_norm) >= 10:
+                if len(s_norm) > 10 and s_norm[10] == ' ':
+                    s_norm = s_norm[:10] + 'T' + s_norm[11:].strip()
+                elif len(s_norm) == 10:
+                    s_norm = s_norm + 'T00:00:00'
+            dt = datetime.fromisoformat(s_norm)
+        except ValueError:
+            return ''
+    else:
+        return ''
+    if dt.tzinfo is None:
+        dt = pytz.UTC.localize(dt)
+    else:
+        dt = dt.astimezone(pytz.UTC)
+    naive_utc = dt.replace(tzinfo=None)
+    return naive_utc.isoformat() + 'Z'
+
+
 app = Flask(__name__)
 
 # Official cooperative name (injected into Jinja as org_full_name, org_abbr, org_print_caps).
@@ -278,8 +312,10 @@ def activity_log_ts(value, fmt=None):
 
 @app.template_filter('utc_iso_z')
 def utc_iso_z_filter(value):
-    """Naive DB UTC datetimes as ISO+Z for data attributes / JSON."""
-    return naive_utc_iso_z(value)
+    """DB UTC instants as ISO+Z for data attributes and JavaScript Date (datetime or string)."""
+    if isinstance(value, datetime):
+        return naive_utc_iso_z(value)
+    return db_instant_iso_z_for_js(value)
 
 
 @app.template_filter('route_tokens')
