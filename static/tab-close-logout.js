@@ -13,8 +13,8 @@
 
     var STORAGE_KEY = 'dccco_live_tabs_v1';
 
-    var HEARTBEAT_MS = 8000;
-    var STALE_MS = 24000;
+    var HEARTBEAT_MS = 12000;
+    var STALE_MS = 36000;
 
     function tabId() {
         try {

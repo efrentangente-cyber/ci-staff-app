@@ -8,7 +8,7 @@ import os
 import uuid
 from datetime import datetime
 
-from flask import jsonify, request, current_app
+from flask import jsonify, request, current_app, url_for
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
@@ -109,6 +109,23 @@ def init_offline_interview_api(app, csrf):
                         """,
                         (client_request_id, app_id, datetime.now().isoformat()),
                     )
+                    ci_sig_url = ""
+                    try:
+                        urow = conn.execute(
+                            "SELECT COALESCE(signature_path, '') AS sp FROM users WHERE id=?",
+                            (current_user.id,),
+                        ).fetchone()
+                        sp = ""
+                        if urow:
+                            sp = (dict(urow).get("sp") or "").strip()
+                        if not sp:
+                            sp = (getattr(current_user, "signature_path", None) or "").strip()
+                        if sp:
+                            sig_fn = sp.replace("\\", "/").split("/")[-1]
+                            if sig_fn:
+                                ci_sig_url = url_for("serve_signature", filename=sig_fn, _external=True)
+                    except Exception:
+                        ci_sig_url = ""
                     conn.execute(
                         """
                         UPDATE loan_applications
@@ -119,7 +136,7 @@ def init_offline_interview_api(app, csrf):
                             "ci_completed",
                             ci_notes,
                             checklist_data,
-                            current_user.name,
+                            ci_sig_url,
                             datetime.now().isoformat(),
                             app_id,
                         ),

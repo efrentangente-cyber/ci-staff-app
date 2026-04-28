@@ -205,7 +205,6 @@ nav[style*="position: fixed"][style*="bottom"],
     <form id="ciChecklistForm" method="POST" action="{{ url_for('submit_ci_checklist', id=application.id) }}" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="checklist_data" id="checklist_data">
-        <input type="hidden" name="ci_signature" id="ci_signature" required>
         <input type="hidden" name="ci_latitude" id="ci_latitude">
         <input type="hidden" name="ci_longitude" id="ci_longitude">
 
@@ -1216,9 +1215,10 @@ nav[style*="position: fixed"][style*="bottom"],
                                 <i class="bi bi-info-circle"></i> Your registered signature will be used automatically
                             </p>
                         </div>
-                        <!-- Hidden input with signature data -->
+                        <!-- Hidden input with signature data (single field — avoids duplicate name submitting empty first) -->
                         <input type="hidden" id="ci_signature" name="ci_signature" value="{{ url_for('serve_signature', filename=current_user.signature_path.split('/')[-1].split('\\')[-1], _external=True) }}">
                         {% else %}
+                        <input type="hidden" name="ci_signature" id="ci_signature" value="">
                         <p style="color: #dc2626; margin: 20px 0;">
                             <i class="bi bi-exclamation-triangle" style="font-size: 48px;"></i><br>
                             No signature registered. Please update your signature in <a href="{{ url_for('change_password') }}">Change Password</a> page.

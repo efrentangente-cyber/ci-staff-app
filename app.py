@@ -915,12 +915,12 @@ try:
 except ValueError:
     _COUNT_CACHE_TTL_SECONDS = 90
 _count_cache_lock = eventlet.semaphore.Semaphore()
-# Skip user_login_sessions SELECT on rapid GET navigations (seconds). POST/PUT/PATCH/DELETE always validate.
+# Skip user_login_sessions SELECT on rapid GET navigations (default ~20s throttle). POST/PUT/PATCH/DELETE always validate.
 # Set SESSION_ENFORCE_GET_MIN_SEC=0 to check every request (slowest, strictest).
 try:
-    _ENFORCE_GET_MIN_SEC = float((os.getenv('SESSION_ENFORCE_GET_MIN_SEC') or '12').strip() or '12')
+    _ENFORCE_GET_MIN_SEC = float((os.getenv('SESSION_ENFORCE_GET_MIN_SEC') or '20').strip() or '20')
 except ValueError:
-    _ENFORCE_GET_MIN_SEC = 12.0
+    _ENFORCE_GET_MIN_SEC = 20.0
 _ENFORCE_GET_MIN_SEC = max(0.0, _ENFORCE_GET_MIN_SEC)
 _notification_count_cache = {}
 _message_count_cache = {}
@@ -4229,6 +4229,30 @@ def _coalesce_ci_staff_display(app_data, checklist_data):
             checklist_data[key] = name
 
 
+def _loan_application_ci_signature_column_usable(raw):
+    """
+    loan_applications.ci_signature must be a data URL, HTTP(S) URL, or filename/path to an image.
+    Older bugs stored plain-text names here — ignore those so resolution falls back to users.signature_path.
+    """
+    if raw is None:
+        return False
+    s = str(raw).strip()
+    if not s:
+        return False
+    low = s.lower()
+    if low.startswith('data:image/'):
+        return True
+    if low.startswith('http://') or low.startswith('https://'):
+        return True
+    norm = s.replace('\\', '/')
+    if '/signatures/' in norm:
+        return True
+    tail = s.split('?')[0].split('#')[0]
+    if re.search(r'\.(png|jpe?g|gif|webp|bmp|svg)$', tail, re.I):
+        return True
+    return False
+
+
 def _resolve_ci_signature_for_print(app_data):
     """
     Build a same-origin /signatures/<file> URL or pass through data:image/* for <img src>.
@@ -4237,7 +4261,8 @@ def _resolve_ci_signature_for_print(app_data):
     """
     from urllib.parse import unquote, urlparse
 
-    raw = (app_data.get('ci_signature') or '').strip()
+    raw_stored = (app_data.get('ci_signature') or '').strip()
+    raw = raw_stored if _loan_application_ci_signature_column_usable(raw_stored) else ''
     prof = (app_data.get('ci_signature_path') or '').strip().replace('\\', '/')
 
     if raw.lower().startswith('data:image/'):
@@ -4289,6 +4314,123 @@ def _resolve_ci_signature_for_print(app_data):
     return None
 
 
+def _inline_ci_signature_from_disk(app_data, resolved=None):
+    """
+    Read the CI signature file into a data URL so printed checklists embed the image.
+    Avoids relying on the browser fetching /signatures/... during print (same-origin cookies).
+    """
+    import base64
+
+    raw_col = (app_data.get('ci_signature') or '').strip()
+    if raw_col.lower().startswith('data:image/'):
+        return raw_col
+    if resolved and isinstance(resolved, str) and resolved.lower().startswith('data:image/'):
+        return resolved
+
+    sig_folder = os.path.abspath(app.config['SIGNATURE_FOLDER'])
+    paths_try = []
+
+    prof = (app_data.get('ci_signature_path') or '').strip()
+    if prof:
+        pnorm = os.path.normpath(prof.replace('\\', os.sep))
+        try:
+            if os.path.isfile(pnorm):
+                paths_try.append(pnorm)
+        except OSError:
+            pass
+        bn = os.path.basename(prof.replace('\\', '/'))
+        if bn and '..' not in bn:
+            paths_try.append(os.path.normpath(os.path.join(sig_folder, bn)))
+
+    fn_hint = None
+    if resolved and isinstance(resolved, str):
+        ru = resolved.strip()
+        low = ru.lower()
+        if '/signatures/' in low:
+            fn_hint = ru.split('/signatures/', 1)[-1].split('?')[0].split('#')[0]
+        elif low.startswith('/signatures/'):
+            fn_hint = ru[len('/signatures/'):].split('?')[0].split('#')[0]
+    if fn_hint and '..' not in fn_hint.replace('\\', '/'):
+        paths_try.append(os.path.normpath(os.path.join(sig_folder, fn_hint)))
+
+    seen = set()
+    for cand in paths_try:
+        if not cand or cand in seen:
+            continue
+        seen.add(cand)
+        try:
+            acand = os.path.abspath(cand)
+        except OSError:
+            continue
+        if not _is_path_within_directory(sig_folder, acand):
+            continue
+        if not os.path.isfile(acand):
+            continue
+        ext = os.path.splitext(acand)[1].lower()
+        mime_map = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.bmp': 'image/bmp',
+            '.svg': 'image/svg+xml',
+        }
+        mime = mime_map.get(ext) or (mimetypes.guess_type(acand)[0] or 'image/png')
+        try:
+            with open(acand, 'rb') as f:
+                b64 = base64.standard_b64encode(f.read()).decode('ascii')
+            return f'data:{mime};base64,{b64}'
+        except OSError:
+            continue
+    return None
+
+
+def _ensure_ci_staff_for_print(conn, application_id, app_data):
+    """Fill ci_staff_name / ci_signature_path from assigned_ci_staff or CI-uploaded documents."""
+    uid = app_data.get('assigned_ci_staff')
+    try:
+        uid = int(uid) if uid is not None else None
+    except (TypeError, ValueError):
+        uid = None
+
+    if uid:
+        need_name = not (app_data.get('ci_staff_name') or '').strip()
+        need_sigpath = not (app_data.get('ci_signature_path') or '').strip()
+        if need_name or need_sigpath:
+            urow = conn.execute(
+                'SELECT COALESCE(name, "") AS n, COALESCE(signature_path, "") AS sp FROM users WHERE id=?',
+                (uid,),
+            ).fetchone()
+            if urow:
+                ud = dict(urow)
+                if need_name:
+                    app_data['ci_staff_name'] = (ud.get('n') or '').strip()
+                if need_sigpath:
+                    app_data['ci_signature_path'] = (ud.get('sp') or '').strip()
+        return
+
+    if (app_data.get('status') or '').strip() != 'ci_completed':
+        return
+
+    row = conn.execute(
+        '''
+        SELECT u.id AS uid, COALESCE(u.name, '') AS n, COALESCE(u.signature_path, '') AS sp
+        FROM documents d
+        INNER JOIN users u ON d.uploaded_by = u.id AND u.role = 'ci_staff'
+        WHERE d.loan_application_id = ?
+        ORDER BY d.uploaded_at DESC
+        LIMIT 1
+        ''',
+        (application_id,),
+    ).fetchone()
+    if row:
+        r = dict(row)
+        app_data['assigned_ci_staff'] = r.get('uid')
+        app_data['ci_staff_name'] = (r.get('n') or '').strip()
+        app_data['ci_signature_path'] = (r.get('sp') or '').strip()
+
+
 @app.route('/view/checklist/<int:id>')
 @login_required
 def view_ci_checklist(id):
@@ -4316,27 +4458,10 @@ def view_ci_checklist(id):
 
         app_data = dict(app_row)
 
-        _assign_uid = app_data.get('assigned_ci_staff')
-        try:
-            _assign_uid = int(_assign_uid) if _assign_uid is not None else None
-        except (TypeError, ValueError):
-            _assign_uid = None
-        if _assign_uid:
-            need_name = not (app_data.get('ci_staff_name') or '').strip()
-            need_sigpath = not (app_data.get('ci_signature_path') or '').strip()
-            if need_name or need_sigpath:
-                urow = conn.execute(
-                    'SELECT COALESCE(name, "") AS n, COALESCE(signature_path, "") AS sp FROM users WHERE id=?',
-                    (_assign_uid,),
-                ).fetchone()
-                if urow:
-                    ud = dict(urow)
-                    if need_name:
-                        app_data['ci_staff_name'] = (ud.get('n') or '').strip()
-                    if need_sigpath:
-                        app_data['ci_signature_path'] = (ud.get('sp') or '').strip()
+        _ensure_ci_staff_for_print(conn, id, app_data)
 
-        app_data['ci_signature'] = _resolve_ci_signature_for_print(app_data)
+        resolved_sig = _resolve_ci_signature_for_print(app_data)
+        app_data['ci_signature'] = _inline_ci_signature_from_disk(app_data, resolved_sig) or resolved_sig
 
         # Ensure completed timestamp is a plain string for the template.
         if app_data.get('ci_completed_at') and not isinstance(app_data['ci_completed_at'], str):
@@ -4467,7 +4592,8 @@ def submit_ci_checklist(id):
             flash('Could not save checklist (data too large or invalid). Try again.', 'danger')
             return redirect(url_for('ci_checklist_wizard', id=id))
 
-        ci_signature = request.form.get('ci_signature')
+        sig_candidates = [x.strip() for x in request.form.getlist('ci_signature') if x and str(x).strip()]
+        ci_signature = sig_candidates[-1] if sig_candidates else (request.form.get('ci_signature') or '').strip()
         ci_latitude = request.form.get('ci_latitude') or None
         ci_longitude = request.form.get('ci_longitude') or None
 

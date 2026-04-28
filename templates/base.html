@@ -37,7 +37,10 @@
     <link rel="manifest" href="/static/manifest.json">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="preconnect" href="https://cdn.socket.io">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    {% if current_user.is_authenticated %}
+    <link rel="dns-prefetch" href="https://ui-avatars.com">
+    {% endif %}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" fetchpriority="high">
     {% if current_user.is_authenticated %}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     {% endif %}
@@ -47,12 +50,12 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base.min.css' if config.USE_MINIFIED_ASSETS else 'css/base.css') }}?v=3">
     {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}
-    {# Socket.IO client must load before {% block content %}—many pages use io() in inline scripts #}
-    {% if current_user.is_authenticated %}
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    {% endif %}
 </head>
 <body class="{% if current_user.is_authenticated %}authenticated {% endif %}{% if current_user.is_authenticated and current_user.role == 'ci_staff' %}ci-field-user {% endif %}{% block body_class %}{% endblock %}">
+    {% if current_user.is_authenticated %}
+    {# Socket.IO must run before any {% block content %} script that calls io() — keep at top of body, not head, so CSS can finish first. #}
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    {% endif %}
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <!-- Apply dark mode immediately on body load -->
     <script>
@@ -515,11 +518,11 @@
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=11" defer></script>
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=12" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
-    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260428-session-stale-fix" defer></script>
-    <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=5" defer></script>
+    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260430-perf" defer></script>
+    <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=6" defer></script>
     <script src="{{ url_for('static', filename='offline-request-queue.js') }}?v=1" defer></script>
     {% endif %}
     
@@ -566,49 +569,58 @@
     <!-- Sidebar Navigation Script -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Get current page path
         const currentPath = window.location.pathname;
-        
-        // Get all sidebar navigation links
         const sidebarLinks = document.querySelectorAll('.sidebar-nav a');
-        
-        // Add active class to current page link
-        sidebarLinks.forEach(link => {
-            const linkPath = new URL(link.href).pathname;
-            
-            // Check if this link matches the current page
+
+        sidebarLinks.forEach(function (link) {
+            var linkPath = new URL(link.href).pathname;
             if (linkPath === currentPath) {
                 link.classList.add('active');
             }
-            
-            // Special handling for dashboard links (home)
             if (currentPath.includes('/dashboard') && link.textContent.trim().includes('Home')) {
                 link.classList.add('active');
             }
         });
-        
-        // Save and restore sidebar scroll position
+
         const sidebar = document.querySelector('.sidebar-nav');
         if (sidebar) {
-            // Restore scroll position from sessionStorage
-            const savedScrollPos = sessionStorage.getItem('sidebarScrollPos');
+            var savedScrollPos = sessionStorage.getItem('sidebarScrollPos');
             if (savedScrollPos) {
-                sidebar.scrollTop = parseInt(savedScrollPos);
+                sidebar.scrollTop = parseInt(savedScrollPos, 10);
             }
-            
-            // Save scroll position before page unload
-            window.addEventListener('beforeunload', function() {
-                sessionStorage.setItem('sidebarScrollPos', sidebar.scrollTop);
-            });
-            
-            // Save scroll position when clicking any link
-            sidebarLinks.forEach(link => {
-                link.addEventListener('click', function() {
-                    sessionStorage.setItem('sidebarScrollPos', sidebar.scrollTop);
-                });
+            window.addEventListener('pagehide', function () {
+                try {
+                    sessionStorage.setItem('sidebarScrollPos', String(sidebar.scrollTop));
+                } catch (e) {}
             });
         }
 
+        document.querySelectorAll('.sidebar-nav a[href]').forEach(function (a) {
+            try {
+                var u = new URL(a.href);
+                if (u.origin !== window.location.origin) {
+                    return;
+                }
+            } catch (e) {
+                return;
+            }
+            a.addEventListener('pointerenter', function prefetchNavOnce() {
+                a.removeEventListener('pointerenter', prefetchNavOnce);
+                function inject() {
+                    try {
+                        var l = document.createElement('link');
+                        l.rel = 'prefetch';
+                        l.href = a.href;
+                        document.head.appendChild(l);
+                    } catch (e2) {}
+                }
+                if (window.requestIdleCallback) {
+                    window.requestIdleCallback(inject, { timeout: 2000 });
+                } else {
+                    setTimeout(inject, 0);
+                }
+            }, { passive: true });
+        });
     });
     </script>
     
@@ -622,8 +634,9 @@
     {% endif %}
     {% endif %}
     
-    {# Manage Users / CI route assignment: compact dropdown replaces tall <select multiple> — see static/route-assign-dropdown.js #}
+    {% if request.endpoint == 'manage_users' %}
     <script src="{{ url_for('static', filename='route-assign-dropdown.js') }}?v=6" defer></script>
+    {% endif %}
     
     {% block scripts %}{% endblock %}
 </body>
