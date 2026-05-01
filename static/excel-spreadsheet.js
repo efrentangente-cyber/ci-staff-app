@@ -2180,8 +2180,29 @@ class ExcelSpreadsheet {
         this.setCellValue(`A${grossRow}`, 'GROSS SALES');
         this.setCellValue(`D${grossRow}`, `=D${totalRow}-D${cogsRow}`);
         
+        // COSTING — purchase unit cost × qty (qty linked from SALES column B)
+        const costingTitleRow = grossRow + 1;
+        this.mergedCells[`A${costingTitleRow}`] = { colspan: 4, rowspan: 1 };
+        this.setCellValue(`A${costingTitleRow}`, 'COSTING');
+        const costingHeaderRow = grossRow + 2;
+        this.setCellValue(`A${costingHeaderRow}`, 'PRODUCT');
+        this.setCellValue(`B${costingHeaderRow}`, 'Unit Cost (₱)');
+        this.setCellValue(`C${costingHeaderRow}`, 'Qty/Month');
+        this.setCellValue(`D${costingHeaderRow}`, 'Total Purchase Cost');
+        products.forEach((product, index) => {
+            const row = grossRow + 3 + index;
+            const salesRow = 6 + index;
+            this.setCellValue(`A${row}`, product);
+            this.setCellValue(`C${row}`, `=B${salesRow}`);
+            this.setCellValue(`D${row}`, `=B${row}*C${row}`);
+        });
+        const costingTotalRow = grossRow + 3 + products.length;
+        this.mergedCells[`A${costingTotalRow}`] = { colspan: 3, rowspan: 1 };
+        this.setCellValue(`A${costingTotalRow}`, 'TOTAL PURCHASE COST');
+        this.setCellValue(`D${costingTotalRow}`, `=SUM(D${grossRow + 3}:D${costingTotalRow - 1})`);
+
         // OTHER BUSINESS Section (merged header)
-        const otherBusinessRow = grossRow + 2;
+        const otherBusinessRow = costingTotalRow + 2;
         this.mergedCells[`A${otherBusinessRow}`] = { colspan: 4, rowspan: 1 };
         this.setCellValue(`A${otherBusinessRow}`, 'OTHER BUSINESS');
         

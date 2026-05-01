@@ -67,6 +67,8 @@
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start';
+    btn.setAttribute('data-bs-toggle', 'dropdown');
+    btn.setAttribute('data-bs-auto-close', 'outside');
     btn.setAttribute('aria-expanded', 'false');
 
     function updateBtn() {
