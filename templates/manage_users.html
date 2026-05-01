@@ -52,13 +52,44 @@ select.ci-route-select.route-assign-await-js[multiple] {
 <details class="content-card mb-3" id="ciCreateRouteWrap">
     <summary class="content-card-header mb-0" style="cursor: pointer;">
         <strong><i class="bi bi-plus-circle"></i> Create new coverage route</strong>
-        <span class="small text-muted ms-2">(optional — reloads page; new routes appear in all dropdowns)</span>
+        <span class="small text-muted ms-2">(optional — uses the loan-form address catalogue; reloads page; new routes appear in all dropdowns)</span>
     </summary>
-    <div class="content-card-body border-top">
-        <label class="form-label small mb-1" for="newRouteLabel">Route name</label>
-        <input type="text" class="form-control form-control-sm mb-2" id="newRouteLabel" maxlength="200" placeholder="e.g. Bayawan → New area" autocomplete="off">
-        <label class="form-label small mb-1" for="newRouteKeywords">Address keywords (optional, comma-separated)</label>
-        <input type="text" class="form-control form-control-sm mb-2" id="newRouteKeywords" placeholder="e.g. barangay name, purok" autocomplete="off">
+    <div class="content-card-body border-top" id="ciCoverageRouteWizard" data-create-url="{{ url_for('api_ci_coverage_routes') }}">
+        <ol class="small text-muted mb-3 ps-3">
+            <li>Type part of the <strong>municipality or city name</strong> (e.g. Bayawan) and choose <strong>Load barangays</strong>.</li>
+            <li>If more than one place matches, pick the correct municipality.</li>
+            <li>Choose <strong>From barangay</strong> and <strong>To barangay</strong> to pin the coverage segment.</li>
+            <li>Save — address matching uses the barangay names plus optional extra keywords below.</li>
+        </ol>
+        <div class="row g-2 align-items-end mb-2">
+            <div class="col-md-8">
+                <label class="form-label small mb-1" for="coveragePlaceSearch">Area / municipality search</label>
+                <input type="text" class="form-control form-control-sm" id="coveragePlaceSearch" maxlength="120" placeholder="e.g. Bayawan, Sipalay, Basay, Dumaguete" autocomplete="off">
+            </div>
+            <div class="col-md-4">
+                <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="coverageLoadBrgysBtn"><i class="bi bi-search" aria-hidden="true"></i> Load barangays</button>
+            </div>
+        </div>
+        <div class="small mb-2" id="coverageMatchedAreaMsg" hidden role="status"></div>
+        <div class="row g-2 mb-2" id="coverageMunicipalityRow" hidden>
+            <div class="col-12">
+                <label class="form-label small mb-1" for="coverageMunicipalitySelect">Municipality (when multiple match)</label>
+                <select class="form-select form-select-sm" id="coverageMunicipalitySelect"></select>
+            </div>
+        </div>
+        <div class="row g-2 mb-2" id="coverageBrgyPickers" hidden>
+            <div class="col-md-6">
+                <label class="form-label small mb-1" for="coverageBrgyFrom">From barangay</label>
+                <select class="form-select form-select-sm" id="coverageBrgyFrom"></select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small mb-1" for="coverageBrgyTo">To barangay</label>
+                <select class="form-select form-select-sm" id="coverageBrgyTo"></select>
+            </div>
+        </div>
+        <div class="alert alert-light border py-2 small mb-2" id="coverageRoutePreview" hidden role="status"></div>
+        <label class="form-label small mb-1" for="coverageExtraKeywords">Extra keywords (optional, comma-separated)</label>
+        <input type="text" class="form-control form-control-sm mb-3" id="coverageExtraKeywords" maxlength="400" placeholder="e.g. purok nickname, subdivision" autocomplete="off">
         <button type="button" class="btn btn-sm btn-primary" id="createRouteSubmitBtn">Save new route</button>
     </div>
 </details>
@@ -267,6 +298,9 @@ select.ci-route-select.route-assign-await-js[multiple] {
 }
 </style>
 
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=2"></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
@@ -300,52 +334,14 @@ function manageUsersApiHeaders() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    var sb = document.getElementById('createRouteSubmitBtn');
-    if (sb) {
-        sb.addEventListener('click', submitCreateCiRoute);
+    if (typeof window.initCiCoverageRouteWizard === 'function') {
+        window.initCiCoverageRouteWizard({
+            createUrl: CREATE_CI_ROUTE_URL,
+            getCsrf: manageUsersCsrfToken,
+            manageUsersApiHeaders: manageUsersApiHeaders,
+        });
     }
 });
-
-function submitCreateCiRoute() {
-    var labelEl = document.getElementById('newRouteLabel');
-    var kwEl = document.getElementById('newRouteKeywords');
-    var label = (labelEl && labelEl.value ? labelEl.value : '').trim();
-    var keywords = kwEl && kwEl.value ? kwEl.value : '';
-    if (!label) {
-        alert('Enter a route name.');
-        return;
-    }
-    var btn = document.getElementById('createRouteSubmitBtn');
-    if (btn) {
-        btn.disabled = true;
-    }
-    fetch(CREATE_CI_ROUTE_URL, {
-        method: 'POST',
-        headers: manageUsersApiHeaders(),
-        credentials: 'same-origin',
-        body: JSON.stringify({ label: label, keywords: keywords, csrf_token: manageUsersCsrfToken() })
-    })
-        .then(function (r) {
-            return r.json().then(function (data) { return { ok: r.ok, data: data }; });
-        })
-        .then(function (out) {
-            if (btn) {
-                btn.disabled = false;
-            }
-            if (out.ok && out.data && out.data.success) {
-                location.reload();
-                return;
-            }
-            var msg = (out.data && (out.data.error || out.data.message)) || 'Could not create route';
-            alert(msg);
-        })
-        .catch(function () {
-            if (btn) {
-                btn.disabled = false;
-            }
-            alert('Could not create route. Check your connection.');
-        });
-}
 
 function searchUsers(tableType) {
     const input = document.getElementById(`search${tableType === 'pending' ? 'Pending' : 'Active'}`);
