@@ -47,7 +47,7 @@
     {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='ci-field.min.css' if config.USE_MINIFIED_ASSETS else 'ci-field.css') }}?v=2">
     {% endif %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.min.css' if config.USE_MINIFIED_ASSETS else 'css/base.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.min.css' if config.USE_MINIFIED_ASSETS else 'css/base.css') }}?v=4">
     {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}
 </head>
@@ -635,7 +635,7 @@
     {% endif %}
     
     {% if request.endpoint == 'manage_users' %}
-    <script src="{{ url_for('static', filename='route-assign-dropdown.js') }}?v=7" defer></script>
+    <script src="{{ url_for('static', filename='route-assign-dropdown.js') }}?v=8" defer></script>
     {% endif %}
     
     {% block scripts %}{% endblock %}

@@ -19,7 +19,6 @@ select.ci-route-select.route-assign-await-js[multiple] {
     border: 0 !important;
 }
 .route-assign-compact .dropdown-toggle { max-width: 100%; text-align: left; }
-.route-assign-dd-menu .form-check { padding-left: 1.65rem; }
 </style>
 {% endblock %}
 
@@ -118,7 +117,8 @@ select.ci-route-select.route-assign-await-js[multiple] {
                                         aria-label="Coverage routes for {{ user.name }}"
                                         {% if user.role != 'ci_staff' %}disabled title="Select CI/BI role first"{% endif %}>
                                     {% set _sel = user.assigned_route|route_tokens if user.assigned_route else [] %}
-                                    {% for r in ci_routes %}
+                                    {% set _proutes = pending_route_options.get(user.id, ci_routes) %}
+                                    {% for r in _proutes %}
                                     <option value="{{ r.route_key }}" {% if r.route_key in _sel %}selected{% endif %}>{{ r.label }}</option>
                                     {% endfor %}
                                 </select>
@@ -428,7 +428,7 @@ function saveRoutesFromSelect(userId) {
                 location.reload();
                 return;
             }
-            var msg = (out.data && (out.data.error || out.data.message)) || ('HTTP ' + (out.status || 'error'));
+            var msg = (out.data && (out.data.message || out.data.error)) || ('HTTP ' + (out.status || 'error'));
             alert(msg);
         })
         .catch(function () {

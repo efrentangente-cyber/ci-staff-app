@@ -326,6 +326,41 @@ def route_tokens_filter(value):
     return [x.strip() for x in str(value).split(',') if x.strip()]
 
 
+def _assigned_route_keys_set(value):
+    """Non-empty route_key tokens from users.assigned_route (same semantics as route_tokens_filter)."""
+    if not value:
+        return set()
+    return {x.strip() for x in str(value).split(',') if x.strip()}
+
+
+def _ci_staff_route_claims_by_user(conn) -> dict:
+    """Map user id → set(route_key) for rows with role ci_staff and any assigned_route."""
+    rows = conn.execute(
+        """
+        SELECT id, assigned_route
+        FROM users
+        WHERE role = 'ci_staff' AND assigned_route IS NOT NULL
+        """
+    ).fetchall()
+    claims = {}
+    for r in rows or []:
+        keys = _assigned_route_keys_set(r['assigned_route'])
+        if keys:
+            claims[int(r['id'])] = keys
+    return claims
+
+
+def _ci_route_keys_claimed_by_other_ci_staff(claims_by_uid: dict, exclude_user_id: int) -> set:
+    """Routes already held by another CI/Bi staff (approved or pending), excluding exclude_user_id."""
+    blocked = set()
+    exclude_user_id = int(exclude_user_id)
+    for uid, keys in claims_by_uid.items():
+        if int(uid) == exclude_user_id:
+            continue
+        blocked |= set(keys)
+    return blocked
+
+
 _CI_ROUTE_LABELS = {
     'route_1_bayawan_kalumboyan': 'Bayawan → Kalumboyan',
     'route_2_bayawan_basay': 'Bayawan → Basay',
@@ -7058,15 +7093,29 @@ def manage_users():
     row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
                                 (current_user.id,)).fetchone()
     unread_count = row['count'] if row else 0
+
+    claims_by_uid = _ci_staff_route_claims_by_user(conn)
     conn.close()
 
     ci_routes = list_ci_routes_for_ui()
-    
-    return render_template('manage_users.html', 
-                         pending_users=pending_users, 
-                         active_users=active_users,
-                         unread_count=unread_count,
-                         ci_routes=ci_routes)
+    pending_route_options = {}
+    for pu in pending_users:
+        pu_id = int(pu['id'])
+        blocked = _ci_route_keys_claimed_by_other_ci_staff(claims_by_uid, pu_id)
+        sel = frozenset(route_tokens_filter(pu['assigned_route']))
+        pending_route_options[pu_id] = [
+            dict(r) for r in ci_routes
+            if r['route_key'] not in blocked or r['route_key'] in sel
+        ]
+
+    return render_template(
+        'manage_users.html',
+        pending_users=pending_users,
+        active_users=active_users,
+        unread_count=unread_count,
+        ci_routes=ci_routes,
+        pending_route_options=pending_route_options,
+    )
 
 @app.route('/approve_user/<int:user_id>', methods=['POST'])
 @login_required
@@ -7369,6 +7418,35 @@ def update_ci_route():
                 return jsonify({'success': False, 'error': 'User must be CI/BI to have routes'}), 400
             flash('Only CI/BI users can be assigned coverage routes.', 'warning')
             return redirect(url_for('manage_users'))
+
+        if not user['is_approved'] and assigned_route:
+            claims_map = _ci_staff_route_claims_by_user(conn)
+            blocked_other = _ci_route_keys_claimed_by_other_ci_staff(claims_map, user_id)
+            clash_keys = [
+                x.strip()
+                for x in str(assigned_route).split(',')
+                if x.strip() and x.strip() in blocked_other
+            ]
+            if clash_keys:
+                clash_keys = list(dict.fromkeys(clash_keys))
+                labels = get_ci_route_label_dict()
+                human = ', '.join(labels.get(k, k) for k in clash_keys)
+                detail = (
+                    'One or more routes are already assigned to another CI/BI user '
+                    '(active or pending). '
+                    + human
+                )
+                if is_json_client:
+                    return jsonify(
+                        {
+                            'success': False,
+                            'error': 'routes_unavailable',
+                            'route_keys': clash_keys,
+                            'message': detail,
+                        }
+                    ), 409
+                flash(detail, 'danger')
+                return redirect(url_for('manage_users'))
 
         conn.execute('UPDATE users SET assigned_route=? WHERE id=?', (assigned_route, user_id))
         conn.commit()

@@ -87,7 +87,7 @@
     updateBtn();
 
     var menu = document.createElement('div');
-    menu.className = 'dropdown-menu shadow-sm route-assign-dd-menu p-2';
+    menu.className = 'dropdown-menu shadow-sm route-assign-dd-menu';
     menu.setAttribute('aria-labelledby', '');
     menu.style.minWidth = '15rem';
     menu.style.maxHeight = '260px';
@@ -99,7 +99,7 @@
       }
       var uid = 'rac-' + Math.random().toString(36).slice(2, 11);
       var row = document.createElement('div');
-      row.className = 'form-check mb-1 px-1';
+      row.className = 'route-assign-dd-item';
       var inp = document.createElement('input');
       inp.type = 'checkbox';
       inp.className = 'form-check-input';
