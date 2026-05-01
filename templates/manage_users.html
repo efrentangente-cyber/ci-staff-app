@@ -59,7 +59,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
             <li>Type part of the <strong>municipality or city name</strong> (e.g. Bayawan) and choose <strong>Load barangays</strong>.</li>
             <li>If more than one place matches, pick the correct municipality.</li>
             <li>Choose <strong>From barangay</strong> and <strong>To barangay</strong> to pin the coverage segment.</li>
-            <li>Save — address matching uses the barangay names plus optional extra keywords below.</li>
+            <li>Save — matching uses only the barangays and “extra keywords”; add municipalities or provinces there if needed.</li>
         </ol>
         <div class="row g-2 align-items-end mb-2">
             <div class="col-md-8">
@@ -298,9 +298,9 @@ select.ci-route-select.route-assign-await-js[multiple] {
 }
 </style>
 
-<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=2"></script>
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=3"></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};

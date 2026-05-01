@@ -44,7 +44,8 @@
         }
     }
 
-    function buildKeywords(placeSearch, mun, prov, fromB, toB, extraCsv) {
+    /** From/to barangays + extras only — no city/province (would match every applicant in that area). */
+    function buildKeywords(fromB, toB, extraCsv) {
         var kws = [];
         function add(s) {
             var t = String(s || '').trim().toLowerCase();
@@ -55,13 +56,6 @@
         }
         add(fromB);
         add(toB);
-        add(mun);
-        var munShort = String(mun || '')
-            .replace(/\s+City$/i, '')
-            .trim();
-        add(munShort);
-        add(prov);
-        add(placeSearch);
         (extraCsv || '').split(',').forEach(function (x) {
             add(x.trim());
         });
@@ -338,21 +332,13 @@
                 return;
             }
 
-            var placeQ = placeIn && placeIn.value ? placeIn.value.trim() : '';
             var label =
                 mun + ': ' + fromB + ' → ' + toB;
             if (label.length > 200) {
                 label = label.slice(0, 197) + '…';
             }
             var extras = kwExtra && kwExtra.value ? kwExtra.value.trim() : '';
-            var keywords = buildKeywords(
-                placeQ,
-                mun,
-                prov,
-                fromB,
-                toB,
-                extras
-            );
+            var keywords = buildKeywords(fromB, toB, extras);
 
             var btn = saveBtn;
             if (btn) {

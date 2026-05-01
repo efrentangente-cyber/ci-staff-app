@@ -1,8 +1,11 @@
 // Address rows for loan forms + coverage-route wizard (Negros Oriental & Occidental).
 // Barangays: PSGC-derived list in static/generated/address_psgc_negros.generated.js (see tools/build_negros_psgc_address_js.py).
-// Puroks: NOT part of PSGC — only entries in ADDRESS_PUROK_OVERRIDES are added (nothing invented).
+// Puroks: PSGC does not define puroks nationwide. We add:
+//   (1) ADDRESS_PUROK_OVERRIDES — real names per barangay where you maintain a list
+//   (3) Numbered fillers "Purok 1"…"Purok N" for any gaps (named overrides kept; duplicates skipped).
 
-let addressDatabase = [];
+/** How many default "Purok 1".."Purok N" rows merged in per barangay (fills gaps after named lists). */
+const SYNTHETIC_PUROK_MAX = 25;
 
 /**
  * Optional purok names per barangay. Keys must match PSGC municipality + province strings exactly.
@@ -17,6 +20,29 @@ const ADDRESS_PUROK_OVERRIDES = {
         ],
     },
 };
+
+let addressDatabase = [];
+
+/** Add Purok 1..SYNTHETIC_PUROK_MAX skipping labels already present in usedLower (case-insensitive keys). */
+function addSyntheticPurokRowsDeduped(municipality, province, barangay, usedLower) {
+    var used = usedLower || {};
+    var i;
+    for (i = 1; i <= SYNTHETIC_PUROK_MAX; i++) {
+        var label = 'Purok ' + i;
+        var k = label.toLowerCase();
+        if (used[k]) {
+            continue;
+        }
+        used[k] = true;
+        addressDatabase.push({
+            purok: label,
+            barangay: barangay,
+            municipality: municipality,
+            province: province,
+            synthetic: true,
+        });
+    }
+}
 
 function __munProvKey(municipality, province) {
     return String(municipality || '').trim() + '|' + String(province || '').trim();
@@ -42,16 +68,26 @@ function buildAddressDatabaseFromPsgc() {
         });
         var pmap = ADDRESS_PUROK_OVERRIDES[__munProvKey(mun, prov)];
         var plist = pmap && pmap[brgy];
+        var usedPurokLower = {};
+
         if (plist && plist.length) {
             for (var j = 0; j < plist.length; j++) {
+                var rawLbl = String(plist[j] || '').trim();
+                if (!rawLbl) {
+                    continue;
+                }
+                usedPurokLower[rawLbl.toLowerCase()] = true;
                 addressDatabase.push({
-                    purok: plist[j],
+                    purok: rawLbl,
                     barangay: brgy,
                     municipality: mun,
                     province: prov,
+                    synthetic: /^Purok\s+\d+$/i.test(rawLbl),
                 });
             }
         }
+
+        addSyntheticPurokRowsDeduped(mun, prov, brgy, usedPurokLower);
     }
     return true;
 }
@@ -62,7 +98,13 @@ if (!buildAddressDatabaseFromPsgc()) {
     );
 }
 
-console.log('Address rows loaded: ' + addressDatabase.length + ' (PSGC barangays + optional purok overrides)');
+console.log(
+    'Address rows loaded: ' +
+        addressDatabase.length +
+        ' (PSGC Negros barangays + every barangay: named puroks if configured + numbered Purok 1–' +
+        SYNTHETIC_PUROK_MAX +
+        ' where not already listed)',
+);
 
 /** Coverage route builder — barangays by municipality using addressDatabase */
 function findCoverageMunicipalitiesMatching(rawQuery) {

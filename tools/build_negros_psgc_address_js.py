@@ -3,7 +3,7 @@ Download PSGC-derived municipality/barangay tables (Philippines GIS shapefiles,
 altcoder/*, OCHA-derived) and emit static/generated/address_psgc_negros.generated.js
 
 Keeps ONLY Negros Oriental (704600000) + Negros Occidental (604500000).
-Puroks are NOT in PSGC — add those in static/addresses.js (ADDRESS_PUROK_OVERRIDES).
+At runtime, static/addresses.js adds default "Purok 1".."Purok N" per barangay and optional named lists (ADDRESS_PUROK_OVERRIDES); PSGC has no purok layer.
 
 Requires: Python 3.9+, network access to GitHub raw.
 """
@@ -91,7 +91,7 @@ def main() -> int:
          * Barangay names aligned to PSGC-derived vector tables:
          *   github.com/altcoder/philippines-psgc-shapefiles (see PSA / OCHA sources there).
          * Negros Oriental + Negros Occidental only.
-         * PSGC defines barangays only — NOT puroks (see ADDRESS_PUROK_OVERRIDES in addresses.js).
+         * PSGC defines barangays only; puroks are added in addresses.js (defaults + ADDRESS_PUROK_OVERRIDES).
          */
         window.__PSGC_NEGROS_BARANGAYS__ =
         """

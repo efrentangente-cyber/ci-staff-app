@@ -30,9 +30,8 @@ class AutocompleteManager {
     setupAutocomplete() {
         // Fields to enable autocomplete
         const autocompleteFields = [
+            /* Loan member: DB suggestions are names-only; contact & address fill when a name is chosen (see selectSuggestion → autoFillFromMemberDetails). */
             { name: 'member_name', endpoint: '/api/autocomplete/names' },
-            { name: 'member_contact', endpoint: '/api/autocomplete/contacts' },
-            { name: 'member_address', endpoint: '/api/autocomplete/addresses' },
             { name: 'applicant_last_name', endpoint: '/api/autocomplete/last_names' },
             { name: 'applicant_first_name', endpoint: '/api/autocomplete/first_names' },
             { name: 'applicant_middle_name', endpoint: '/api/autocomplete/middle_names' },
@@ -127,12 +126,21 @@ class AutocompleteManager {
         this.suggestionBox.style.width = `${rect.width}px`;
 
         // Build suggestion list
-        this.suggestionBox.innerHTML = suggestions.map((suggestion, index) => `
+        const suppressContext =
+            input && input.name === 'member_name';
+
+        this.suggestionBox.innerHTML = suggestions.map((suggestion, index) => {
+            const ctx =
+                suppressContext ? '' : (suggestion.context || '');
+            const ctxHtml = ctx
+                ? `<div class="suggestion-context">${this.escapeHtml(ctx)}</div>`
+                : '';
+            return `
             <div class="autocomplete-item" data-index="${index}" data-value="${this.escapeHtml(suggestion.value)}">
                 <div class="suggestion-value">${this.highlightMatch(suggestion.value, input.value)}</div>
-                ${suggestion.context ? `<div class="suggestion-context">${this.escapeHtml(suggestion.context)}</div>` : ''}
-            </div>
-        `).join('');
+                ${ctxHtml}
+            </div>`;
+        }).join('');
 
         // Add click handlers
         this.suggestionBox.querySelectorAll('.autocomplete-item').forEach(item => {
@@ -160,36 +168,50 @@ class AutocompleteManager {
             
             // If selecting a name, try to auto-fill related fields
             if (this.activeField.name === 'member_name') {
-                this.autoFillRelatedFields(value);
+                this.autoFillFromMemberDetails(value);
             }
         }
         this.hideSuggestions();
     }
 
-    async autoFillRelatedFields(memberName) {
+    async autoFillFromMemberDetails(memberName) {
         try {
-            const response = await fetch(`/api/autocomplete/member_details?name=${encodeURIComponent(memberName)}`);
+            const response = await fetch(
+                `/api/autocomplete/member_details?name=${encodeURIComponent(memberName)}`
+            );
             const data = await response.json();
-            
-            if (data.success && data.details) {
-                // Auto-fill contact and address if fields exist and are empty
-                const contactField = document.querySelector('[name="member_contact"]');
-                const addressField = document.querySelector('[name="member_address"]');
-                
-                if (contactField && !contactField.value && data.details.contact) {
-                    contactField.value = data.details.contact;
-                    contactField.style.backgroundColor = '#f0fff4'; // Light green highlight
-                    setTimeout(() => contactField.style.backgroundColor = '', 2000);
-                }
-                
-                if (addressField && !addressField.value && data.details.address) {
-                    addressField.value = data.details.address;
-                    addressField.style.backgroundColor = '#f0fff4';
-                    setTimeout(() => addressField.style.backgroundColor = '', 2000);
-                }
+
+            if (!data.success || !data.details) {
+                return;
+            }
+
+            const contactField =
+                document.querySelector('[name="member_contact"], #member_contact, #member_contact_loan');
+            const addressField = document.querySelector('[name="member_address"]');
+
+            const c = data.details.contact
+                ? String(data.details.contact).replace(/\D/g, '').slice(0, 11)
+                : '';
+            if (contactField && c) {
+                contactField.value = c;
+                contactField.style.backgroundColor = '#f0fff4';
+                setTimeout(() => {
+                    contactField.style.backgroundColor = '';
+                }, 2000);
+            }
+
+            const addr = data.details.address
+                ? String(data.details.address).trim()
+                : '';
+            if (addressField && addr) {
+                addressField.value = addr;
+                addressField.style.backgroundColor = '#f0fff4';
+                setTimeout(() => {
+                    addressField.style.backgroundColor = '';
+                }, 2000);
             }
         } catch (error) {
-            console.error('Auto-fill error:', error);
+            console.error('Member detail auto-fill error:', error);
         }
     }
 

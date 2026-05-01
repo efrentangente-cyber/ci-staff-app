@@ -62,6 +62,46 @@ async function probeSessionAlive() {
     }
 }
 
+function countCiChecklistUploadFiles() {
+    let n = 0;
+    const ci = document.getElementById('ci_photos');
+    const interview = document.getElementById('interview_photos');
+    if (ci && ci.files && ci.files.length) n += ci.files.length;
+    if (interview && interview.files && interview.files.length) n += interview.files.length;
+    return n;
+}
+
+/** Full-page overlay while the checklist POST is in flight (matches loan application submit UX). */
+function showCiChecklistSubmitOverlay(fileCount) {
+    const old = document.getElementById('ci-submit-overlay');
+    if (old) old.remove();
+
+    const subtitle =
+        fileCount > 0
+            ? 'Uploading ' + fileCount + ' file' + (fileCount > 1 ? 's' : '') + '...'
+            : 'Saving checklist and processing your submission...';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'ci-submit-overlay';
+    overlay.setAttribute('role', 'status');
+    overlay.setAttribute('aria-live', 'polite');
+    overlay.style.cssText =
+        'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML =
+        '<div style="background:white;padding:30px;border-radius:12px;text-align:center;max-width:400px;">' +
+        '<div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;" role="status"></div>' +
+        '<h5 class="mb-2">Submitting checklist</h5>' +
+        '<p class="text-muted mb-3">' +
+        subtitle +
+        '</p>' +
+        '<div class="progress" style="height:25px;">' +
+        '<div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:100%">Processing...</div>' +
+        '</div>' +
+        '<small class="text-muted d-block mt-2">Please wait, do not close this page</small>' +
+        '</div>';
+    document.body.appendChild(overlay);
+}
+
 function buildChecklistPayloadFromForm() {
     const form = document.getElementById('ciChecklistForm');
     if (!form) return {};
@@ -409,6 +449,17 @@ function submitChecklist() {
 
         const form = document.getElementById('ciChecklistForm');
         syncCsrfIntoForm(form);
+
+        const fileCount = countCiChecklistUploadFiles();
+        const submitBtn = document.getElementById('btnSubmitCiChecklist');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML =
+                '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>' +
+                (fileCount ? 'Uploading files...' : 'Submitting...');
+        }
+
+        showCiChecklistSubmitOverlay(fileCount);
         form.submit();
     }
 

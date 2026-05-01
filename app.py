@@ -428,11 +428,29 @@ _CI_COVERAGE_SEED = [
 ]
 
 _ci_route_label_cache: dict | None = None
+_ci_route_sort_index_cache: dict | None = None
+
+# Municipality / province placeholders that custom routes used to keyword — must not decide a match alone,
+# or every "…Bayawan City…" applicant hits whichever route appears first (wrong CI).
+_CI_ROUTE_GENERIC_ADDRESS_KEYWORDS = frozenset({
+    x.strip().lower()
+    for x in (
+        'bayawan',
+        'bayawan city',
+        'negros oriental',
+        'negros occidental',
+        'negros',
+        'philippines',
+        'ph',
+    )
+    if x.strip()
+})
 
 
 def invalidate_ci_route_label_cache() -> None:
-    global _ci_route_label_cache
+    global _ci_route_label_cache, _ci_route_sort_index_cache
     _ci_route_label_cache = None
+    _ci_route_sort_index_cache = None
 
 
 def get_ci_route_label_dict() -> dict:
@@ -488,6 +506,137 @@ def get_ci_route_address_match_map() -> dict:
     except Exception as e:
         app.logger.debug('get_ci_route_address_match_map: %s', e)
     return merged
+
+
+def _normalize_address_for_ci_route_match(addr: str | None) -> str:
+    if not addr:
+        return ''
+    x = str(addr).lower().replace(',', ' ')
+    x = re.sub(r'\s+', ' ', x).strip()
+    return x
+
+
+def _keyword_boundary_match_normalized(keyword: str, addr_norm: str) -> bool:
+    """Phrase must appear without touching extra letters (fewer bogus substring hits)."""
+    kw = keyword.strip().lower()
+    if not kw or not addr_norm:
+        return False
+    idx = addr_norm.find(kw)
+    if idx < 0:
+        return False
+    prev = addr_norm[idx - 1] if idx > 0 else ' '
+    end = idx + len(kw)
+    nxt = addr_norm[end] if end < len(addr_norm) else ' '
+
+    def _boundary(ch):
+        return not (ch.isalnum() or ch in '-−‐‑⁃')
+
+    return _boundary(prev) and _boundary(nxt)
+
+
+def get_ci_route_sort_index_map() -> dict:
+    """route_key -> [sort_order, id] rows for deterministic tie-breaking (lower sort_order wins)."""
+    global _ci_route_sort_index_cache
+    if _ci_route_sort_index_cache is not None:
+        return _ci_route_sort_index_cache
+    rows = []
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            '''
+            SELECT route_key, sort_order, id
+            FROM ci_coverage_routes
+            WHERE is_active = 1
+            '''
+        ).fetchall()
+    except Exception as e:
+        app.logger.debug('get_ci_route_sort_index_map: %s', e)
+    out = {}
+    for r in rows or []:
+        rk = str(r['route_key'] or '').strip()
+        if not rk:
+            continue
+        try:
+            so = int(r['sort_order'] or 0)
+        except (TypeError, ValueError):
+            so = 0
+        try:
+            rid = int(r['id'] or 0)
+        except (TypeError, ValueError):
+            rid = 0
+        out[rk] = [so, rid]
+    _ci_route_sort_index_cache = out
+    return out
+
+
+def resolve_ci_route_key_for_member_address(member_address: str | None) -> str | None:
+    """Best route_key for member_address using longestSpecific non-generic phrase + stable ties."""
+    addr_norm = _normalize_address_for_ci_route_match(member_address)
+    if not addr_norm:
+        return None
+    route_map = get_ci_route_address_match_map()
+    sort_map = get_ci_route_sort_index_map()
+    ranked = []
+    for route_key, keywords in route_map.items():
+        best_len = 0
+        for raw_kw in keywords:
+            kw = str(raw_kw).strip().lower()
+            if not kw or kw in _CI_ROUTE_GENERIC_ADDRESS_KEYWORDS:
+                continue
+            if not _keyword_boundary_match_normalized(kw, addr_norm):
+                continue
+            if len(kw) > best_len:
+                best_len = len(kw)
+        if best_len <= 0:
+            continue
+        rk = str(route_key).strip()
+        tier = sort_map.get(rk, [999999, 999999])
+        ranked.append((best_len, tier[0], tier[1], rk))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda t: (-t[0], t[1], t[2], t[3]))
+    return ranked[0][3]
+
+
+def fetch_first_ci_staff_id_for_route_key(conn, route_key: str | None):
+    rk = str(route_key or '').strip()
+    if not rk:
+        return None
+    like_params = (
+        f'%{rk}%,%',
+        f'%,{rk}%',
+        f'%,{rk},%',
+        rk,
+    )
+    try:
+        row = conn.execute(
+            '''
+            SELECT id FROM users
+            WHERE role=? AND is_approved=1
+            AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
+            LIMIT 1
+            ''',
+            ('ci_staff',) + like_params,
+        ).fetchone()
+        if row:
+            return row['id']
+    except Exception as e:
+        app.logger.debug('fetch_first_ci_staff_id_for_route_key: %s', e)
+        try:
+            row = conn.execute(
+                '''
+                SELECT id FROM users
+                WHERE role=? AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
+                LIMIT 1
+                ''',
+                ('ci_staff',) + like_params,
+            ).fetchone()
+            if row:
+                return row['id']
+        except Exception:
+            pass
+        return None
+    return None
 
 
 def ensure_ci_coverage_routes_table():
@@ -3739,48 +3888,12 @@ def submit_application():
                             ).fetchone()
                         ci_staff_id = selected_ci['id'] if selected_ci else None
                     else:
-                        # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route
+                        # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route coverage
                         ci_staff_id = None
+                        matched_route = resolve_ci_route_key_for_member_address(member_address)
 
-                        # Parse address to find matching route
-                        if member_address:
-                            address_lower = member_address.lower()
-
-                            # Route keywords from ci_coverage_routes (DB) + fallbacks
-                            route_matches = get_ci_route_address_match_map()
-
-                            # Find matching route
-                            matched_route = None
-                            for route_id, keywords in route_matches.items():
-                                for keyword in keywords:
-                                    if keyword in address_lower:
-                                        matched_route = route_id
-                                        break
-                                if matched_route:
-                                    break
-
-                            # Find CI staff assigned to this route (check if route is in their comma-separated list)
-                            if matched_route:
-                                try:
-                                    ci_staff = conn.execute('''
-                                        SELECT id, assigned_route FROM users
-                                        WHERE role='ci_staff' AND is_approved=1
-                                        AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
-                                        LIMIT 1
-                                    ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
-                                    ci_staff_id = ci_staff['id'] if ci_staff else None
-                                except Exception as route_assign_error:
-                                    print(f"Route-based CI assignment lookup failed, trying legacy query: {route_assign_error}")
-                                    try:
-                                        ci_staff = conn.execute('''
-                                            SELECT id, assigned_route FROM users
-                                            WHERE role='ci_staff'
-                                            AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
-                                            LIMIT 1
-                                        ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
-                                        ci_staff_id = ci_staff['id'] if ci_staff else None
-                                    except Exception as route_assign_error_legacy:
-                                        print(f"Route-based CI legacy lookup also failed: {route_assign_error_legacy}")
+                        if matched_route:
+                            ci_staff_id = fetch_first_ci_staff_id_for_route_key(conn, matched_route)
                         # Fallback to workload-based if no route match
                         if not ci_staff_id:
                             try:
@@ -5199,36 +5312,12 @@ def loan_application(id):
                 if specific_ci_id:
                     new_ci_staff_id = specific_ci_id
                 else:
-                    # Route-based assignment
+                    # Route-based assignment (same resolver as LPS submit_application)
                     if member_address:
-                        address_lower = member_address.lower()
-                        route_matches = {
-                            'route_1_bayawan_kalumboyan': ['kalumboyan', 'kalamtukan', 'malabugas', 'bugay', 'nangka'],
-                            'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
-                            'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
-                            'route_4_bayawan_santa_catalina': ['santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon', 'milagrosa', 'obat', 'talalak'],
-                            'route_5_bayawan_center': ['ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon', 'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba', 'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol'],
-                            'route_6_bayawan_omod': ['omod', 'tamisu']
-                        }
-                        
-                        matched_route = None
-                        for route_id, keywords in route_matches.items():
-                            for keyword in keywords:
-                                if keyword in address_lower:
-                                    matched_route = route_id
-                                    break
-                            if matched_route:
-                                break
-                        
+                        matched_route = resolve_ci_route_key_for_member_address(member_address)
                         if matched_route:
-                            ci_staff = conn.execute('''
-                                SELECT id FROM users 
-                                WHERE role='ci_staff' AND is_approved=1 
-                                AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
-                                LIMIT 1
-                            ''', (f'%{matched_route}%,%', f'%,{matched_route}%', f'%,{matched_route},%', matched_route)).fetchone()
-                            new_ci_staff_id = ci_staff['id'] if ci_staff else None
-                    
+                            new_ci_staff_id = fetch_first_ci_staff_id_for_route_key(conn, matched_route)
+
                     # Fallback to workload-based
                     if not new_ci_staff_id:
                         ci_staff = conn.execute('''
@@ -8995,7 +9084,7 @@ def autocomplete_names():
     
     suggestions = [{
         'value': row['member_name'],
-        'context': f"{row['member_contact']} - {row['member_address'][:50]}..." if row['member_address'] else row['member_contact']
+        'context': '',
     } for row in results]
     
     return jsonify({'success': True, 'suggestions': suggestions})

@@ -1270,7 +1270,7 @@ nav[style*="position: fixed"][style*="bottom"],
                     <button type="button" class="btn btn-secondary" onclick="previousPage()">
                         <i class="bi bi-arrow-left"></i> Back
                     </button>
-                    <button type="button" class="btn btn-primary" onclick="submitChecklist()">
+                    <button type="button" class="btn btn-primary" id="btnSubmitCiChecklist" onclick="submitChecklist()">
                         <i class="bi bi-check-circle"></i> Submit
                     </button>
                 </div>
@@ -1285,7 +1285,7 @@ nav[style*="position: fixed"][style*="bottom"],
 window.__CI_APP_ID__ = {{ application.id }};
 window.__CI_HAS_REGISTERED_SIGNATURE__ = {{ 'true' if current_user.signature_path else 'false' }};
 </script>
-<script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}?v=20260430-comp-editable"></script>
+<script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}?v=20260501-submit-overlay"></script>
 <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
 

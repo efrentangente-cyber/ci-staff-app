@@ -92,19 +92,27 @@
                             {% if can_edit %}<small class="text-muted">11 digits starting with 09 (e.g. 09751762630). Leave blank if unknown.</small>{% endif %}
                         </div>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-3 {% if can_edit %}position-relative{% endif %}">
                         <label class="form-label">Address (Purok/Barangay, Municipality, Province) *</label>
-                        <input type="text" name="member_address" id="member_address" class="form-control" value="{{ application.member_address or '' }}" required autocomplete="off" placeholder="Start typing purok or barangay..." {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                        <input type="text" name="member_address" id="member_address" class="form-control" value="{{ application.member_address or '' }}" required autocomplete="off" placeholder="e.g. Purok 4 San Jose Bayawan — or type barangay / city first" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
                         {% if can_edit %}
-                        <div id="address_suggestions" class="list-group position-absolute" style="z-index: 1000; max-height: 300px; overflow-y: auto; display: none;"></div>
-                        <small class="text-muted">Type purok or barangay name (e.g., "Purok 1", "Maninihon", "Poblacion")</small>
+                        <div id="address_suggestions" class="list-group position-absolute w-100" style="z-index: 1000; max-height: 320px; overflow-y: auto; display: none;"></div>
+                        <small class="text-muted">All Negros Oriental &amp; Occidental barangays (PSGC). Purok 1–25 quick-picks plus named puroks where configured—type freely if yours is missing.</small>
                         {% endif %}
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Loan Amount *</label>
                         <input type="text" name="loan_amount_display" id="loan_amount" class="form-control" value="{{ '{:,.0f}'.format(application.loan_amount|float) }}" required placeholder="e.g., 14,000" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
                         <input type="hidden" name="loan_amount" id="loan_amount_raw" value="{{ application.loan_amount }}">
-                        {% if can_edit %}<small class="text-muted">Enter amount with or without commas</small>{% endif %}
+                        {% if can_edit %}
+                        <small class="text-muted">Enter amount with or without commas</small>
+                        <div id="loanAmountConfirmNotice" class="alert alert-warning py-2 small mt-2 mb-0 d-none" role="status" hidden>
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                <span class="mb-0">Please confirm this loan amount is correct: <strong data-loan-confirm-amount></strong></span>
+                                <button type="button" class="btn btn-sm btn-outline-dark flex-shrink-0" data-loan-confirm-dismiss>Yes, confirmed</button>
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="mb-3 position-relative">
                         <label class="form-label">Loan Type *</label>
@@ -242,10 +250,11 @@
 </div>
 
 {% if can_edit %}
-<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='loan-amount-confirm.js') }}?v=1"></script>
 <script>
-// Wait for addresses to load, then setup autocomplete
 document.addEventListener('DOMContentLoaded', function() {
     var mcIn = document.getElementById('member_contact_loan');
     if (mcIn && !mcIn.readOnly) {
@@ -256,76 +265,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-    // Check if addressDatabase is loaded
-    if (typeof addressDatabase === 'undefined' || addressDatabase.length === 0) {
-        console.error('Address database not loaded!');
-        return;
+    if (typeof addressDatabase !== 'undefined' && addressDatabase.length) {
+        console.log('Address database loaded with ' + addressDatabase.length + ' rows');
     }
-    
-    console.log(`Address database loaded with ${addressDatabase.length} addresses`);
-    
-    // Address autocomplete functionality
-    document.getElementById('member_address')?.addEventListener('input', function(e) {
-    const searchTerm = e.target.value.toLowerCase().trim();
-    const suggestionsDiv = document.getElementById('address_suggestions');
-    
-    if (searchTerm.length < 2) {
-        suggestionsDiv.style.display = 'none';
-        return;
-    }
-    
-    // Filter addresses based on search term
-    const matches = addressDatabase.filter(addr => {
-        const purokMatch = addr.purok && addr.purok.toLowerCase().includes(searchTerm);
-        const barangayMatch = addr.barangay.toLowerCase().includes(searchTerm);
-        const municipalityMatch = addr.municipality.toLowerCase().includes(searchTerm);
-        return purokMatch || barangayMatch || municipalityMatch;
-    }).slice(0, 10); // Limit to 10 results
-    
-    if (matches.length === 0) {
-        suggestionsDiv.style.display = 'none';
-        return;
-    }
-    
-    // Display suggestions
-    suggestionsDiv.innerHTML = '';
-    matches.forEach(addr => {
-        const item = document.createElement('a');
-        item.href = '#';
-        item.className = 'list-group-item list-group-item-action';
-        
-        const fullAddress = addr.purok 
-            ? `${addr.purok}, ${addr.barangay}, ${addr.municipality}, ${addr.province}`
-            : `${addr.barangay}, ${addr.municipality}, ${addr.province}`;
-        
-        item.innerHTML = `
-            <div class="d-flex w-100 justify-content-between">
-                <h6 class="mb-1">${addr.purok || addr.barangay}</h6>
-                <small class="text-muted">${addr.municipality}</small>
-            </div>
-            <small class="text-muted">${fullAddress}</small>
-        `;
-        
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-            document.getElementById('member_address').value = fullAddress;
-            suggestionsDiv.style.display = 'none';
-        });
-        
-        suggestionsDiv.appendChild(item);
-    });
-    
-    suggestionsDiv.style.display = 'block';
-    });
-    
-    // Hide suggestions when clicking outside
-    document.addEventListener('click', function(e) {
-        const addressInput = document.getElementById('member_address');
-        const suggestionsDiv = document.getElementById('address_suggestions');
-        if (e.target !== addressInput && !suggestionsDiv.contains(e.target)) {
-            suggestionsDiv.style.display = 'none';
-        }
-    });
+    initLpsAddressAutocomplete({ inputId: 'member_address', listId: 'address_suggestions', maxResults: 60 });
 });
 
 // Loan amount formatting with commas
