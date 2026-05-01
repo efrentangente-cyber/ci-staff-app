@@ -87,6 +87,8 @@ CREATE TABLE notifications (
     link TEXT,
     is_read INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    group_key TEXT,
+    stack_count INTEGER DEFAULT 1,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 

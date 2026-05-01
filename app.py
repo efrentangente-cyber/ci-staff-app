@@ -1187,8 +1187,6 @@ except ValueError:
 _ENFORCE_GET_MIN_SEC = max(0.0, _ENFORCE_GET_MIN_SEC)
 _notification_count_cache = {}
 _message_count_cache = {}
-_security_alert_cache = {}
-_SECURITY_ALERT_TTL_SECONDS = 300
 # System settings cache — invalidated on every write to system_settings table.
 _system_settings_cache: dict = {'data': None, 'ts': 0.0}
 _SYSTEM_SETTINGS_CACHE_TTL = 60  # seconds
@@ -1561,6 +1559,7 @@ def ensure_performance_indexes():
             "CREATE INDEX IF NOT EXISTS idx_sessions_user_token ON user_login_sessions(user_id, session_token)",
             # ── notifications additional covering indexes ───────────────────
             "CREATE INDEX IF NOT EXISTS idx_notif_user_created ON notifications(user_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_notif_user_group_read ON notifications(user_id, group_key, is_read)",
         ]
         for statement in statements:
             conn.execute(statement)
@@ -1645,6 +1644,52 @@ def ensure_users_columns():
         print("✓ users columns ensured")
     except Exception as e:
         print(f"⚠️  users columns migration warning: {e}")
+
+
+def ensure_notification_aggregate_columns():
+    """Add group_key + stack_count so repeated alerts can merge into one unread row."""
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+        if db_type == 'sqlite':
+            rows = conn.execute('PRAGMA table_info(notifications)').fetchall()
+            existing = set()
+            for row in rows:
+                col_name = row['name'] if hasattr(row, 'keys') else row[1]
+                existing.add(col_name)
+            if 'group_key' not in existing:
+                conn.execute('ALTER TABLE notifications ADD COLUMN group_key TEXT')
+            if 'stack_count' not in existing:
+                conn.execute('ALTER TABLE notifications ADD COLUMN stack_count INTEGER DEFAULT 1')
+        else:
+            conn.execute(
+                'ALTER TABLE notifications ADD COLUMN IF NOT EXISTS group_key TEXT'
+            )
+            conn.execute(
+                'ALTER TABLE notifications ADD COLUMN IF NOT EXISTS stack_count INTEGER DEFAULT 1'
+            )
+        conn.commit()
+        conn.close()
+        print('✓ notifications aggregate columns ensured')
+    except Exception as e:
+        print(f'⚠️  notifications columns migration warning: {e}')
+
+
+NOTIF_GROUP_FAILED_LOGIN = 'failed_login'
+
+
+def _notification_stack_message(group_key: str, stack_count: int) -> str:
+    """Human-readable notification body for aggregated rows."""
+    n = max(1, int(stack_count or 1))
+    if group_key == NOTIF_GROUP_FAILED_LOGIN:
+        if n <= 1:
+            return (
+                'Security alert: A failed login attempt was detected for your account.'
+            )
+        return (
+            f'Security alert: {n} failed login attempts were detected for your account.'
+        )
+    return f'Security alert: {n} similar events.'
 
 
 _sms_templates_table_ready = False
@@ -1945,6 +1990,7 @@ except Exception as e:
 ensure_performance_indexes()
 ensure_direct_message_columns()
 ensure_users_columns()
+ensure_notification_aggregate_columns()
 ensure_sms_templates_table()
 ensure_sms_sent_log_table()
 ensure_system_activity_log_table()
@@ -2189,11 +2235,38 @@ except Exception as e:
     print(f"⚠️  Production users setup failed: {e}")
     print("⚠️  App will continue without default users")
 
-def create_notification(user_id, message, link=None):
+def create_notification(user_id, message, link=None, group_key=None):
+    """Insert a notification, or increment stack_count on an unread row when group_key is set."""
     try:
         conn = get_db()
-        conn.execute('INSERT INTO notifications (user_id, message, link) VALUES (?, ?, ?)',
-                     (user_id, message, link))
+        if group_key:
+            existing = conn.execute(
+                '''SELECT id, COALESCE(stack_count, 1) AS sc FROM notifications
+                   WHERE user_id = ? AND group_key = ? AND is_read = 0
+                   ORDER BY created_at DESC LIMIT 1''',
+                (user_id, group_key),
+            ).fetchone()
+            if existing:
+                new_cnt = int(existing['sc'] or 1) + 1
+                new_msg = _notification_stack_message(group_key, new_cnt)
+                conn.execute(
+                    '''UPDATE notifications SET message = ?, stack_count = ?,
+                           created_at = CURRENT_TIMESTAMP WHERE id = ?''',
+                    (new_msg, new_cnt, existing['id']),
+                )
+                conn.commit()
+                conn.close()
+                with _count_cache_lock:
+                    _notification_count_cache.pop(user_id, None)
+                socketio.emit(
+                    'new_notification', {'message': new_msg}, room=str(user_id)
+                )
+                return
+        conn.execute(
+            '''INSERT INTO notifications (user_id, message, link, group_key, stack_count)
+               VALUES (?, ?, ?, ?, ?)''',
+            (user_id, message, link, group_key, 1),
+        )
         conn.commit()
         conn.close()
         with _count_cache_lock:
@@ -2214,9 +2287,9 @@ def run_background_task(func, *args, **kwargs):
     socketio.start_background_task(_runner)
 
 
-def enqueue_notification(user_id, message, link=None):
+def enqueue_notification(user_id, message, link=None, group_key=None):
     """Queue notification creation so endpoints stay fast."""
-    run_background_task(create_notification, user_id, message, link)
+    run_background_task(create_notification, user_id, message, link, group_key)
 
 
 def _request_client_ip():
@@ -2353,16 +2426,12 @@ def _deactivate_user_session(user_id, session_token=None):
         pass
 
 
-def _maybe_send_security_alert(user_id, message, link='/notifications'):
-    """Throttle security alerts to avoid notification spam."""
-    now_ts = time.time()
+def _maybe_send_security_alert(user_id, message=None, link='/notifications'):
+    """Failed-login alerts merge into one unread notification (stack_count) per user."""
     try:
-        with _count_cache_lock:
-            last_ts = _security_alert_cache.get(user_id, 0)
-            if now_ts - last_ts < _SECURITY_ALERT_TTL_SECONDS:
-                return
-            _security_alert_cache[user_id] = now_ts
-        enqueue_notification(user_id, message, link)
+        _ = message
+        base = _notification_stack_message(NOTIF_GROUP_FAILED_LOGIN, 1)
+        enqueue_notification(user_id, base, link, NOTIF_GROUP_FAILED_LOGIN)
     except Exception:
         pass
 
@@ -3550,10 +3619,7 @@ def login():
             return _login_success_redirect(effective_role)
         if row and not valid_password:
             try:
-                _maybe_send_security_alert(
-                    row['id'],
-                    'Security alert: A failed login attempt was detected for your account.',
-                )
+                _maybe_send_security_alert(row['id'])
             except Exception:
                 pass
         flash('Invalid credentials', 'danger')

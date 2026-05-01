@@ -1,5 +1,5 @@
-// DCCCO CI Staff App - Service Worker v9 - cache CI checklist/review for same UI offline
-const CACHE_NAME = 'dccco-staff-v9';
+// DCCCO CI Staff App - cache CI checklist/review for same UI offline
+const CACHE_NAME = 'dccco-staff-v10';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install
@@ -72,11 +72,18 @@ self.addEventListener('fetch', event => {
     fetch(request, { credentials: 'include' })
       .then(response => {
         // Cache successful page responses including authenticated ones
-        if (response.status === 200 && (
-          request.mode === 'navigate' ||
-          CACHE_PAGES.some(p => url.pathname.startsWith(p)) ||
-          url.pathname.startsWith('/static/')
-        )) {
+        // Never cache generated/heavy catalogue JS — a bad offline 503 or stale copy breaks coverage wizard.
+        const isGeneratedOrAddressCatalogue =
+          url.pathname.includes('/static/generated/') ||
+          url.pathname.endsWith('/addresses.js');
+
+        if (
+          response.status === 200 &&
+          (request.mode === 'navigate' ||
+            CACHE_PAGES.some((p) => url.pathname.startsWith(p)) ||
+            (url.pathname.startsWith('/static/') &&
+              !isGeneratedOrAddressCatalogue))
+        ) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
         }

@@ -117,7 +117,9 @@ CREATE TABLE IF NOT EXISTS notifications (
     message TEXT,
     link TEXT,
     is_read INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    group_key TEXT,
+    stack_count INTEGER DEFAULT 1
 )
 """)
 

@@ -247,7 +247,20 @@
             }
             if (typeof window.findCoverageMunicipalitiesMatching !== 'function') {
                 alert(
-                    'Address catalogue did not load. Refresh the page and try again.'
+                    'Address catalogue did not load. Hard-refresh (Ctrl+Shift+R). In DevTools → Network, confirm /static/generated/address_psgc_negros.generated.js and /static/addresses.js load with status 200—not an offline/cached error page.'
+                );
+                return;
+            }
+            if (
+                typeof window.__ADDRESS_CATALOGUE_ROWS__ === 'number' &&
+                window.__ADDRESS_CATALOGUE_ROWS__ <= 0
+            ) {
+                alert(
+                    'The barangay list is empty. The PSGC script did not load or run. Hard-refresh this page. If you use the installed PWA, try Application → Service Workers → unregister, then reload.'
+                );
+                setMsg(
+                    'Address data missing: ensure address_psgc_negros.generated.js loads before addresses.js (see browser console).',
+                    true
                 );
                 return;
             }

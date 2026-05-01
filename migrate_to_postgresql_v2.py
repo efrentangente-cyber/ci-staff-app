@@ -90,7 +90,7 @@ def migrate():
         'documents': ['id', 'loan_application_id', 'file_name', 'file_path', 'uploaded_by', 'uploaded_at'],
         'messages': ['id', 'loan_application_id', 'sender_id', 'message', 'message_type', 'file_path', 
                     'file_name', 'is_edited', 'is_deleted', 'sent_at', 'edited_at'],
-        'notifications': ['id', 'user_id', 'message', 'link', 'is_read', 'created_at'],
+        'notifications': ['id', 'user_id', 'message', 'link', 'is_read', 'created_at', 'group_key', 'stack_count'],
         'direct_messages': ['id', 'sender_id', 'receiver_id', 'message', 'message_type', 'file_path',
                            'file_name', 'is_read', 'sent_at'],
         'location_tracking': ['id', 'user_id', 'latitude', 'longitude', 'activity', 'tracked_at'],

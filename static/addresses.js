@@ -155,22 +155,6 @@ function buildAddressDatabaseFromPsgc() {
     return true;
 }
 
-if (!buildAddressDatabaseFromPsgc()) {
-    console.error(
-        'addresses.js: load address_psgc_negros.generated.js BEFORE this file. Run tools/build_negros_psgc_address_js.py if missing.'
-    );
-}
-
-console.log(
-    'Address rows loaded: ' +
-        addressDatabase.length +
-        ' (PSGC Negros barangays; City of Bayawan NO + overrides + Wikipedia/DepEd-referenced subdivisions where listed + numbered Purok up to ' +
-        SYNTHETIC_PUROK_MAX_BAYAWAN_ORIENTAL +
-        ' there, ' +
-        SYNTHETIC_PUROK_MAX +
-        ' elsewhere where not overridden)',
-);
-
 /** Coverage route builder — barangays by municipality using addressDatabase */
 function findCoverageMunicipalitiesMatching(rawQuery) {
     var q = (rawQuery || '').toLowerCase().trim();
@@ -195,7 +179,8 @@ function findCoverageMunicipalitiesMatching(rawQuery) {
         return qNorm.length > 0 && shorts.indexOf(qNorm) !== -1;
     }
 
-    var map = new Map();
+    var dedupe = {};
+    var out = [];
     for (var i = 0; i < addressDatabase.length; i++) {
         var row = addressDatabase[i];
         var mun = (row.municipality || '').trim();
@@ -206,12 +191,13 @@ function findCoverageMunicipalitiesMatching(rawQuery) {
         if (!munMatches(mun.toLowerCase(), mun, q)) {
             continue;
         }
-        var k = mun + '\n' + prov;
-        if (!map.has(k)) {
-            map.set(k, { municipality: mun, province: prov });
+        var key = mun + '\n' + prov;
+        if (!dedupe[key]) {
+            dedupe[key] = true;
+            out.push({ municipality: mun, province: prov });
         }
     }
-    return Array.from(map.values()).sort(function (a, b) {
+    return out.sort(function (a, b) {
         return a.municipality.localeCompare(b.municipality, undefined, { sensitivity: 'base' });
     });
 }
@@ -240,3 +226,31 @@ function listCoverageBarangaysInMunicipality(municipality, province) {
 
 window.findCoverageMunicipalitiesMatching = findCoverageMunicipalitiesMatching;
 window.listCoverageBarangaysInMunicipality = listCoverageBarangaysInMunicipality;
+
+(function initAddressCatalogue() {
+    try {
+        var ok = buildAddressDatabaseFromPsgc();
+        if (!ok) {
+            console.error(
+                'addresses.js: load address_psgc_negros.generated.js BEFORE this file. Run tools/build_negros_psgc_address_js.py if missing.'
+            );
+        }
+        window.__ADDRESS_CATALOGUE_ROWS__ = addressDatabase.length;
+    } catch (err) {
+        console.error('addresses.js: catalogue build failed', err);
+        window.__ADDRESS_CATALOGUE_ROWS__ = 0;
+    }
+    try {
+        console.log(
+            'Address rows loaded: ' +
+                addressDatabase.length +
+                ' (PSGC Negros barangays; City of Bayawan NO + overrides + Wikipedia/DepEd-referenced subdivisions where listed + numbered Purok up to ' +
+                SYNTHETIC_PUROK_MAX_BAYAWAN_ORIENTAL +
+                ' there, ' +
+                SYNTHETIC_PUROK_MAX +
+                ' elsewhere where not overridden)',
+        );
+    } catch (_) {
+        /* ignore */
+    }
+})();
