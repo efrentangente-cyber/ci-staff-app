@@ -19,6 +19,14 @@ class AutocompleteManager {
         });
     }
 
+    /** Collapse whitespace for comparing member names (exact-match suggestions only). */
+    normalizeExactMatch(text) {
+        return String(text || '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
     createSuggestionBox() {
         this.suggestionBox = document.createElement('div');
         this.suggestionBox.id = 'autocomplete-suggestions';
@@ -119,6 +127,18 @@ class AutocompleteManager {
             return;
         }
 
+        let list = suggestions;
+
+        /** Member name: only offer a pick-list when typed text equals a saved name exactly (no partial/fuzzy dropdown). */
+        if (input && input.name === 'member_name') {
+            const needle = this.normalizeExactMatch(input.value);
+            list = suggestions.filter((s) => this.normalizeExactMatch(s.value) === needle);
+            if (!list.length) {
+                this.hideSuggestions();
+                return;
+            }
+        }
+
         // Position suggestion box
         const rect = input.getBoundingClientRect();
         this.suggestionBox.style.top = `${rect.bottom + window.scrollY}px`;
@@ -129,7 +149,7 @@ class AutocompleteManager {
         const suppressContext =
             input && input.name === 'member_name';
 
-        this.suggestionBox.innerHTML = suggestions.map((suggestion, index) => {
+        this.suggestionBox.innerHTML = list.map((suggestion, index) => {
             const ctx =
                 suppressContext ? '' : (suggestion.context || '');
             const ctxHtml = ctx

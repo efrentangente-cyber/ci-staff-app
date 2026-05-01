@@ -1,11 +1,15 @@
 // Address rows for loan forms + coverage-route wizard (Negros Oriental & Occidental).
 // Barangays: PSGC-derived list in static/generated/address_psgc_negros.generated.js (see tools/build_negros_psgc_address_js.py).
 // Puroks: PSGC does not define puroks nationwide. We add:
-//   (1) ADDRESS_PUROK_OVERRIDES — real names per barangay where you maintain a list
-//   (3) Numbered fillers "Purok 1"…"Purok N" for any gaps (named overrides kept; duplicates skipped).
+//   (1) ADDRESS_PUROK_OVERRIDES — curated names per barangay
+//   (2) BAYAWAN_REFERENCED_SUBDIVISIONS — sitios / local labels cited in Wikipedia (Bayawan) + DepEd NIR Bayawan City school placenames
+//   (3) Numbered fillers "Purok 1"…"Purok N" for gaps (deduped with named lists).
 
-/** How many default "Purok 1".."Purok N" rows merged in per barangay (fills gaps after named lists). */
+/** Default numbered purok rows per barangay outside Bayawan City core. */
 const SYNTHETIC_PUROK_MAX = 25;
+
+/** City of Bayawan (Negros Oriental): more numbered quick-picks — field forms commonly use >25 purok labels. */
+const SYNTHETIC_PUROK_MAX_BAYAWAN_ORIENTAL = 55;
 
 /**
  * Optional purok names per barangay. Keys must match PSGC municipality + province strings exactly.
@@ -21,13 +25,48 @@ const ADDRESS_PUROK_OVERRIDES = {
     },
 };
 
+/**
+ * City of Bayawan only (PSGC barangay keys). Compiled from Wikipedia "Bayawan" (Education /
+ * Infrastructure) and visible DepEd NIR Bayawan rows (school names as local toponyms). Not an
+ * official barangay purok master list — LGU/IP pages can extend ADDRESS_PUROK_OVERRIDES.
+ */
+const BAYAWAN_REFERENCED_SUBDIVISIONS = {
+    Banga: [
+        'Cabcabon Hills',
+        'Buli-Buli',
+        'Sitio Buli-Buli',
+        'Cansig-id',
+        'Sitio Cansig-id',
+    ],
+    Bugay: ['Baican', 'Purok Baican', 'Sitio Baican', 'Bahian', 'Sitio Bahian'],
+    Dawis: ['Lapay', 'Sitio Lapay', 'Purok Lapay'],
+    Kalumboyan: ['Baisan', 'Sitio Baisan'],
+    Malabugas: ['Tinastasan', 'Sitio Tinastasan'],
+    Maninihon: ['Omod', 'Sitio Omod', 'Purok Omod', 'Pusi-on', 'Sitio Pusi-on'],
+    Mandu-ao: ['Manduaw'],
+    Nangka: [
+        'Tavera',
+        'Sitio Tavera',
+        'Milagrosa',
+        'Sitio Milagrosa',
+        'Hugno',
+        'Danapa',
+        'Sitio Danapa',
+    ],
+    Narra: ['Gamao', 'Sitio Gamao'],
+    Tabuan: ['Mantapi', 'Sitio Mantapi'],
+    Villasol: ['Purok Baican', 'Baican', 'Sitio Baican', 'Bato'],
+};
+
 let addressDatabase = [];
 
-/** Add Purok 1..SYNTHETIC_PUROK_MAX skipping labels already present in usedLower (case-insensitive keys). */
-function addSyntheticPurokRowsDeduped(municipality, province, barangay, usedLower) {
+/** Add Purok 1..cap skipping labels already present in usedLower (case-insensitive keys). */
+function addSyntheticPurokRowsDeduped(municipality, province, barangay, usedLower, cap) {
+    var maxNum =
+        typeof cap === 'number' && cap > 0 ? Math.floor(cap) : SYNTHETIC_PUROK_MAX;
     var used = usedLower || {};
     var i;
-    for (i = 1; i <= SYNTHETIC_PUROK_MAX; i++) {
+    for (i = 1; i <= maxNum; i++) {
         var label = 'Purok ' + i;
         var k = label.toLowerCase();
         if (used[k]) {
@@ -69,14 +108,38 @@ function buildAddressDatabaseFromPsgc() {
         var pmap = ADDRESS_PUROK_OVERRIDES[__munProvKey(mun, prov)];
         var plist = pmap && pmap[brgy];
         var usedPurokLower = {};
+        var purokCap =
+            mun === 'City of Bayawan' && prov === 'Negros Oriental'
+                ? SYNTHETIC_PUROK_MAX_BAYAWAN_ORIENTAL
+                : SYNTHETIC_PUROK_MAX;
 
+        var namedCombined = [];
+        var j;
         if (plist && plist.length) {
-            for (var j = 0; j < plist.length; j++) {
-                var rawLbl = String(plist[j] || '').trim();
+            for (j = 0; j < plist.length; j++) {
+                namedCombined.push(plist[j]);
+            }
+        }
+        if (mun === 'City of Bayawan' && prov === 'Negros Oriental') {
+            var refs = BAYAWAN_REFERENCED_SUBDIVISIONS[brgy];
+            if (refs && refs.length) {
+                for (j = 0; j < refs.length; j++) {
+                    namedCombined.push(refs[j]);
+                }
+            }
+        }
+
+        if (namedCombined.length) {
+            for (j = 0; j < namedCombined.length; j++) {
+                var rawLbl = String(namedCombined[j] || '').trim();
                 if (!rawLbl) {
                     continue;
                 }
-                usedPurokLower[rawLbl.toLowerCase()] = true;
+                var keyLower = rawLbl.toLowerCase();
+                if (usedPurokLower[keyLower]) {
+                    continue;
+                }
+                usedPurokLower[keyLower] = true;
                 addressDatabase.push({
                     purok: rawLbl,
                     barangay: brgy,
@@ -87,7 +150,7 @@ function buildAddressDatabaseFromPsgc() {
             }
         }
 
-        addSyntheticPurokRowsDeduped(mun, prov, brgy, usedPurokLower);
+        addSyntheticPurokRowsDeduped(mun, prov, brgy, usedPurokLower, purokCap);
     }
     return true;
 }
@@ -101,9 +164,11 @@ if (!buildAddressDatabaseFromPsgc()) {
 console.log(
     'Address rows loaded: ' +
         addressDatabase.length +
-        ' (PSGC Negros barangays + every barangay: named puroks if configured + numbered Purok 1–' +
+        ' (PSGC Negros barangays; City of Bayawan NO + overrides + Wikipedia/DepEd-referenced subdivisions where listed + numbered Purok up to ' +
+        SYNTHETIC_PUROK_MAX_BAYAWAN_ORIENTAL +
+        ' there, ' +
         SYNTHETIC_PUROK_MAX +
-        ' where not already listed)',
+        ' elsewhere where not overridden)',
 );
 
 /** Coverage route builder — barangays by municipality using addressDatabase */

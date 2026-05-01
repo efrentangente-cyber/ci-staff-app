@@ -382,8 +382,11 @@ _FALLBACK_ADDRESS_KEYWORDS = {
         'milagrosa', 'obat', 'talalak',
     ],
     'route_5_bayawan_center': [
-        'ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig', 'dawis', 'manduao', 'mandu-ao', 'maninihon',
-        'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san jose', 'san miguel', 'san roque', 'suba',
+        'ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig',
+        # 'dawis' / 'san jose' omitted — corridor barangays on Kalumboyan–Dawis style routes handled via
+        # _BAYAWAN_BARANGAY_SEGMENT_LABEL_HINTS + custom coverage routes whose labels include those hints.
+        'manduao', 'mandu-ao', 'maninihon',
+        'minaba', 'narra', 'pagatban', 'poblacion', 'san isidro', 'san miguel', 'san roque', 'suba',
         'tabuan', 'tayawan', 'tinago', 'ubos', 'villareal', 'villasol',
     ],
     'route_6_bayawan_omod': ['omod', 'tamisu'],
@@ -426,6 +429,18 @@ _CI_COVERAGE_SEED = [
         json.dumps(_FALLBACK_ADDRESS_KEYWORDS['route_8_bayawan_mabinay'], ensure_ascii=False),
     ),
 ]
+
+_PRESET_CI_ROUTE_KEYS = frozenset(_FALLBACK_ADDRESS_KEYWORDS.keys())
+
+# Barangays in Bayawan resolved to a corridor route when the manage-users label contains both hints
+# e.g. "City of Bayawan: Kalumboyan → Dawis" (handles Purok Aya, San Jose, Bayawan that were matching city-center preset).
+_BAYAWAN_BARANGAY_SEGMENT_LABEL_HINTS = {
+    'san jose': ('kalumboyan', 'dawis'),
+    'dawis': ('kalumboyan', 'dawis'),
+}
+
+# Strip from route_5 keyword lists (preset + stale DB merges) — these barangays use corridor routing above.
+_ROUTE5_BARANGAYS_ASSIGNED_TO_CORRIDOR = frozenset({'san jose', 'dawis'})
 
 _ci_route_label_cache: dict | None = None
 _ci_route_sort_index_cache: dict | None = None
@@ -505,6 +520,14 @@ def get_ci_route_address_match_map() -> dict:
             merged[str(rk).strip()] = kws
     except Exception as e:
         app.logger.debug('get_ci_route_address_match_map: %s', e)
+    try:
+        r5 = merged.get('route_5_bayawan_center')
+        if r5 is not None:
+            merged['route_5_bayawan_center'] = [
+                kw for kw in r5 if kw not in _ROUTE5_BARANGAYS_ASSIGNED_TO_CORRIDOR
+            ]
+    except Exception:
+        pass
     return merged
 
 
@@ -569,11 +592,67 @@ def get_ci_route_sort_index_map() -> dict:
     return out
 
 
+def _bayawan_city_context_address(addr_norm: str) -> bool:
+    """True if applicant address reads as Bayawan (City of Bayawan service area vs other LGUs with same barangay names)."""
+    if not addr_norm:
+        return False
+    return 'bayawan' in addr_norm
+
+
+def _corridor_hints_for_bayawan_barangay_hit(addr_norm: str) -> tuple[str, ...] | None:
+    """If a routed barangay token matches, return DB label substring hints for the corridor route."""
+    for bar_token, hints in _BAYAWAN_BARANGAY_SEGMENT_LABEL_HINTS.items():
+        if _keyword_boundary_match_normalized(bar_token, addr_norm):
+            return tuple(h.strip().lower() for h in hints if (str(h)).strip())
+    return None
+
+
+def resolve_coverage_route_key_by_label_hints(hints: tuple[str, ...]) -> str | None:
+    """Pick route_key whose label mentions every hint substring; prefer non-preset custom coverage rows."""
+    if len(hints) < 2:
+        return None
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            """
+            SELECT route_key, label
+            FROM ci_coverage_routes
+            WHERE is_active = 1
+            ORDER BY sort_order ASC, id ASC
+            """
+        ).fetchall()
+    except Exception as e:
+        app.logger.debug('resolve_coverage_route_key_by_label_hints: %s', e)
+        return None
+    candidates_custom = []
+    candidates_other = []
+    for r in rows or []:
+        rk = str(r['route_key'] or '').strip()
+        lab = str(r['label'] or '').lower()
+        if not rk or not lab:
+            continue
+        if all(h in lab for h in hints):
+            if rk not in _PRESET_CI_ROUTE_KEYS:
+                candidates_custom.append(rk)
+            else:
+                candidates_other.append(rk)
+    return (candidates_custom[0] if candidates_custom else (candidates_other[0] if candidates_other else None))
+
+
 def resolve_ci_route_key_for_member_address(member_address: str | None) -> str | None:
-    """Best route_key for member_address using longestSpecific non-generic phrase + stable ties."""
+    """Best route_key for member_address: Bayawan corridor barangays first, then keyword tiers."""
     addr_norm = _normalize_address_for_ci_route_match(member_address)
     if not addr_norm:
         return None
+
+    # Kalumboyan→Dawis corridor barangays in Bayawan: assign custom segment route before generic keyword tiers.
+    if _bayawan_city_context_address(addr_norm):
+        ch = _corridor_hints_for_bayawan_barangay_hit(addr_norm)
+        if ch:
+            seg = resolve_coverage_route_key_by_label_hints(ch)
+            if seg:
+                return seg
+
     route_map = get_ci_route_address_match_map()
     sort_map = get_ci_route_sort_index_map()
     ranked = []

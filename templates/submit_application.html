@@ -63,7 +63,7 @@
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Member Name *</label>
                     <input type="text" name="member_name" id="member_name" class="form-control" required autocomplete="name">
-                    <small class="text-muted">Members already on file: type at least 2 letters and pick a name from the list — contact and address load from their last application (you may edit). Phone and address fields do not search the member database.</small>
+                    <small class="text-muted">Members already on file: type the full name <strong>exactly</strong> as stored; if it matches a prior application, one option appears to tap so contact and address load (you may edit). While the name is incomplete or new, no name list is shown. Phone and address fields do not search the member database.</small>
                     <div id="existingLoanNotice" class="alert alert-warning py-2 mt-2 mb-0 small" style="display:none;"></div>
                 </div>
                 <div class="col-md-6 mb-3">
@@ -78,7 +78,7 @@
                 <label class="form-label">Address (Purok/Barangay, Municipality, Province) *</label>
                 <input type="text" name="member_address" id="member_address" class="form-control" required autocomplete="off" placeholder="e.g. Purok 4 San Jose Bayawan — or type barangay / city first">
                 <div id="address_suggestions" class="list-group position-absolute w-100" style="z-index: 1000; max-height: 320px; overflow-y: auto; display: none;"></div>
-                <small class="text-muted">All Negros Oriental &amp; Occidental barangays (PSGC). Search includes <strong>purok</strong> (numbered Purok 1–25 plus any named puroks in our list per barangay). Type freely if yours is missing.</small>
+                <small class="text-muted">All Negros Oriental &amp; Occidental barangays (PSGC). Type a barangay name to list numbered puroks for that row (Bayawan City: Purok 1–55, others typically 1–25), then add keywords to narrow. Named puroks are added in <code>addresses.js</code> where configured; you can always type addresses not listed.</small>
             </div>
             <div class="mb-3">
                 <label class="form-label">Loan Amount *</label>
@@ -153,15 +153,15 @@
 </div>
 
 <script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=2"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=3"></script>
 <script src="{{ url_for('static', filename='loan-amount-confirm.js') }}?v=1"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof addressDatabase !== 'undefined' && addressDatabase.length) {
         console.log('Address database loaded with ' + addressDatabase.length + ' rows');
     }
-    initLpsAddressAutocomplete({ inputId: 'member_address', listId: 'address_suggestions', maxResults: 60 });
+    initLpsAddressAutocomplete({ inputId: 'member_address', listId: 'address_suggestions', maxResults: 220 });
 });
 </script>
 <script>

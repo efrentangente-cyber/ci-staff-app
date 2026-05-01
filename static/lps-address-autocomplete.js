@@ -1,9 +1,21 @@
 /**
  * LPS / loan form: member_address suggestions from global addressDatabase (addresses.js).
- * Expects addressDatabase with barangay rows + purok rows (synthetic or overrides).
+ * - Strict AND: every query token appears somewhere in row (purok + barangay + mun + province).
+ * - Fallback: token exactly equals a catalogue barangay name → show all rows under that barangay
+ *   so every purok line is visible (rank rows where other tokens appear in `purok` first).
+ * - Last resort lone token ≥5 chars: substring match inside `purok` field only (avoids province floods).
  */
 (function () {
     'use strict';
+
+    var BRGY_CACHE = null;
+
+    function normalizeSp(text) {
+        return String(text || '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
 
     function tokenize(raw) {
         return String(raw || '')
@@ -77,8 +89,28 @@
         return s;
     }
 
-    function compareRows(a, b, tokens) {
-        var d = scoreRow(b, tokens) - scoreRow(a, tokens);
+    /** Prefer matches on purok for tokens that aren't the anchored barangay name. */
+    function anchorBoostScore(addr, tokens, anchoredBrgyNorm) {
+        var s = scoreRow(addr, tokens);
+        if (!anchoredBrgyNorm) {
+            return s;
+        }
+        var p = (addr.purok || '').toLowerCase();
+        var tk;
+        for (var i = 0; i < tokens.length; i++) {
+            tk = tokens[i];
+            if (tk === anchoredBrgyNorm || !tk) {
+                continue;
+            }
+            if (p.indexOf(tk) !== -1) {
+                s += 450;
+            }
+        }
+        return s;
+    }
+
+    function compareRows(a, b, tokens, anchoredBrgyNorm) {
+        var d = anchorBoostScore(b, tokens, anchoredBrgyNorm) - anchorBoostScore(a, tokens, anchoredBrgyNorm);
         if (d !== 0) {
             return d;
         }
@@ -92,11 +124,111 @@
         });
     }
 
+    function distinctBrgyTriples(db) {
+        var map = {};
+        var i;
+        for (i = 0; i < db.length; i++) {
+            var a = db[i];
+            var brgy = String(a.barangay || '').trim();
+            if (!brgy) {
+                continue;
+            }
+            var mun = String(a.municipality || '').trim();
+            var prov = String(a.province || '').trim();
+            var k = brgy + '\n' + mun + '\n' + prov;
+            if (!map[k]) {
+                map[k] = { barangay: brgy, municipality: mun, province: prov };
+            }
+        }
+        var list = [];
+        for (var key in map) {
+            if (Object.prototype.hasOwnProperty.call(map, key)) {
+                list.push(map[key]);
+            }
+        }
+        return list;
+    }
+
+    function tripleEqualsRow(triple, addr) {
+        return (
+            String(addr.barangay || '').trim() === triple.barangay &&
+            String(addr.municipality || '').trim() === triple.municipality &&
+            String(addr.province || '').trim() === triple.province
+        );
+    }
+
+    function collectMatches(tokens, db) {
+        var strict = [];
+        var i;
+        for (i = 0; i < db.length; i++) {
+            if (allTokensInRow(db[i], tokens)) {
+                strict.push(db[i]);
+            }
+        }
+        if (strict.length) {
+            return { rows: strict, anchoredBrgyNorm: null };
+        }
+
+        if (!BRGY_CACHE || BRGY_CACHE._dbLen !== db.length) {
+            BRGY_CACHE = { triples: distinctBrgyTriples(db), _dbLen: db.length };
+        }
+        var triples = BRGY_CACHE.triples;
+        var matchedTriples = [];
+        for (i = 0; i < triples.length; i++) {
+            var tr = triples[i];
+            var bn = normalizeSp(tr.barangay);
+            var matched = false;
+            var j;
+            for (j = 0; j < tokens.length; j++) {
+                if (tokens[j] === bn) {
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched) {
+                matchedTriples.push(tr);
+            }
+        }
+
+        if (matchedTriples.length === 1) {
+            var pool = [];
+            var trOnly = matchedTriples[0];
+            for (i = 0; i < db.length; i++) {
+                if (tripleEqualsRow(trOnly, db[i])) {
+                    pool.push(db[i]);
+                }
+            }
+            if (pool.length) {
+                return {
+                    rows: pool,
+                    anchoredBrgyNorm: normalizeSp(trOnly.barangay),
+                };
+            }
+        }
+
+        if (tokens.length === 1 && tokens[0].length >= 5) {
+            var needle = tokens[0];
+            var weak = [];
+            for (i = 0; i < db.length; i++) {
+                var pr = db[i].purok;
+                var pl = typeof pr === 'string' ? pr.toLowerCase() : '';
+                if (pl && pl.indexOf(needle) !== -1) {
+                    weak.push(db[i]);
+                }
+            }
+            if (weak.length) {
+                return { rows: weak, anchoredBrgyNorm: null };
+            }
+        }
+
+        return { rows: [], anchoredBrgyNorm: null };
+    }
+
     window.initLpsAddressAutocomplete = function (opts) {
         var o = opts || {};
         var inputId = o.inputId || 'member_address';
         var listId = o.listId || 'address_suggestions';
-        var maxResults = typeof o.maxResults === 'number' ? o.maxResults : 60;
+        var maxResults = typeof o.maxResults === 'number' ? o.maxResults : 180;
 
         var input = document.getElementById(inputId);
         var list = document.getElementById(listId);
@@ -123,18 +255,12 @@
                 return;
             }
 
-            var scored = [];
-            var i;
-            for (i = 0; i < addressDatabase.length; i++) {
-                var addr = addressDatabase[i];
-                if (!allTokensInRow(addr, tokens)) {
-                    continue;
-                }
-                scored.push(addr);
-            }
+            var out = collectMatches(tokens, addressDatabase);
+            var scored = out.rows;
+            var anchored = out.anchoredBrgyNorm;
 
             scored.sort(function (a, b) {
-                return compareRows(a, b, tokens);
+                return compareRows(a, b, tokens, anchored);
             });
             var matches = scored.slice(0, maxResults);
 
