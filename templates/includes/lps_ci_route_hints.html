@@ -1,0 +1,75 @@
+{% if lps_ci_route_labels_by_id is defined %}
+<div id="lpsCiRouteHintWrap" class="mt-2" hidden>
+    <div id="lpsCiRouteHint" class="alert py-2 px-3 small mb-0" role="status"></div>
+</div>
+<script>
+(function () {
+    var ROUTES = {{ lps_ci_route_labels_by_id|tojson }};
+    var sel = document.querySelector('select[name="needs_ci"]');
+    var wrap = document.getElementById('lpsCiRouteHintWrap');
+    var hint = document.getElementById('lpsCiRouteHint');
+    if (!sel || !wrap || !hint) {
+        return;
+    }
+
+    function clearHint() {
+        wrap.hidden = true;
+        hint.innerHTML = '';
+        hint.className = 'alert py-2 px-3 small mb-0';
+    }
+
+    function update() {
+        var v = (sel.value || '').trim();
+        if (v === '1') {
+            clearHint();
+            return;
+        }
+        if (v.indexOf('ci_') !== 0) {
+            clearHint();
+            return;
+        }
+        var id = v.replace(/^ci_/, '');
+        var labels = ROUTES[id];
+        if (labels === undefined) {
+            clearHint();
+            return;
+        }
+
+        hint.innerHTML = '';
+        hint.classList.add('mb-0');
+
+        if (!labels.length) {
+            wrap.hidden = false;
+            hint.className = 'alert alert-warning py-2 px-3 small mb-0';
+            var em = document.createElement('strong');
+            em.textContent = 'Coverage routes: ';
+            hint.appendChild(em);
+            hint.appendChild(
+                document.createTextNode(
+                    'None assigned yet. Assign routes under Manage Users before relying on geographic matching.'
+                )
+            );
+            return;
+        }
+
+        wrap.hidden = false;
+        hint.className = 'alert alert-info py-2 px-3 small mb-0';
+        var lead = document.createElement('strong');
+        lead.textContent = 'Coverage routes for this CI/BI: ';
+        hint.appendChild(lead);
+
+        labels.forEach(function (t) {
+            var sp = document.createElement('span');
+            sp.className = 'badge bg-primary me-1 mb-1';
+            sp.textContent = String(t || '');
+            hint.appendChild(sp);
+            hint.appendChild(document.createTextNode(' '));
+        });
+    }
+
+    sel.addEventListener('change', update);
+    sel.addEventListener('input', update);
+    update();
+})();
+</script>
+{% endif %}

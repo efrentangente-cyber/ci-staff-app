@@ -52,7 +52,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
 <details class="content-card mb-3" id="ciCreateRouteWrap">
     <summary class="content-card-header mb-0" style="cursor: pointer;">
         <strong><i class="bi bi-plus-circle"></i> Create new coverage route</strong>
-        <span class="small text-muted ms-2">(optional — uses the loan-form address catalogue; reloads page; new routes appear in all dropdowns)</span>
+        <span class="small text-muted ms-2">(optional — barangays from Negros catalogue on the server; reloads page; new routes appear in all dropdowns)</span>
     </summary>
     <div class="content-card-body border-top" id="ciCoverageRouteWizard" data-create-url="{{ url_for('api_ci_coverage_routes') }}">
         <ol class="small text-muted mb-3 ps-3">
@@ -298,12 +298,12 @@ select.ci-route-select.route-assign-await-js[multiple] {
 }
 </style>
 
-<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=3"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=5"></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
+const COVERAGE_CAT_MUNICIPALITIES_URL = {{ url_for('api_coverage_catalogue_municipalities')|tojson }};
+const COVERAGE_CAT_BARANGAYS_URL = {{ url_for('api_coverage_catalogue_barangays')|tojson }};
 const ALLOWED_ASSIGNABLE_ROLES = new Set(['loan_staff', 'ci_staff']);
 
 function manageUsersCsrfToken() {
@@ -339,6 +339,9 @@ document.addEventListener('DOMContentLoaded', function () {
             createUrl: CREATE_CI_ROUTE_URL,
             getCsrf: manageUsersCsrfToken,
             manageUsersApiHeaders: manageUsersApiHeaders,
+            useCoverageCatalogApi: true,
+            coverageMunicipalitiesUrl: COVERAGE_CAT_MUNICIPALITIES_URL,
+            coverageBarangaysUrl: COVERAGE_CAT_BARANGAYS_URL,
         });
     }
 });

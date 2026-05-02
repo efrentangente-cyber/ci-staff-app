@@ -146,6 +146,7 @@
                             </optgroup>
                         </select>
                         {% if can_edit %}<small class="text-muted">All applications must go through CI interview process</small>{% endif %}
+                        {% include 'includes/lps_ci_route_hints.html' %}
                     </div>
                     
                     {% if application.ci_notes %}

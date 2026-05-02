@@ -1,6 +1,7 @@
 /**
  * Manage Users — pinpoint coverage routes: municipality search → barangay from/to → POST create.
- * Requires static/addresses.js (findCoverageMunicipalitiesMatching, listCoverageBarangaysInMunicipality).
+ * Options: opts.useCoverageCatalogApi + municipalities/barangays URLs (server parses PSGC JS), or
+ * static/addresses.js (findCoverageMunicipalitiesMatching, listCoverageBarangaysInMunicipality).
  */
 (function () {
     'use strict';
@@ -76,6 +77,26 @@
             return '';
         };
         var apiHeadersFn = opts && opts.manageUsersApiHeaders ? opts.manageUsersApiHeaders : null;
+        var useCatalogueApi =
+            !!(opts &&
+                opts.useCoverageCatalogApi &&
+                opts.coverageMunicipalitiesUrl &&
+                opts.coverageBarangaysUrl);
+        var coverageMunicipalitiesUrl =
+            useCatalogueApi ? String(opts.coverageMunicipalitiesUrl) : '';
+        var coverageBarangaysUrl = useCatalogueApi ? String(opts.coverageBarangaysUrl) : '';
+
+        function catalogueFetchHeaders() {
+            var headers = {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            };
+            if (apiHeadersFn) {
+                var h = apiHeadersFn();
+                Object.assign(headers, h);
+            }
+            return headers;
+        }
 
         var placeIn = el('coveragePlaceSearch');
         var loadBtn = el('coverageLoadBrgysBtn');
@@ -128,25 +149,11 @@
             }
         }
 
-        function applyMunicipalityChoice(municipality, province) {
-            state.municipality = municipality || '';
-            state.province = province || '';
-            if (typeof window.listCoverageBarangaysInMunicipality !== 'function') {
-                setMsg(
-                    'Address catalogue not ready. Reload the page and try again.',
-                    true
-                );
-                return;
-            }
-            state.labels = window.listCoverageBarangaysInMunicipality(
-                municipality,
-                province
-            );
-
+        function finishBarangayList(labels) {
+            state.labels = labels || [];
             fillSelect(fromSel, state.labels);
             fillSelect(toSel, state.labels);
             mirrorToOptions(fromSel, toSel);
-
             if (pickRow) {
                 pickRow.hidden = state.labels.length === 0;
             }
@@ -167,6 +174,63 @@
                 );
             }
             updatePreview();
+        }
+
+        function applyMunicipalityChoice(municipality, province) {
+            state.municipality = municipality || '';
+            state.province = province || '';
+            if (useCatalogueApi) {
+                setMsg('Loading barangays…', false);
+                var u =
+                    coverageBarangaysUrl +
+                    '?municipality=' +
+                    encodeURIComponent(state.municipality) +
+                    '&province=' +
+                    encodeURIComponent(state.province || '');
+                fetch(u, {
+                    credentials: 'same-origin',
+                    headers: catalogueFetchHeaders(),
+                })
+                    .then(function (r) {
+                        return r.json().then(function (data) {
+                            return { ok: r.ok, data: data };
+                        });
+                    })
+                    .then(function (out) {
+                        if (!out.ok || !out.data || !out.data.ok) {
+                            var err =
+                                (out.data && (out.data.error || out.data.message)) ||
+                                'Could not load barangays.';
+                            setMsg(err, true);
+                            finishBarangayList([]);
+                            return;
+                        }
+                        if (out.data.empty_catalogue) {
+                            setMsg(
+                                'Address catalogue is empty on the server. Deploy static/generated/address_psgc_negros.generated.js.',
+                                true
+                            );
+                            finishBarangayList([]);
+                            return;
+                        }
+                        finishBarangayList(out.data.barangays || []);
+                    })
+                    .catch(function () {
+                        setMsg('Could not load barangays. Check your connection.', true);
+                        finishBarangayList([]);
+                    });
+                return;
+            }
+            if (typeof window.listCoverageBarangaysInMunicipality !== 'function') {
+                setMsg(
+                    'Address catalogue not ready. Reload the page and try again.',
+                    true
+                );
+                return;
+            }
+            finishBarangayList(
+                window.listCoverageBarangaysInMunicipality(municipality, province)
+            );
         }
 
         function populateMunicipalityPicker(matched) {
@@ -243,6 +307,75 @@
                 alert(
                     'Type an area such as Bayawan, Dumaguete, Sipalay, or Santa Catalina.'
                 );
+                return;
+            }
+            if (useCatalogueApi) {
+                if (loadBtn) {
+                    loadBtn.disabled = true;
+                }
+                var u = coverageMunicipalitiesUrl + '?q=' + encodeURIComponent(q);
+                fetch(u, {
+                    credentials: 'same-origin',
+                    headers: catalogueFetchHeaders(),
+                })
+                    .then(function (r) {
+                        return r.json().then(function (data) {
+                            return { ok: r.ok, data: data };
+                        });
+                    })
+                    .then(function (out) {
+                        if (loadBtn) {
+                            loadBtn.disabled = false;
+                        }
+                        if (!out.ok || !out.data || !out.data.ok) {
+                            var err =
+                                (out.data && (out.data.error || out.data.message)) ||
+                                'Could not load areas.';
+                            alert(err);
+                            return;
+                        }
+                        if (out.data.empty_catalogue) {
+                            setMsg(
+                                'Address catalogue is empty on the server. Deploy static/generated/address_psgc_negros.generated.js.',
+                                true
+                            );
+                            return;
+                        }
+                        var matched = out.data.municipalities || [];
+                        if (!matched.length) {
+                            if (munRow) {
+                                munRow.hidden = true;
+                            }
+                            if (munSel) {
+                                munSel.innerHTML = '';
+                                munSel.disabled = true;
+                            }
+                            if (pickRow) {
+                                pickRow.hidden = true;
+                            }
+                            fillSelect(fromSel, []);
+                            fillSelect(toSel, []);
+                            state.municipality = '';
+                            updatePreview();
+                            setMsg(
+                                'No municipality match for “' +
+                                    q +
+                                    '”. Try “Bayawan”, “Basay”, or “Sipalay City”.',
+                                true
+                            );
+                            return;
+                        }
+                        populateMunicipalityPicker(matched);
+                        if (matched.length === 1) {
+                            setMsg('');
+                        }
+                    })
+                    .catch(function () {
+                        if (loadBtn) {
+                            loadBtn.disabled = false;
+                        }
+                        alert('Could not load areas. Check your connection.');
+                    });
                 return;
             }
             if (typeof window.findCoverageMunicipalitiesMatching !== 'function') {

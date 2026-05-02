@@ -42,6 +42,7 @@ import pytz
 from dotenv import load_dotenv
 import resend
 import requests  # For SMS API
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
@@ -324,6 +325,40 @@ def route_tokens_filter(value):
     if not value:
         return []
     return [x.strip() for x in str(value).split(',') if x.strip()]
+
+
+def _normalize_ci_staff_row_dict(row):
+    """Single users row → dict with optional assigned_route / is_approved defaults."""
+    if row is None:
+        return {'id': None, 'name': '', 'email': '', 'is_approved': 1, 'assigned_route': None}
+    d = dict(row)
+    if 'assigned_route' not in d:
+        d['assigned_route'] = None
+    if 'is_approved' not in d:
+        d['is_approved'] = 1
+    return d
+
+
+def normalize_ci_staff_list_rows(rows):
+    """Normalize fetchall CI staff rows for templates."""
+    return [_normalize_ci_staff_row_dict(r) for r in (rows or [])]
+
+
+def lps_ci_route_labels_by_staff_id(ci_staff_rows, label_dict=None):
+    """CI user id (str) → list of coverage route display labels for LPS hints."""
+    if label_dict is None:
+        label_dict = get_ci_route_label_dict()
+    out = {}
+    for r in ci_staff_rows or []:
+        d = _normalize_ci_staff_row_dict(r)
+        uid = d.get('id')
+        if uid is None:
+            continue
+        sid = str(int(uid))
+        raw = (d.get('assigned_route') or '').strip()
+        keys = [x.strip() for x in raw.split(',') if x.strip()]
+        out[sid] = [(label_dict.get(k) or str(k)).strip() for k in keys if k]
+    return out
 
 
 def _assigned_route_keys_set(value):
@@ -1037,6 +1072,9 @@ def fetch_ci_staff_list(conn, include_pending=True):
     Fetch CI staff list with compatibility for older schemas where users.is_approved
     may not exist yet in production.  Results are cached for up to 120 s so that
     dashboard and application detail pages don't each hit the DB independently.
+
+    Rows are normalized dicts with id, name, email, is_approved, and assigned_route
+    (assigned_route None when column missing).
     """
     cache_key = 'all' if include_pending else 'approved'
     _now = time.time()
@@ -1044,59 +1082,67 @@ def fetch_ci_staff_list(conn, include_pending=True):
     if _cached and (_now - _cached['ts']) < _CI_STAFF_CACHE_TTL:
         return _cached['value']
 
-    where_role = "WHERE role='ci_staff'"
-    order_by = "ORDER BY name ASC"
-    if include_pending:
-        try:
-            result = conn.execute(
-                f'''
-                SELECT id, name, email, is_approved
-                FROM users
-                {where_role}
-                {order_by}
-                '''
-            ).fetchall()
-        except Exception:
-            try:
-                rows = conn.execute(
-                    f'''
-                    SELECT id, name, email
-                    FROM users
-                    {where_role}
-                    {order_by}
-                    '''
-                ).fetchall()
-            except Exception:
-                return []
-            result = [
-                {'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1}
-                for r in rows
-            ]
-        _ci_staff_cache[cache_key] = {'value': result, 'ts': _now}
-        return result
+    ap = '' if include_pending else ' AND is_approved=1'
+    variants_full = (
+        (
+            'SELECT id, name, email, is_approved, assigned_route '
+            'FROM users WHERE role=?'
+            + ap + ' ORDER BY name ASC'
+        ),
+        ('ci_staff',),
+    )
+    variants_no_ar = (
+        (
+            'SELECT id, name, email, is_approved FROM users WHERE role=?'
+            + ap + ' ORDER BY name ASC'
+        ),
+        ('ci_staff',),
+    )
+    variants_legacy = (
+        (
+            'SELECT id, name, email FROM users WHERE role=?'
+            + ap + ' ORDER BY name ASC'
+        ),
+        ('ci_staff',),
+    )
 
-    try:
-        result = conn.execute(
-            f'''
-            SELECT id, name, email, is_approved
-            FROM users
-            {where_role} AND is_approved=1
-            {order_by}
-            '''
-        ).fetchall()
-    except Exception:
+    result_rows = []
+    for sql_parts in (variants_full, variants_no_ar, variants_legacy):
         try:
-            rows = conn.execute(
-                f'''
-                SELECT id, name, email
-                FROM users
-                {where_role}
-                {order_by}
-                '''
-            ).fetchall()
+            result_rows = conn.execute(sql_parts[0], sql_parts[1]).fetchall()
+            break
         except Exception:
-            return []
-        result = [{'id': r['id'], 'name': r['name'], 'email': r['email'], 'is_approved': 1} for r in rows]
+            continue
+
+    if not result_rows:
+        result = []
+    elif len(dict(result_rows[0]).keys()) <= 4 and 'assigned_route' not in dict(result_rows[0]):
+        keys_in = dict(result_rows[0]).keys()
+        has_approved = 'is_approved' in keys_in
+        if has_approved:
+            result = [
+                {
+                    'id': r['id'],
+                    'name': r['name'],
+                    'email': r['email'],
+                    'is_approved': r['is_approved'],
+                    'assigned_route': None,
+                }
+                for r in result_rows
+            ]
+        else:
+            result = [
+                {
+                    'id': r['id'],
+                    'name': r['name'],
+                    'email': r['email'],
+                    'is_approved': 1,
+                    'assigned_route': None,
+                }
+                for r in result_rows
+            ]
+    else:
+        result = normalize_ci_staff_list_rows(result_rows)
 
     _ci_staff_cache[cache_key] = {'value': result, 'ts': _now}
     return result
@@ -1454,6 +1500,140 @@ def can_access_manage_users_actions():
     if current_user.role == 'loan_officer' and has_permission(current_user, 'manage_users'):
         return True
     return False
+
+
+# --- Coverage route wizard catalogue (parses generated PSGC JS; survives broken static/script order) ---
+_PSGC_CATALOGUE_ROWS_CACHE = None
+_MUN_MATCH_CITY_OF = re.compile(r'^City\s+of\s+', re.IGNORECASE)
+
+
+def _extract_json_array_suffix(text: str, start_bracket_idx: int):
+    """Slice from '[' through matching unquoted ']', or None."""
+    depth = 0
+    i = start_bracket_idx
+    in_string = False
+    escape = False
+    quote_char = ''
+    while i < len(text):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == quote_char:
+                in_string = False
+            continue
+        if ch in '"\'':
+            in_string = True
+            quote_char = ch
+        elif ch == '[':
+            depth += 1
+        elif ch == ']':
+            depth -= 1
+            if depth == 0:
+                return text[start_bracket_idx : i + 1]
+        i += 1
+    return None
+
+
+def load_psgc_negros_catalogue_rows():
+    """Load barangay rows from address_psgc_negros.generated.js (same source as addresses.js PSGC build)."""
+    path = Path(app.root_path) / 'static' / 'generated' / 'address_psgc_negros.generated.js'
+    if not path.is_file():
+        app.logger.warning('coverage catalogue: missing %s', path)
+        return []
+    raw = path.read_text(encoding='utf-8')
+    needle = '__PSGC_NEGROS_BARANGAYS__'
+    pos = raw.find(needle)
+    if pos != -1:
+        seg = raw[pos:]
+        b0 = seg.find('[')
+    else:
+        b0 = raw.find('[')
+        seg = raw
+    if b0 == -1:
+        app.logger.warning('coverage catalogue: no JSON array in %s', path)
+        return []
+    arr_txt = _extract_json_array_suffix(seg, b0)
+    if not arr_txt:
+        app.logger.warning('coverage catalogue: unbalanced array in %s', path)
+        return []
+    try:
+        parsed = json.loads(arr_txt)
+    except json.JSONDecodeError as e:
+        app.logger.warning('coverage catalogue JSON parse failed: %s', e)
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return parsed
+
+
+def get_psgc_negros_catalogue_rows():
+    """In-process memo of parsed catalogue (clear on redeploy/worker recycle)."""
+    global _PSGC_CATALOGUE_ROWS_CACHE
+    if _PSGC_CATALOGUE_ROWS_CACHE is None:
+        _PSGC_CATALOGUE_ROWS_CACHE = load_psgc_negros_catalogue_rows()
+    return _PSGC_CATALOGUE_ROWS_CACHE
+
+
+def _coverage_municipality_matches(row_mun_lower, mun_trimmed, raw_q_lower):
+    """Mirror static/addresses.js munMatches."""
+    if raw_q_lower in row_mun_lower:
+        return True
+    short_name = _MUN_MATCH_CITY_OF.sub('', mun_trimmed).strip()
+    if not short_name:
+        return False
+    shorts = short_name.lower()
+    alias_city = shorts + ' city'
+    if raw_q_lower in alias_city or raw_q_lower in shorts:
+        return True
+    q_norm = re.sub(r'^city\s+of\s+', '', raw_q_lower, flags=re.I).strip()
+    return bool(q_norm and q_norm in shorts)
+
+
+def coverage_find_municipalities_from_catalogue(rows, raw_query):
+    """Mirror addresses.js findCoverageMunicipalitiesMatching (dedupe by municipality + province)."""
+    q = (raw_query or '').lower().strip()
+    if not q:
+        return []
+    seen = set()
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        mun = str(row.get('municipality') or '').strip()
+        prov = str(row.get('province') or '').strip()
+        if not mun:
+            continue
+        if not _coverage_municipality_matches(mun.lower(), mun, q):
+            continue
+        key = mun + '\n' + prov
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({'municipality': mun, 'province': prov})
+    out.sort(key=lambda item: item['municipality'].lower())
+    return out
+
+
+def coverage_list_barangays_from_catalogue(rows, municipality, province):
+    """Mirror addresses.js listCoverageBarangaysInMunicipality."""
+    mun = (municipality or '').strip()
+    prov = (province or '').strip()
+    bag = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get('municipality') or '').strip() != mun:
+            continue
+        if prov and str(row.get('province') or '').strip() != prov:
+            continue
+        brgy = str(row.get('barangay') or '').strip()
+        if brgy:
+            bag[brgy] = True
+    ordered = sorted(bag.keys(), key=lambda s: s.lower())
+    return ordered
 
 
 def init_db():
@@ -4130,19 +4310,25 @@ def submit_application():
 
         try:
             conn = get_db()
-            # Get all CI staff with backward-compatible schema handling.
             ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
+            lps_ci_route_labels_by_id = lps_ci_route_labels_by_staff_id(ci_staff_list)
             conn.close()
         except Exception as e:
             print(f"WARNING loading CI staff list for submit page: {e}")
             ci_staff_list = []
+            lps_ci_route_labels_by_id = {}
         try:
             unread_count = get_unread_notification_count(current_user.id)
         except Exception as e:
             print(f"WARNING loading unread notifications for submit page: {e}")
             unread_count = 0
         try:
-            return render_template('submit_application.html', unread_count=unread_count, ci_staff_list=ci_staff_list)
+            return render_template(
+                'submit_application.html',
+                unread_count=unread_count,
+                ci_staff_list=ci_staff_list,
+                lps_ci_route_labels_by_id=lps_ci_route_labels_by_id,
+            )
         except Exception as e:
             app.logger.exception("submit_application GET render failed: %s", e)
             flash('Submit Application page encountered a temporary issue. Please try again in a moment.', 'warning')
@@ -5534,13 +5720,8 @@ def loan_application(id):
         ORDER BY m.sent_at ASC
     ''', (id,)).fetchall()
     
-    # Get all CI staff for dropdown
-    ci_staff_list = conn.execute('''
-        SELECT id, name, email, is_approved 
-        FROM users 
-        WHERE role='ci_staff' 
-        ORDER BY name ASC
-    ''').fetchall()
+    ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
+    lps_ci_route_labels_by_id = lps_ci_route_labels_by_staff_id(ci_staff_list)
     
     row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
                                 (current_user.id,)).fetchone()
@@ -5556,6 +5737,7 @@ def loan_application(id):
                          messages=messages, 
                          unread_count=unread_count,
                          ci_staff_list=ci_staff_list,
+                         lps_ci_route_labels_by_id=lps_ci_route_labels_by_id,
                          can_edit=can_edit)
 
 @app.route('/messages')
@@ -7714,6 +7896,38 @@ def update_ci_route():
 
     flash('Route assigned successfully!', 'success')
     return redirect(url_for('manage_users'))
+
+
+@app.route('/api/admin/coverage_catalogue/municipalities')
+@login_required
+def api_coverage_catalogue_municipalities():
+    """Municipality search for Manage Users coverage wizard (same matching as addresses.js)."""
+    if not can_access_manage_users_actions():
+        return jsonify({'ok': False, 'error': 'Unauthorized'}), 403
+    q = (request.args.get('q') or '').strip()
+    rows = get_psgc_negros_catalogue_rows()
+    if not rows:
+        return jsonify({'ok': True, 'municipalities': [], 'empty_catalogue': True})
+    return jsonify(
+        {'ok': True, 'municipalities': coverage_find_municipalities_from_catalogue(rows, q)}
+    )
+
+
+@app.route('/api/admin/coverage_catalogue/barangays')
+@login_required
+def api_coverage_catalogue_barangays():
+    """Barangay list under a municipality/province for the coverage wizard."""
+    if not can_access_manage_users_actions():
+        return jsonify({'ok': False, 'error': 'Unauthorized'}), 403
+    mun = (request.args.get('municipality') or '').strip()
+    prov = (request.args.get('province') or '').strip()
+    if not mun:
+        return jsonify({'ok': False, 'error': 'municipality is required'}), 400
+    rows = get_psgc_negros_catalogue_rows()
+    if not rows:
+        return jsonify({'ok': True, 'barangays': [], 'empty_catalogue': True})
+    labels = coverage_list_barangays_from_catalogue(rows, mun, prov)
+    return jsonify({'ok': True, 'barangays': labels})
 
 
 @app.route('/api/admin/ci_coverage_routes', methods=['GET', 'POST'])
