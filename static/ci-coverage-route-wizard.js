@@ -68,6 +68,10 @@
         if (!wrap) {
             return;
         }
+        if (wrap.getAttribute('data-ci-wizard-bound') === '1') {
+            return;
+        }
+        wrap.setAttribute('data-ci-wizard-bound', '1');
 
         var createUrl =
             opts && opts.createUrl
@@ -96,6 +100,43 @@
                 Object.assign(headers, h);
             }
             return headers;
+        }
+
+        /** Network JSON for catalogue endpoints; survives HTML error pages / timeouts without hanging UI. */
+        function fetchCatalogueJson(url, timeoutMs) {
+            var ms = timeoutMs || 30000;
+            var ctrl = new AbortController();
+            var timer = setTimeout(function () {
+                ctrl.abort();
+            }, ms);
+            return fetch(url, {
+                credentials: 'same-origin',
+                headers: catalogueFetchHeaders(),
+                signal: ctrl.signal,
+            })
+                .finally(function () {
+                    clearTimeout(timer);
+                })
+                .then(function (r) {
+                    return r.text().then(function (t) {
+                        var parsed = null;
+                        var parseOk = false;
+                        try {
+                            if (t != null && t.length > 0) {
+                                parsed = JSON.parse(t);
+                                parseOk = true;
+                            }
+                        } catch (e1) {
+                            parseOk = false;
+                        }
+                        return {
+                            okHttp: r.ok,
+                            status: r.status,
+                            data: parsed,
+                            parseOk: parseOk,
+                        };
+                    });
+                });
         }
 
         var placeIn = el('coveragePlaceSearch');
@@ -149,7 +190,8 @@
             }
         }
 
-        function finishBarangayList(labels) {
+        function finishBarangayList(labels, msgOpts) {
+            msgOpts = msgOpts || {};
             state.labels = labels || [];
             fillSelect(fromSel, state.labels);
             fillSelect(toSel, state.labels);
@@ -157,21 +199,23 @@
             if (pickRow) {
                 pickRow.hidden = state.labels.length === 0;
             }
-            if (state.labels.length) {
-                setMsg(
-                    'Showing ' +
-                        state.labels.length +
-                        ' barangays under ' +
-                        state.municipality +
-                        ' (' +
-                        state.province +
-                        '). Choose from / to.'
-                );
-            } else {
-                setMsg(
-                    'No barangays are catalogued for this municipality yet.',
-                    true
-                );
+            if (!msgOpts.skipMsgs) {
+                if (state.labels.length) {
+                    setMsg(
+                        'Showing ' +
+                            state.labels.length +
+                            ' barangays under ' +
+                            state.municipality +
+                            ' (' +
+                            state.province +
+                            '). Choose from / to.'
+                    );
+                } else if (!msgOpts.fromHttpFail) {
+                    setMsg(
+                        'No barangays are catalogued for this municipality yet.',
+                        true
+                    );
+                }
             }
             updatePreview();
         }
@@ -187,37 +231,54 @@
                     encodeURIComponent(state.municipality) +
                     '&province=' +
                     encodeURIComponent(state.province || '');
-                fetch(u, {
-                    credentials: 'same-origin',
-                    headers: catalogueFetchHeaders(),
-                })
-                    .then(function (r) {
-                        return r.json().then(function (data) {
-                            return { ok: r.ok, data: data };
-                        });
-                    })
-                    .then(function (out) {
-                        if (!out.ok || !out.data || !out.data.ok) {
-                            var err =
-                                (out.data && (out.data.error || out.data.message)) ||
-                                'Could not load barangays.';
-                            setMsg(err, true);
-                            finishBarangayList([]);
+                fetchCatalogueJson(u)
+                    .then(function (res) {
+                        if (!res.parseOk || res.data === null) {
+                            setMsg(
+                                'Could not load barangays: server returned a non-JSON reply (HTTP ' +
+                                    res.status +
+                                    '). Refresh the page or sign in again, then retry.',
+                                true
+                            );
+                            finishBarangayList([], {
+                                skipMsgs: true,
+                                fromHttpFail: true,
+                            });
                             return;
                         }
-                        if (out.data.empty_catalogue) {
+                        var outData = res.data;
+                        if (!res.okHttp || !outData || !outData.ok) {
+                            var err =
+                                (outData &&
+                                    (outData.error ||
+                                        outData.message)) ||
+                                'Could not load barangays.';
+                            setMsg(err, true);
+                            finishBarangayList([], {
+                                skipMsgs: true,
+                                fromHttpFail: true,
+                            });
+                            return;
+                        }
+                        if (outData.empty_catalogue) {
                             setMsg(
                                 'Address catalogue is empty on the server. Deploy static/generated/address_psgc_negros.generated.js.',
                                 true
                             );
-                            finishBarangayList([]);
+                            finishBarangayList([], { skipMsgs: true, fromHttpFail: true });
                             return;
                         }
-                        finishBarangayList(out.data.barangays || []);
+                        finishBarangayList(outData.barangays || []);
                     })
-                    .catch(function () {
-                        setMsg('Could not load barangays. Check your connection.', true);
-                        finishBarangayList([]);
+                    .catch(function (err) {
+                        var timedOut = err && err.name === 'AbortError';
+                        setMsg(
+                            timedOut
+                                ? 'Loading barangays timed out. Check your connection and try again.'
+                                : 'Could not load barangays. Check your connection.',
+                            true
+                        );
+                        finishBarangayList([], { skipMsgs: true, fromHttpFail: true });
                     });
                 return;
             }
@@ -229,7 +290,8 @@
                 return;
             }
             finishBarangayList(
-                window.listCoverageBarangaysInMunicipality(municipality, province)
+                window.listCoverageBarangaysInMunicipality(municipality, province),
+                {}
             );
         }
 
@@ -313,35 +375,39 @@
                 if (loadBtn) {
                     loadBtn.disabled = true;
                 }
+                setMsg('Searching areas…', false);
                 var u = coverageMunicipalitiesUrl + '?q=' + encodeURIComponent(q);
-                fetch(u, {
-                    credentials: 'same-origin',
-                    headers: catalogueFetchHeaders(),
-                })
-                    .then(function (r) {
-                        return r.json().then(function (data) {
-                            return { ok: r.ok, data: data };
-                        });
-                    })
-                    .then(function (out) {
+                fetchCatalogueJson(u)
+                    .then(function (res) {
                         if (loadBtn) {
                             loadBtn.disabled = false;
                         }
-                        if (!out.ok || !out.data || !out.data.ok) {
-                            var err =
-                                (out.data && (out.data.error || out.data.message)) ||
-                                'Could not load areas.';
-                            alert(err);
+                        if (!res.parseOk || res.data === null) {
+                            setMsg(
+                                'Coverage search failed: expected JSON but got HTTP ' +
+                                    res.status +
+                                    '. Try refreshing this page or signing in again.',
+                                true
+                            );
                             return;
                         }
-                        if (out.data.empty_catalogue) {
+                        var outData = res.data;
+                        if (!res.okHttp || !outData || !outData.ok) {
+                            var err =
+                                (outData &&
+                                    (outData.error || outData.message)) ||
+                                'Could not load areas.';
+                            setMsg(err, true);
+                            return;
+                        }
+                        if (outData.empty_catalogue) {
                             setMsg(
                                 'Address catalogue is empty on the server. Deploy static/generated/address_psgc_negros.generated.js.',
                                 true
                             );
                             return;
                         }
-                        var matched = out.data.municipalities || [];
+                        var matched = outData.municipalities || [];
                         if (!matched.length) {
                             if (munRow) {
                                 munRow.hidden = true;
@@ -360,21 +426,25 @@
                             setMsg(
                                 'No municipality match for “' +
                                     q +
-                                    '”. Try “Bayawan”, “Basay”, or “Sipalay City”.',
+                                    '”. Try “Bayawan”, “Basay”, “Sipalay City”, or “City of Bayawan”.',
                                 true
                             );
                             return;
                         }
                         populateMunicipalityPicker(matched);
-                        if (matched.length === 1) {
-                            setMsg('');
-                        }
+                        /* Single-match flow loads barangays asynchronously; leave status as “Loading…” until done. */
                     })
-                    .catch(function () {
+                    .catch(function (err) {
                         if (loadBtn) {
                             loadBtn.disabled = false;
                         }
-                        alert('Could not load areas. Check your connection.');
+                        var timedOut = err && err.name === 'AbortError';
+                        setMsg(
+                            timedOut
+                                ? 'Coverage search timed out. Check your connection and try again.'
+                                : 'Coverage search failed. Check your connection.',
+                            true
+                        );
                     });
                 return;
             }
@@ -422,9 +492,6 @@
                 return;
             }
             populateMunicipalityPicker(matched);
-            if (matched.length === 1) {
-                setMsg('');
-            }
         }
 
         if (munSel) {

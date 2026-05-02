@@ -298,7 +298,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
 }
 </style>
 
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=6"></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
@@ -334,16 +334,30 @@ function manageUsersApiHeaders() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    if (typeof window.initCiCoverageRouteWizard === 'function') {
-        window.initCiCoverageRouteWizard({
-            createUrl: CREATE_CI_ROUTE_URL,
-            getCsrf: manageUsersCsrfToken,
-            manageUsersApiHeaders: manageUsersApiHeaders,
-            useCoverageCatalogApi: true,
-            coverageMunicipalitiesUrl: COVERAGE_CAT_MUNICIPALITIES_URL,
-            coverageBarangaysUrl: COVERAGE_CAT_BARANGAYS_URL,
-        });
+    var statusEl = document.getElementById('coverageMatchedAreaMsg');
+    function showWizardBootError(msg) {
+        if (statusEl) {
+            statusEl.hidden = false;
+            statusEl.textContent = msg;
+            statusEl.classList.add('text-danger');
+        } else {
+            window.alert(msg);
+        }
     }
+    if (typeof window.initCiCoverageRouteWizard !== 'function') {
+        showWizardBootError(
+            'Coverage wizard script failed to load. Hard-refresh (Ctrl+Shift+R). If you installed this app, open Application → Service Workers and unregister, then reload.'
+        );
+        return;
+    }
+    window.initCiCoverageRouteWizard({
+        createUrl: CREATE_CI_ROUTE_URL,
+        getCsrf: manageUsersCsrfToken,
+        manageUsersApiHeaders: manageUsersApiHeaders,
+        useCoverageCatalogApi: true,
+        coverageMunicipalitiesUrl: COVERAGE_CAT_MUNICIPALITIES_URL,
+        coverageBarangaysUrl: COVERAGE_CAT_BARANGAYS_URL,
+    });
 });
 
 function searchUsers(tableType) {

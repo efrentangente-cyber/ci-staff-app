@@ -1,5 +1,5 @@
 // DCCCO CI Staff App - cache CI checklist/review for same UI offline
-const CACHE_NAME = 'dccco-staff-v10';
+const CACHE_NAME = 'dccco-staff-v11';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install
@@ -75,7 +75,8 @@ self.addEventListener('fetch', event => {
         // Never cache generated/heavy catalogue JS — a bad offline 503 or stale copy breaks coverage wizard.
         const isGeneratedOrAddressCatalogue =
           url.pathname.includes('/static/generated/') ||
-          url.pathname.endsWith('/addresses.js');
+          url.pathname.endsWith('/addresses.js') ||
+          url.pathname.endsWith('/ci-coverage-route-wizard.js');
 
         if (
           response.status === 200 &&
