@@ -18,6 +18,22 @@ function memberHistoryHref(memberName) {
     return base + '?name=' + encodeURIComponent(memberName || '');
 }
 
+function groupLpsDashboardByMember(appList) {
+    const buckets = {};
+    const order = [];
+    appList.forEach(function (app) {
+        const key = String(app.member_name || '').trim().toLowerCase();
+        if (!buckets[key]) {
+            buckets[key] = { member_name: String(app.member_name || '').trim(), apps: [] };
+            order.push(key);
+        }
+        buckets[key].apps.push(app);
+    });
+    return order.map(function (k) {
+        return buckets[k];
+    });
+}
+
 function formatSubmittedSlash(val) {
     if (!val) return '';
     const d = val instanceof Date ? val : new Date(val);
@@ -275,91 +291,182 @@ function renderLoanDashboardTables(applications) {
         return '<span class="text-muted">Not Assigned</span>';
     }
 
+    function stackedDivsHtml(apps, mapFn) {
+        return apps.map(function (a) {
+            return '<div class="mb-1">' + mapFn(a) + '</div>';
+        }).join('');
+    }
+
+    function stackedAmountsHtml(apps) {
+        return stackedDivsHtml(apps, function (a) {
+            const lt = a.loan_type
+                ? ' <span class="text-muted">' + escapeHtml(String(a.loan_type)) + '</span>'
+                : '';
+            return '<strong>' + formatMoneyPhp(a.loan_amount) + '</strong>' + lt;
+        });
+    }
+
+    function idsSubtitleHtml(apps) {
+        const ids = apps.map(function (a) {
+            return '#' + a.id;
+        }).join(' · ');
+        return '<div class="small text-muted mt-1">' + escapeHtml(ids) + '</div>';
+    }
+
+    function viewButtonsColumnHtml(apps) {
+        const btns = apps.map(function (a) {
+            return (
+                '<a href="/loan/application/' +
+                a.id +
+                '" class="btn btn-sm btn-primary">' +
+                '<i class="bi bi-eye"></i>' +
+                '<span class="d-none d-md-inline">View </span>#' +
+                a.id +
+                '</a>'
+            );
+        }).join('');
+        return '<div class="d-flex flex-column gap-1 align-items-start">' + btns + '</div>';
+    }
+
     const pipelineApps = applications.filter(function (a) {
         return a.status === 'submitted' || a.status === 'assigned_to_ci';
     });
+    const pipelineGroups = groupLpsDashboardByMember(pipelineApps);
 
     pendingBody.innerHTML = '';
-    pipelineApps.forEach(function (app) {
+    pipelineGroups.forEach(function (g) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
-            <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
-            <td>${pipelineStatusHtml(app)}</td>
-            <td>${ciCellHtml(app)}</td>
-            <td><span class="date-display">${escapeHtml(formatSubmittedSlash(app.submitted_at))}</span></td>
-            <td>
-                <a href="/loan/application/${app.id}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-eye"></i>
-                    <span class="d-none d-md-inline">View</span>
-                </a>
-            </td>
-        `;
+        const nameHref = memberHistoryHref(g.member_name);
+        tr.innerHTML =
+            '<td>' +
+            '<a href="' +
+            nameHref +
+            '"><strong>' +
+            escapeHtml(g.member_name) +
+            '</strong></a>' +
+            idsSubtitleHtml(g.apps) +
+            '</td>' +
+            '<td class="small">' +
+            stackedAmountsHtml(g.apps) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDivsHtml(g.apps, pipelineStatusHtml) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDivsHtml(g.apps, ciCellHtml) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDivsHtml(g.apps, function (a) {
+                return '<span class="date-display">' + escapeHtml(formatSubmittedSlash(a.submitted_at)) + '</span>';
+            }) +
+            '</td>' +
+            '<td>' +
+            viewButtonsColumnHtml(g.apps) +
+            '</td>';
         pendingBody.appendChild(tr);
     });
 
     const ciCompletedApps = applications.filter(function (a) {
         return a.status === 'ci_completed';
     });
+    const ciCompletedGroups = groupLpsDashboardByMember(ciCompletedApps);
 
     if (ciCompletedBody) {
         ciCompletedBody.innerHTML = '';
-        ciCompletedApps.forEach(function (app) {
+        ciCompletedGroups.forEach(function (g) {
             const tr = document.createElement('tr');
-            const doneStr = formatSubmittedSlash(app.ci_completed_at || app.ci_completedAt || '');
-            tr.innerHTML = `
-            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
-            <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
-            <td><span class="badge bg-info">Awaiting decision</span></td>
-            <td>${ciCellHtml(app)}</td>
-            <td><span class="date-display">${escapeHtml(formatSubmittedSlash(app.submitted_at))}</span></td>
-            <td><span class="date-display">${escapeHtml(doneStr || '—')}</span></td>
-            <td>
-                <a href="/loan/application/${app.id}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-eye"></i>
-                    <span class="d-none d-md-inline">View</span>
-                </a>
-            </td>
-        `;
+            const nameHref = memberHistoryHref(g.member_name);
+            tr.innerHTML =
+                '<td>' +
+                '<a href="' +
+                nameHref +
+                '"><strong>' +
+                escapeHtml(g.member_name) +
+                '</strong></a>' +
+                idsSubtitleHtml(g.apps) +
+                '</td>' +
+                '<td class="small">' +
+                stackedAmountsHtml(g.apps) +
+                '</td>' +
+                '<td class="small">' +
+                stackedDivsHtml(g.apps, function () {
+                    return '<span class="badge bg-info">Awaiting decision</span>';
+                }) +
+                '</td>' +
+                '<td class="small">' +
+                stackedDivsHtml(g.apps, function (a) {
+                    if (a.assigned_ci_staff) {
+                        return '<span class="badge bg-primary">' + escapeHtml(a.ci_staff_name || 'CI') + '</span>';
+                    }
+                    return '<span class="text-muted">—</span>';
+                }) +
+                '</td>' +
+                '<td class="small">' +
+                stackedDivsHtml(g.apps, function (a) {
+                    return '<span class="date-display">' + escapeHtml(formatSubmittedSlash(a.submitted_at)) + '</span>';
+                }) +
+                '</td>' +
+                '<td class="small">' +
+                stackedDivsHtml(g.apps, function (a) {
+                    const doneStr = formatSubmittedSlash(a.ci_completed_at || a.ci_completedAt || '');
+                    return '<span class="date-display">' + escapeHtml(doneStr || '—') + '</span>';
+                }) +
+                '</td>' +
+                '<td>' +
+                viewButtonsColumnHtml(g.apps) +
+                '</td>';
             ciCompletedBody.appendChild(tr);
         });
     }
 
-    function isProcessedStatus(st) {
-        return st === 'approved' || st === 'rejected' || st === 'disapproved';
-    }
     const processedApps = applications.filter(function (a) {
-        return isProcessedStatus(a.status);
+        return a.status === 'approved' || a.status === 'rejected';
     });
+    const processedGroups = groupLpsDashboardByMember(processedApps);
 
     processedBody.innerHTML = '';
-    processedApps.forEach(function (app) {
+    processedGroups.forEach(function (g) {
         const tr = document.createElement('tr');
-        let badge;
-        if (app.status === 'approved') {
-            badge = '<span class="badge bg-success">Approved</span>';
-        } else {
-            badge = '<span class="badge bg-danger">Rejected</span>';
-        }
-        tr.innerHTML = `
-            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
-            <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
-            <td>${badge}</td>
-            <td>${ciCellHtml(app)}</td>
-            <td><span class="date-display">${escapeHtml(formatSubmittedSlash(app.submitted_at))}</span></td>
-            <td>
-                <a href="/loan/application/${app.id}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-eye"></i>
-                    <span class="d-none d-md-inline">View</span>
-                </a>
-            </td>
-        `;
+        const nameHref = memberHistoryHref(g.member_name);
+        tr.innerHTML =
+            '<td>' +
+            '<a href="' +
+            nameHref +
+            '"><strong>' +
+            escapeHtml(g.member_name) +
+            '</strong></a>' +
+            idsSubtitleHtml(g.apps) +
+            '</td>' +
+            '<td class="small">' +
+            stackedAmountsHtml(g.apps) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDivsHtml(g.apps, function (a) {
+                if (a.status === 'approved') {
+                    return '<span class="badge bg-success">Approved</span>';
+                }
+                return '<span class="badge bg-danger">Rejected</span>';
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDivsHtml(g.apps, ciCellHtml) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDivsHtml(g.apps, function (a) {
+                return '<span class="date-display">' + escapeHtml(formatSubmittedSlash(a.submitted_at)) + '</span>';
+            }) +
+            '</td>' +
+            '<td>' +
+            viewButtonsColumnHtml(g.apps) +
+            '</td>';
         processedBody.appendChild(tr);
     });
 
     const pipelineStatCount = pipelineApps.length;
     const ciReviewStatCount = ciCompletedApps.length;
-    const approvedCount = applications.filter(function (a) { return a.status === 'approved'; }).length;
+    const approvedCount = applications.filter(function (a) {
+        return a.status === 'approved';
+    }).length;
     const totalStat = document.querySelector('.stat-card.blue h3');
     if (totalStat) totalStat.textContent = applications.length;
     const pipelineStatCard = document.querySelectorAll('.stat-card')[1]?.querySelector('h3');
@@ -387,6 +494,9 @@ function renderLoanDashboardTables(applications) {
             searchApplications('pending');
             searchApplications('ciCompleted');
             searchApplications('processed');
+        }
+        if (typeof filterProcessed === 'function') {
+            filterProcessed();
         }
     } catch (e) { /* ignore */ }
 }

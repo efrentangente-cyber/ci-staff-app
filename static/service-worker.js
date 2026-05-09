@@ -1,5 +1,5 @@
 // DCCCO CI Staff App - cache CI checklist/review for same UI offline
-const CACHE_NAME = 'dccco-staff-v11';
+const CACHE_NAME = 'dccco-staff-v12';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install
@@ -19,7 +19,6 @@ const CACHE_PAGES = [
   '/loan/dashboard',
   '/admin/dashboard',
   '/loan/submit',
-  '/messages',
   '/notifications',
   '/ci/application',
   '/ci/review',

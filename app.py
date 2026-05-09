@@ -965,25 +965,8 @@ def utility_processor():
         """Generate CSRF token for forms"""
         return generate_csrf()
 
-    # Inject unread message count into every template automatically.
-    # get_unread_message_count() uses COUNT_CACHE_TTL in-process cache; on cache-miss it
-    # uses get_db() — same request-scoped connection as the route (do not close inside helpers).
+    # Direct messaging UI removed from navigation; keep count at 0 (avoid DB work per page).
     message_unread_count = 0
-    try:
-        import time as _t
-        from flask_login import current_user as _cu
-        if _cu.is_authenticated:
-            _ctx_t0 = _t.monotonic()
-            message_unread_count = get_unread_message_count(_cu.id)
-            _ctx_elapsed = _t.monotonic() - _ctx_t0
-            if _ctx_elapsed > 0.1:
-                import logging as _log
-                _log.getLogger('app.perf').warning(
-                    'context_processor get_unread_message_count slow %.0fms user=%s',
-                    _ctx_elapsed * 1000, _cu.id,
-                )
-    except Exception:
-        pass
 
     return dict(
         get_user_by_id=get_user_by_id,
@@ -3910,6 +3893,29 @@ def logout():
             return ('', 204)
         return redirect(url_for('login'))
 
+
+def _lps_member_group_key(member_name):
+    return (member_name or '').strip().lower()
+
+
+def group_lps_dashboard_by_member(application_rows):
+    """
+    One LPS dashboard row per member name (case-insensitive).
+    ``application_rows``: iterable of dict-like rows in display order (oldest first).
+    Returns [{'member_name': str, 'apps': [dict, ...]}, ...].
+    """
+    buckets = {}
+    order = []
+    for row in application_rows:
+        d = dict(row)
+        key = _lps_member_group_key(d.get('member_name'))
+        if key not in buckets:
+            buckets[key] = {'member_name': (d.get('member_name') or '').strip(), 'apps': []}
+            order.append(key)
+        buckets[key]['apps'].append(d)
+    return [buckets[k] for k in order]
+
+
 # LOAN STAFF ROUTES
 @app.route('/loan/dashboard')
 @login_required
@@ -3948,8 +3954,26 @@ def loan_dashboard():
             (_time.monotonic() - _t_q2) * 1000,
         )
 
-    return render_template('loan_dashboard.html', applications=applications,
-                           unread_count=unread_count, ci_staff_list=ci_staff_list)
+    apps_flat = [dict(r) for r in applications]
+    pipeline_groups = group_lps_dashboard_by_member(
+        [a for a in apps_flat if (a.get('status') or '') in ('submitted', 'assigned_to_ci')]
+    )
+    ci_completed_groups = group_lps_dashboard_by_member(
+        [a for a in apps_flat if (a.get('status') or '') == 'ci_completed']
+    )
+    processed_groups = group_lps_dashboard_by_member(
+        [a for a in apps_flat if (a.get('status') or '') in ('approved', 'rejected')]
+    )
+
+    return render_template(
+        'loan_dashboard.html',
+        applications=applications,
+        pipeline_groups=pipeline_groups,
+        ci_completed_groups=ci_completed_groups,
+        processed_groups=processed_groups,
+        unread_count=unread_count,
+        ci_staff_list=ci_staff_list,
+    )
 
 
 @app.route('/loan/member')
@@ -3980,9 +4004,11 @@ def loan_member_history():
             SELECT la.id, la.member_name, la.member_contact, la.member_address,
                    la.loan_type, la.loan_amount, la.status, la.submitted_at,
                    la.submitted_by, la.assigned_ci_staff,
-                   u.name AS loan_staff_name
+                   u.name AS loan_staff_name,
+                   u_ci.name AS ci_staff_name
             FROM loan_applications la
             LEFT JOIN users u ON la.submitted_by = u.id
+            LEFT JOIN users u_ci ON la.assigned_ci_staff = u_ci.id
             WHERE LOWER(TRIM(COALESCE(la.member_name, ''))) = LOWER(TRIM(?))
             ORDER BY la.submitted_at DESC, la.id DESC
             ''',
@@ -4051,6 +4077,7 @@ def loan_member_history():
                 'status': (r.get('status') or '').strip(),
                 'submitted_at_display': submitted_disp,
                 'loan_staff_name': (r.get('loan_staff_name') or '').strip() or '—',
+                'ci_staff_name': (r.get('ci_staff_name') or '').strip() or '—',
                 'view_url': view_url,
             }
         )
@@ -4462,24 +4489,6 @@ def api_member_application_prefill():
         return jsonify({'ok': True, 'found': False})
     conn = get_db()
     try:
-        row = conn.execute(
-            '''
-            SELECT member_contact, member_address, loan_type, loan_amount
-            FROM loan_applications
-            WHERE LOWER(TRIM(COALESCE(member_name, ''))) = LOWER(TRIM(?))
-            ORDER BY id DESC
-            LIMIT 1
-            ''',
-            (name,),
-        ).fetchone()
-        if not row:
-            return jsonify({'ok': True, 'found': False})
-        d = dict(row)
-        la = d.get('loan_amount')
-        try:
-            la_out = float(la) if la is not None and la != '' else None
-        except (TypeError, ValueError):
-            la_out = None
         related_rows = conn.execute(
             '''
             SELECT id, loan_type, loan_amount, status, member_contact, member_address, submitted_at
@@ -4490,6 +4499,14 @@ def api_member_application_prefill():
             ''',
             (name,),
         ).fetchall()
+        if not related_rows:
+            return jsonify({'ok': True, 'found': False})
+        d = dict(related_rows[0])
+        la = d.get('loan_amount')
+        try:
+            la_out = float(la) if la is not None and la != '' else None
+        except (TypeError, ValueError):
+            la_out = None
         applications = []
         active_count = 0
         for rr in related_rows or []:
@@ -5844,13 +5861,6 @@ def loan_application(id):
         'FROM documents WHERE loan_application_id=? ORDER BY uploaded_at ASC',
         (id,),
     ).fetchall()
-    messages = conn.execute('''
-        SELECT m.*, u.name as sender_name 
-        FROM messages m
-        JOIN users u ON m.sender_id = u.id
-        WHERE m.loan_application_id=?
-        ORDER BY m.sent_at ASC
-    ''', (id,)).fetchall()
     
     ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
     lps_ci_route_labels_by_id = lps_ci_route_labels_by_staff_id(ci_staff_list)
@@ -5866,7 +5876,6 @@ def loan_application(id):
     return render_template('loan_application.html', 
                          application=app_data, 
                          documents=documents, 
-                         messages=messages, 
                          unread_count=unread_count,
                          ci_staff_list=ci_staff_list,
                          lps_ci_route_labels_by_id=lps_ci_route_labels_by_id,
@@ -5985,7 +5994,7 @@ def chat_with_user(user_id):
         ).fetchone()
         if not other_user:
             flash('That user is no longer available.', 'warning')
-            return redirect(url_for('messages'))
+            return redirect(url_for('index'))
 
         other_user = dict(other_user)
         other_user.setdefault('id', user_id)
@@ -6038,7 +6047,7 @@ def chat_with_user(user_id):
         except Exception:
             pass
         flash('Could not load this conversation right now. Please try again.', 'warning')
-        return redirect(url_for('messages'))
+        return redirect(url_for('index'))
     finally:
         try:
             conn.close()

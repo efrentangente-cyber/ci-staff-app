@@ -39,6 +39,7 @@
                         <th>Amount</th>
                         <th>Status</th>
                         <th>LPS</th>
+                        <th>CI / BI</th>
                         <th>Submitted</th>
                         <th></th>
                     </tr>
@@ -51,6 +52,7 @@
                         <td>{{ h.loan_amount_display }}</td>
                         <td><span class="badge bg-secondary">{{ h.status.replace('_', ' ').title() if h.status else '—' }}</span></td>
                         <td>{{ h.loan_staff_name }}</td>
+                        <td>{{ h.ci_staff_name }}</td>
                         <td>{{ h.submitted_at_display }}</td>
                         <td class="text-end">
                             {% if h.view_url %}

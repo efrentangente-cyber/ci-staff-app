@@ -126,10 +126,6 @@
                     <i class="bi bi-file-earmark-plus"></i> New Application
                 </a>
                 {% endif %}
-                <a href="{{ url_for('messages') }}" class="notification-badge">
-                    <i class="bi bi-messenger"></i> Messages
-                    <span class="badge bg-danger" id="message-count" {% if not message_unread_count or message_unread_count == 0 %}style="display:none;"{% endif %}>{{ message_unread_count if message_unread_count else '' }}</span>
-                </a>
                 {% if current_user.role in ['admin', 'loan_officer'] %}
                 <a href="{{ url_for('ci_tracking') }}">
                     <i class="bi bi-geo-alt"></i> CI Tracking
@@ -182,11 +178,6 @@
             <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
                 <i class="bi bi-house-door-fill"></i>
                 <span>Home</span>
-            </a>
-            <a href="{{ url_for('messages') }}" class="notification-badge">
-                <i class="bi bi-chat-dots-fill"></i>
-                <span>Messages</span>
-                <span class="badge bg-danger" id="message-count-mobile" {% if not message_unread_count or message_unread_count == 0 %}style="display:none;"{% endif %}>{{ message_unread_count if message_unread_count else '' }}</span>
             </a>
             {% if current_user.role in ['admin', 'loan_officer'] %}
             <a href="{{ url_for('ci_tracking') }}">
@@ -302,37 +293,6 @@
             }
         });
 
-        // Handle direct messages - INSTANT UPDATE
-        socket.on('new_direct_message', function(data) {
-            console.log('💬 New message received:', data);
-            
-            if (data.receiver_id == {{ current_user.id }}) {
-                // Update desktop badge
-                const badge = document.getElementById('message-count');
-                if (badge) {
-                    const current = parseInt(badge.textContent) || 0;
-                    badge.textContent = current + 1;
-                    badge.style.display = 'inline';
-                }
-                
-                // Update mobile bottom nav badge
-                const mobileBadge = document.getElementById('message-count-mobile');
-                if (mobileBadge) {
-                    const currentMobile = parseInt(mobileBadge.textContent) || 0;
-                    mobileBadge.textContent = currentMobile + 1;
-                    mobileBadge.style.display = 'inline';
-                }
-                
-                // Optional: Show browser notification
-                if (Notification.permission === 'granted') {
-                    new Notification('New Message from ' + data.sender_name, {
-                        body: data.message,
-                        icon: '/static/favicon.png'
-                    });
-                }
-            }
-        });
-        
         // Request notification permission on page load
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
@@ -345,7 +305,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             const registerServiceWorker = () => {
-                navigator.serviceWorker.register('/static/service-worker.js?v=11')
+                navigator.serviceWorker.register('/static/service-worker.js?v=12')
                     .then(reg => console.log('Service Worker registered'))
                     .catch(err => console.log('Service Worker registration failed'));
             };
