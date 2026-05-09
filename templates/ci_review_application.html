@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Review Application - {{ application.member_name }}{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='ci-doc-fullscreen-zoom.css') }}?v=1">
+{% endblock %}
+
 {% block content %}
 
 <div class="container-fluid">
@@ -91,10 +95,13 @@
                                 {% if doc.id and _is_img %}
                                 <!-- Image preview (authorized URL uses stored file_path) -->
                                 <img src="{{ url_for('view_loan_document', doc_id=doc.id) }}"
-                                     class="card-img-top"
+                                     class="card-img-top ci-lps-doc-thumb"
                                      style="height: 200px; object-fit: cover; cursor: pointer;"
-                                     onclick="openImageModal({{ url_for('view_loan_document', doc_id=doc.id)|tojson }}, {{ doc_display_name|tojson }})"
-                                     alt="{{ doc_display_name }}"
+                                     role="button"
+                                     tabindex="0"
+                                     data-ci-doc-url="{{ url_for('view_loan_document', doc_id=doc.id) }}"
+                                     data-ci-doc-title="{{ doc_display_name|e }}"
+                                     alt="{{ doc_display_name }} — tap for fullscreen"
                                      loading="lazy">
                                 {% else %}
                                 <!-- PDF / other -->
@@ -169,21 +176,6 @@
     </div>
 </div>
 
-<!-- Image Modal -->
-<div class="modal fade" id="imageModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="imageModalLabel">Document Preview</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body text-center">
-                <img id="modalImage" src="" class="img-fluid" style="max-height: 80vh;">
-            </div>
-        </div>
-    </div>
-</div>
-
 <style>
 .sticky-top {
     position: sticky;
@@ -198,14 +190,33 @@
 .card-img-top:hover {
     transform: scale(1.05);
 }
+.ci-lps-doc-thumb:focus {
+    outline: 2px solid var(--bs-primary, #0d6efd);
+    outline-offset: 2px;
+}
 </style>
 
+<script src="{{ url_for('static', filename='ci-doc-fullscreen-zoom.js') }}?v=1"></script>
 <script>
-// Open image in modal
-function openImageModal(imageUrl, imageName) {
-    document.getElementById('modalImage').src = imageUrl;
-    document.getElementById('imageModalLabel').textContent = imageName;
-    new bootstrap.Modal(document.getElementById('imageModal')).show();
-}
+document.addEventListener('DOMContentLoaded', function () {
+    function openThumb(url, title) {
+        if (typeof openCiDocFullscreenZoom === 'function') {
+            openCiDocFullscreenZoom(url, title || 'Document preview');
+        }
+    }
+    document.querySelectorAll('img.ci-lps-doc-thumb[data-ci-doc-url]').forEach(function (el) {
+        var url = el.getAttribute('data-ci-doc-url');
+        var tit = el.getAttribute('data-ci-doc-title') || '';
+        el.addEventListener('click', function () {
+            openThumb(url, tit);
+        });
+        el.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openThumb(url, tit);
+            }
+        });
+    });
+});
 </script>
 {% endblock %}

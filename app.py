@@ -713,44 +713,47 @@ def resolve_ci_route_key_for_member_address(member_address: str | None) -> str |
 
 
 def fetch_first_ci_staff_id_for_route_key(conn, route_key: str | None):
+    """
+    Pick ONE CI staff member who lists `route_key` in users.assigned_route (comma-separated tokens).
+    Uses exact token match (not SQL LIKE) so partial key collisions cannot assign the wrong person.
+    Tie-break: lowest current_workload, then lowest user id.
+    """
     rk = str(route_key or '').strip()
     if not rk:
         return None
-    like_params = (
-        f'%{rk}%,%',
-        f'%,{rk}%',
-        f'%,{rk},%',
-        rk,
-    )
     try:
-        row = conn.execute(
+        rows = conn.execute(
             '''
-            SELECT id FROM users
-            WHERE role=? AND is_approved=1
-            AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
-            LIMIT 1
+            SELECT id, assigned_route, COALESCE(current_workload, 0) AS wl
+            FROM users
+            WHERE role = ? AND is_approved = 1
+              AND assigned_route IS NOT NULL
+              AND TRIM(assigned_route) != ''
             ''',
-            ('ci_staff',) + like_params,
-        ).fetchone()
-        if row:
-            return row['id']
+            ('ci_staff',),
+        ).fetchall()
     except Exception as e:
         app.logger.debug('fetch_first_ci_staff_id_for_route_key: %s', e)
-        try:
-            row = conn.execute(
-                '''
-                SELECT id FROM users
-                WHERE role=? AND (assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route LIKE ? OR assigned_route = ?)
-                LIMIT 1
-                ''',
-                ('ci_staff',) + like_params,
-            ).fetchone()
-            if row:
-                return row['id']
-        except Exception:
-            pass
         return None
-    return None
+
+    candidates = []
+    for r in rows or []:
+        keys = _assigned_route_keys_set(r['assigned_route'])
+        if rk in keys:
+            try:
+                wid = int(r['wl'] or 0)
+            except (TypeError, ValueError):
+                wid = 0
+            try:
+                uid = int(r['id'])
+            except (TypeError, ValueError):
+                continue
+            candidates.append((wid, uid))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda t: (t[0], t[1]))
+    return candidates[0][1]
 
 
 def ensure_ci_coverage_routes_table():
@@ -3922,7 +3925,7 @@ def loan_dashboard():
     # Oldest first so new submissions appear at the bottom (full list per LPS — no LIMIT).
     applications = conn.execute('''
         SELECT la.id, la.status, la.member_name, la.loan_amount, la.loan_type,
-               la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
+               la.submitted_at, la.ci_completed_at, la.needs_ci_interview, la.assigned_ci_staff,
                u.name as ci_staff_name
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id
@@ -3947,6 +3950,128 @@ def loan_dashboard():
 
     return render_template('loan_dashboard.html', applications=applications,
                            unread_count=unread_count, ci_staff_list=ci_staff_list)
+
+
+@app.route('/loan/member')
+@login_required
+def loan_member_history():
+    """Member-centric view: all applications matching stored name (case-insensitive)."""
+    if current_user.role not in ('loan_staff', 'admin', 'loan_officer', 'ci_staff'):
+        flash('Unauthorized', 'danger')
+        return redirect(url_for('index'))
+
+    def _dashboard_redirect():
+        if current_user.role == 'loan_staff':
+            return redirect(url_for('loan_dashboard'))
+        if current_user.role == 'ci_staff':
+            return redirect(url_for('ci_dashboard'))
+        return redirect(url_for('admin_dashboard'))
+
+    name_q = (request.args.get('name') or '').strip()
+    if len(name_q) < 2:
+        flash('Enter a member name to view loan history.', 'warning')
+        return _dashboard_redirect()
+
+    conn = get_db()
+    rows = []
+    try:
+        rows = conn.execute(
+            '''
+            SELECT la.id, la.member_name, la.member_contact, la.member_address,
+                   la.loan_type, la.loan_amount, la.status, la.submitted_at,
+                   la.submitted_by, la.assigned_ci_staff,
+                   u.name AS loan_staff_name
+            FROM loan_applications la
+            LEFT JOIN users u ON la.submitted_by = u.id
+            WHERE LOWER(TRIM(COALESCE(la.member_name, ''))) = LOWER(TRIM(?))
+            ORDER BY la.submitted_at DESC, la.id DESC
+            ''',
+            (name_q,),
+        ).fetchall()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    if not rows:
+        flash('No loan records found for that name.', 'info')
+        return _dashboard_redirect()
+
+    role = current_user.role
+    uid = current_user.id
+    latest = dict(rows[0])
+    display_name = (latest.get('member_name') or name_q).strip()
+    member_contact = (latest.get('member_contact') or '').strip()
+    member_address = (latest.get('member_address') or '').strip()
+
+    history = []
+    for row in rows:
+        r = dict(row)
+        submitted_at = r.get('submitted_at')
+        if hasattr(submitted_at, 'strftime'):
+            submitted_disp = submitted_at.strftime('%d/%m/%Y %H:%M')
+        else:
+            submitted_disp = str(submitted_at) if submitted_at is not None else ''
+
+        view_url = None
+        try:
+            sb = int(r['submitted_by']) if r.get('submitted_by') is not None else None
+        except (TypeError, ValueError):
+            sb = None
+        try:
+            ac = int(r['assigned_ci_staff']) if r.get('assigned_ci_staff') is not None else None
+        except (TypeError, ValueError):
+            ac = None
+
+        if role == 'loan_staff' and sb == uid:
+            view_url = url_for('loan_application', id=r['id'])
+        elif role in ('admin', 'loan_officer'):
+            view_url = url_for('admin_application', id=r['id'])
+        elif role == 'ci_staff' and ac == uid:
+            st = (r.get('status') or '').strip()
+            if st == 'ci_completed':
+                view_url = url_for('ci_application', id=r['id'])
+            elif st == 'assigned_to_ci':
+                view_url = url_for('ci_review_application', id=r['id'])
+
+        raw_la = r.get('loan_amount')
+        try:
+            la_num = float(raw_la) if raw_la is not None and raw_la != '' else None
+        except (TypeError, ValueError):
+            la_num = None
+        loan_amount_display = f'₱{la_num:,.2f}' if la_num is not None else '—'
+
+        history.append(
+            {
+                'id': r['id'],
+                'loan_type': (r.get('loan_type') or '').strip(),
+                'loan_amount': r.get('loan_amount'),
+                'loan_amount_display': loan_amount_display,
+                'status': (r.get('status') or '').strip(),
+                'submitted_at_display': submitted_disp,
+                'loan_staff_name': (r.get('loan_staff_name') or '').strip() or '—',
+                'view_url': view_url,
+            }
+        )
+
+    if role == 'loan_staff':
+        back_url = url_for('loan_dashboard')
+    elif role == 'ci_staff':
+        back_url = url_for('ci_dashboard')
+    else:
+        back_url = url_for('admin_dashboard')
+
+    return render_template(
+        'member_loan_history.html',
+        display_name=display_name,
+        member_contact=member_contact,
+        member_address=member_address,
+        history=history,
+        searched_as=name_q,
+        back_url=back_url,
+    )
+
 
 @app.route('/api/session_status', methods=['GET'])
 def api_session_status():
@@ -4189,7 +4314,9 @@ def submit_application():
                                 conn, app_id, filepath, filename, current_user.id
                             )
 
-                # Assign to CI staff
+                # Assign to CI staff — route match only (no random workload fallback);
+                # only staff who have the resolved route_key in assigned_route receive the app.
+                ci_staff_id = None
                 if needs_ci:
                     if specific_ci_id:
                         # Assign to specific approved CI staff when explicitly selected.
@@ -4213,36 +4340,9 @@ def submit_application():
                             ).fetchone()
                         ci_staff_id = selected_ci['id'] if selected_ci else None
                     else:
-                        # ROUTE-BASED ASSIGNMENT: Match applicant address to CI route coverage
-                        ci_staff_id = None
                         matched_route = resolve_ci_route_key_for_member_address(member_address)
-
                         if matched_route:
                             ci_staff_id = fetch_first_ci_staff_id_for_route_key(conn, matched_route)
-                        # Fallback to workload-based if no route match
-                        if not ci_staff_id:
-                            try:
-                                ci_staff = conn.execute('''
-                                    SELECT id FROM users
-                                    WHERE role='ci_staff' AND is_approved=1
-                                    ORDER BY current_workload ASC
-                                    LIMIT 1
-                                ''').fetchone()
-                            except Exception:
-                                try:
-                                    ci_staff = conn.execute('''
-                                        SELECT id FROM users
-                                        WHERE role='ci_staff'
-                                        ORDER BY current_workload ASC
-                                        LIMIT 1
-                                    ''').fetchone()
-                                except Exception:
-                                    ci_staff = conn.execute('''
-                                        SELECT id FROM users
-                                        WHERE role='ci_staff'
-                                        LIMIT 1
-                                    ''').fetchone()
-                            ci_staff_id = ci_staff['id'] if ci_staff else None
 
                     if ci_staff_id:
                         conn.execute('UPDATE loan_applications SET status=?, assigned_ci_staff=? WHERE id=?',
@@ -4287,13 +4387,22 @@ def submit_application():
                             f'/admin/application/{app_id}'
                         )
 
-                flash('Application submitted successfully!', 'success')
+                flash(
+                    (
+                        'Application submitted. No CI/BI was auto-assigned: the address did not match a '
+                        'coverage route, or no CI staff member has that route in Manage Users. '
+                        'Assign a CI manually from Loan Applications or update coverage routes.'
+                    )
+                    if needs_ci and not ci_staff_id
+                    else 'Application submitted successfully!',
+                    'warning' if needs_ci and not ci_staff_id else 'success',
+                )
 
                 # Emit WebSocket event for instant dashboard update
                 socketio.emit('new_application', {
                     'id': app_id,
                     'member_name': member_name,
-                    'status': 'assigned_to_ci' if needs_ci else 'submitted',
+                    'status': 'assigned_to_ci' if (needs_ci and ci_staff_id) else 'submitted',
                     'submitted_by': int(current_user.id),
                 })
 
@@ -4373,7 +4482,7 @@ def api_member_application_prefill():
             la_out = None
         related_rows = conn.execute(
             '''
-            SELECT loan_type, loan_amount, status, member_contact, member_address, submitted_at
+            SELECT id, loan_type, loan_amount, status, member_contact, member_address, submitted_at
             FROM loan_applications
             WHERE LOWER(TRIM(COALESCE(member_name, ''))) = LOWER(TRIM(?))
             ORDER BY id DESC
@@ -4393,14 +4502,20 @@ def api_member_application_prefill():
             status = (r.get('status') or '').strip()
             if status in ('submitted', 'assigned_to_ci', 'ci_completed', 'deferred'):
                 active_count += 1
+            sub_at = r.get('submitted_at')
+            if sub_at is not None and hasattr(sub_at, 'isoformat'):
+                sub_at = sub_at.isoformat()
+            elif sub_at is not None:
+                sub_at = str(sub_at)
             applications.append(
                 {
+                    'id': r.get('id'),
                     'loan_type': (r.get('loan_type') or '').strip(),
                     'loan_amount': amt,
                     'status': status,
                     'member_contact': (r.get('member_contact') or '').strip(),
                     'member_address': (r.get('member_address') or '').strip(),
-                    'submitted_at': r.get('submitted_at'),
+                    'submitted_at': sub_at,
                 }
             )
         return jsonify(
@@ -5635,54 +5750,71 @@ def loan_application(id):
                             conn, id, filepath, filename, current_user.id
                         )
             
-            # Update CI staff assignment if changed
+            # Update CI staff assignment — route match only (same as new submit); no workload fallback.
             old_ci_staff = app_data['assigned_ci_staff']
             new_ci_staff_id = None
-            
+            unassign_reason_flash = None
+
             if needs_ci:
                 if specific_ci_id:
-                    new_ci_staff_id = specific_ci_id
-                else:
-                    # Route-based assignment (same resolver as LPS submit_application)
-                    if member_address:
-                        matched_route = resolve_ci_route_key_for_member_address(member_address)
-                        if matched_route:
-                            new_ci_staff_id = fetch_first_ci_staff_id_for_route_key(conn, matched_route)
-
-                    # Fallback to workload-based
-                    if not new_ci_staff_id:
-                        ci_staff = conn.execute('''
-                            SELECT id FROM users 
-                            WHERE role='ci_staff' AND is_approved=1
-                            ORDER BY current_workload ASC 
+                    try:
+                        selected_ci = conn.execute(
+                            '''
+                            SELECT id FROM users
+                            WHERE id = ? AND role = 'ci_staff' AND is_approved = 1
                             LIMIT 1
-                        ''').fetchone()
-                        new_ci_staff_id = ci_staff['id'] if ci_staff else None
-                
-                # Update CI staff assignment if changed
-                if new_ci_staff_id and new_ci_staff_id != old_ci_staff:
-                    # Decrease old CI staff workload
+                            ''',
+                            (specific_ci_id,),
+                        ).fetchone()
+                    except Exception:
+                        selected_ci = None
+                    new_ci_staff_id = selected_ci['id'] if selected_ci else None
+                if not new_ci_staff_id and member_address:
+                    matched_route = resolve_ci_route_key_for_member_address(member_address)
+                    if matched_route:
+                        new_ci_staff_id = fetch_first_ci_staff_id_for_route_key(conn, matched_route)
+
+                if new_ci_staff_id != old_ci_staff:
                     if old_ci_staff:
-                        conn.execute('UPDATE users SET current_workload = current_workload - 1 WHERE id=?', (old_ci_staff,))
-                    
-                    # Increase new CI staff workload
-                    conn.execute('UPDATE users SET current_workload = current_workload + 1 WHERE id=?', (new_ci_staff_id,))
-                    
-                    # Update assignment
-                    conn.execute('UPDATE loan_applications SET assigned_ci_staff=?, status=? WHERE id=?',
-                               (new_ci_staff_id, 'assigned_to_ci', id))
-                    
-                    # Notify new CI staff
-                    enqueue_notification(
-                        new_ci_staff_id,
-                        f'Loan application reassigned to you: {member_name}',
-                        f'/ci/application/{id}'
-                    )
-            
+                        conn.execute(
+                            'UPDATE users SET current_workload = current_workload - 1 WHERE id=?',
+                            (old_ci_staff,),
+                        )
+                    if new_ci_staff_id:
+                        conn.execute(
+                            'UPDATE users SET current_workload = current_workload + 1 WHERE id=?',
+                            (new_ci_staff_id,),
+                        )
+                        conn.execute(
+                            'UPDATE loan_applications SET assigned_ci_staff=?, status=? WHERE id=?',
+                            (new_ci_staff_id, 'assigned_to_ci', id),
+                        )
+                        enqueue_notification(
+                            new_ci_staff_id,
+                            (
+                                f'Loan application reassigned to you: {member_name}'
+                                if old_ci_staff
+                                else f'Loan application assigned to you: {member_name}'
+                            ),
+                            f'/ci/application/{id}',
+                        )
+                    else:
+                        conn.execute(
+                            'UPDATE loan_applications SET assigned_ci_staff=NULL, status=? WHERE id=?',
+                            ('submitted', id),
+                        )
+                        unassign_reason_flash = (
+                            'No CI/BI auto-assign: address did not match a route or no staff has that route. '
+                            'Application is back in the submitted queue—assign a CI manually if needed.'
+                        )
+
             conn.commit()
             conn.close()
-            
-            flash('Application updated successfully!', 'success')
+
+            if unassign_reason_flash:
+                flash(unassign_reason_flash, 'warning')
+            else:
+                flash('Application updated successfully!', 'success')
             try:
                 _lps = app_data['submitted_by'] if app_data else None
                 _lps = int(_lps) if _lps is not None else None
@@ -9248,7 +9380,7 @@ def api_loan_applications():
     conn = get_db()
     applications = conn.execute('''
         SELECT la.id, la.status, la.member_name, la.loan_amount, la.loan_type,
-               la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
+               la.submitted_at, la.ci_completed_at, la.needs_ci_interview, la.assigned_ci_staff,
                u.name as ci_staff_name
         FROM loan_applications la
         LEFT JOIN users u ON la.assigned_ci_staff = u.id

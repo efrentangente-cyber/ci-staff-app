@@ -55,7 +55,14 @@
             <i class="bi bi-clock"></i>
         </div>
         <h3>{{ applications|selectattr('status', 'in', ['submitted', 'assigned_to_ci'])|list|length }}</h3>
-        <p>Pending</p>
+        <p>CI in progress</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon yellow">
+            <i class="bi bi-clipboard-check"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }}</h3>
+        <p>CI done — for review</p>
     </div>
     <div class="stat-card">
         <div class="stat-card-icon blue">
@@ -64,19 +71,12 @@
         <h3>{{ applications|selectattr('status', 'equalto', 'approved')|list|length }}</h3>
         <p>Approved</p>
     </div>
-    <div class="stat-card">
-        <div class="stat-card-icon yellow">
-            <i class="bi bi-star-fill"></i>
-        </div>
-        <h3>{{ "%.1f"|format((applications|selectattr('status', 'equalto', 'approved')|list|length / applications|length * 10) if applications|length > 0 else 0) }}</h3>
-        <p>Success Rating</p>
-    </div>
 </div>
 
 <div class="content-card mb-3">
     <div class="content-card-header">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Pending Applications</h5>
+            <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Applications — CI in progress</h5>
             <div class="d-flex align-items-center gap-2">
                 <div class="search-container">
                     <div class="search-input-wrapper" id="searchWrapperPending">
@@ -87,7 +87,7 @@
                         </button>
                     </div>
                 </div>
-                <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'in', ['submitted', 'assigned_to_ci', 'ci_completed'])|list|length }} Pending</span>
+                <span class="badge bg-warning" id="pendingCount">{{ applications|selectattr('status', 'in', ['submitted', 'assigned_to_ci'])|list|length }} In progress</span>
             </div>
         </div>
     </div>
@@ -106,14 +106,12 @@
                 </thead>
                 <tbody id="pendingTableBody">
                     {% for app in applications %}
-                    {% if app.status in ['submitted', 'assigned_to_ci', 'ci_completed'] %}
+                    {% if app.status in ['submitted', 'assigned_to_ci'] %}
                     <tr>
-                        <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                        <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
                         <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                         <td>
-                            {% if app.status == 'ci_completed' %}
-                            <span class="badge bg-info">CI Completed</span>
-                            {% elif app.status == 'assigned_to_ci' %}
+                            {% if app.status == 'assigned_to_ci' %}
                             <span class="badge bg-warning">Assigned to CI</span>
                             {% elif app.status == 'submitted' %}
                             <span class="badge bg-secondary">Submitted</span>
@@ -139,6 +137,76 @@
                 </tbody>
             </table>
             <div id="pendingNoResults" class="text-center text-muted py-4" style="display: none;">
+                <i class="bi bi-search" style="font-size: 48px;"></i>
+                <p class="mt-2">No records found</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="content-card mb-3">
+    <div class="content-card-header">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+                <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> Completed interviews (for review)</h5>
+                <small class="text-muted">CI/BI finished this investigation; awaiting loan officer / admin decision.</small>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <div class="search-container">
+                    <div class="search-input-wrapper" id="searchWrapperCiCompleted">
+                        <i class="bi bi-search search-icon"></i>
+                        <input type="text" id="searchInputCiCompleted" placeholder="Filter table: name, ID, or any column" onkeyup="searchApplications('ciCompleted')" oninput="toggleClearButton('ciCompleted')">
+                        <button type="button" class="clear-search" aria-label="Clear search" onclick="clearSearch('ciCompleted')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <span class="badge bg-info" id="ciCompletedCount">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }} For review</span>
+            </div>
+        </div>
+    </div>
+    <div class="content-card-body">
+        <div class="table-responsive table-scroll-5">
+            <table class="table table-hover" id="ciCompletedTable">
+                <thead>
+                    <tr>
+                        <th>Member Name</th>
+                        <th>Loan Amount</th>
+                        <th>Status</th>
+                        <th>CI/BI</th>
+                        <th>Submitted</th>
+                        <th>Interview done</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="ciCompletedTableBody">
+                    {% for app in applications %}
+                    {% if app.status == 'ci_completed' %}
+                    <tr>
+                        <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
+                        <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
+                        <td><span class="badge bg-info">Awaiting decision</span></td>
+                        <td>
+                            {% if app.assigned_ci_staff %}
+                            <span class="badge bg-primary">{{ app.ci_staff_name }}</span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="date-display">{{ app.submitted_at|fmt_datetime('%d/%m/%Y') }}</span></td>
+                        <td><span class="date-display">{{ app.ci_completed_at|fmt_datetime('%d/%m/%Y') if app.ci_completed_at else '—' }}</span></td>
+                        <td>
+                            <a href="{{ url_for('loan_application', id=app.id) }}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-eye"></i>
+                                <span class="d-none d-md-inline">View</span>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div id="ciCompletedNoResults" class="text-center text-muted py-4" style="display: none;">
                 <i class="bi bi-search" style="font-size: 48px;"></i>
                 <p class="mt-2">No records found</p>
             </div>
@@ -186,7 +254,7 @@
                     {% for app in applications %}
                     {% if app.status in ['approved', 'rejected'] %}
                     <tr>
-                        <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                        <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
                         <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                         <td>
                             {% if app.status == 'approved' %}
@@ -223,26 +291,56 @@
 </div>
 
 <script>
-// Search applications - v2.0
+function loanDashTableDom(tableType) {
+    if (tableType === 'pending') {
+        return {
+            input: 'searchInputPending',
+            wrapper: 'searchWrapperPending',
+            tbody: 'pendingTableBody',
+            noResults: 'pendingNoResults',
+            count: 'pendingCount',
+            emptyBadgeLabel: 'In progress'
+        };
+    }
+    if (tableType === 'ciCompleted') {
+        return {
+            input: 'searchInputCiCompleted',
+            wrapper: 'searchWrapperCiCompleted',
+            tbody: 'ciCompletedTableBody',
+            noResults: 'ciCompletedNoResults',
+            count: 'ciCompletedCount',
+            emptyBadgeLabel: 'For review'
+        };
+    }
+    return {
+        input: 'searchInputProcessed',
+        wrapper: 'searchWrapperProcessed',
+        tbody: 'processedTableBody',
+        noResults: 'processedNoResults',
+        count: 'processedCount',
+        emptyBadgeLabel: 'Processed'
+    };
+}
+
 function searchApplications(tableType) {
-    const searchInput = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
+    const dom = loanDashTableDom(tableType);
+    const searchInput = document.getElementById(dom.input);
     const searchValue = searchInput ? searchInput.value.toLowerCase().trim() : '';
-    
-    const tbody = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}TableBody`);
-    const noResults = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}NoResults`);
-    
+
+    const tbody = document.getElementById(dom.tbody);
+    const noResults = document.getElementById(dom.noResults);
+
     if (!tbody) {
         return;
     }
-    
+
     const rows = tbody.getElementsByTagName('tr');
     let visibleCount = 0;
-    
+
     for (let i = 0; i < rows.length; i++) {
         const cells = rows[i].getElementsByTagName('td');
         let found = false;
-        
-        // Search through all cells
+
         for (let j = 0; j < cells.length; j++) {
             const cellText = cells[j].textContent.toLowerCase();
             if (cellText.includes(searchValue)) {
@@ -250,7 +348,7 @@ function searchApplications(tableType) {
                 break;
             }
         }
-        
+
         if (found || searchValue === '') {
             rows[i].style.display = '';
             visibleCount++;
@@ -258,8 +356,7 @@ function searchApplications(tableType) {
             rows[i].style.display = 'none';
         }
     }
-    
-    // Show/hide "No results" message
+
     if (noResults) {
         if (visibleCount === 0 && searchValue !== '') {
             noResults.style.display = 'block';
@@ -267,12 +364,11 @@ function searchApplications(tableType) {
             noResults.style.display = 'none';
         }
     }
-    
-    // Update count badge
-    const countBadge = document.getElementById(`${tableType === 'pending' ? 'pending' : 'processed'}Count`);
+
+    const countBadge = document.getElementById(dom.count);
     if (countBadge) {
         if (searchValue === '') {
-            countBadge.textContent = `${visibleCount} ${tableType === 'pending' ? 'Pending' : 'Processed'}`;
+            countBadge.textContent = `${visibleCount} ${dom.emptyBadgeLabel}`;
         } else {
             countBadge.textContent = `${visibleCount} Found`;
         }
@@ -309,9 +405,12 @@ function filterProcessed() {
 
 // Toggle clear button visibility
 function toggleClearButton(tableType) {
-    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
-    const wrapper = document.getElementById(`searchWrapper${tableType === 'pending' ? 'Pending' : 'Processed'}`);
-    
+    const dom = loanDashTableDom(tableType);
+    const input = document.getElementById(dom.input);
+    const wrapper = document.getElementById(dom.wrapper);
+
+    if (!input || !wrapper) return;
+
     if (input.value.length > 0) {
         wrapper.classList.add('has-value');
     } else {
@@ -319,9 +418,10 @@ function toggleClearButton(tableType) {
     }
 }
 
-// Clear search input
 function clearSearch(tableType) {
-    const input = document.getElementById(`searchInput${tableType === 'pending' ? 'Pending' : 'Processed'}`);
+    const dom = loanDashTableDom(tableType);
+    const input = document.getElementById(dom.input);
+    if (!input) return;
     input.value = '';
     toggleClearButton(tableType);
     searchApplications(tableType);
@@ -401,6 +501,7 @@ function clearSearch(tableType) {
 
 {% endblock %}
 {% block scripts %}
+<script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
 <script>window.__LPS_USER_ID = {{ current_user.id | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=2" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=4" defer></script>
 {% endblock %}

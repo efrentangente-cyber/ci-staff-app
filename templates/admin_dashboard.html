@@ -145,7 +145,7 @@
                             {% for app in applications %}
                             {% if app.status == 'ci_completed' or (app.needs_ci_interview == 0 and app.status == 'submitted') %}
                             <tr>
-                                <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                                <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                                 <td>
                                     <span class="badge bg-warning">
@@ -214,7 +214,7 @@
                             {% for app in applications %}
                             {% if app.status in ['approved', 'disapproved', 'deferred'] %}
                             <tr>
-                                <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                                <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                                 <td>
                                     <span class="badge bg-{% if app.status == 'approved' %}success{% elif app.status == 'deferred' %}warning{% else %}danger{% endif %}">
@@ -279,7 +279,7 @@
                         <tbody>
                             {% for app in in_process_applications %}
                             <tr>
-                                <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                                <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                                 <td>
                                     <span class="badge bg-{% if app.status == 'submitted' %}secondary{% else %}info{% endif %}">
@@ -732,5 +732,6 @@ document.getElementById('reassignForm')?.addEventListener('submit', function(e) 
 </script>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=2" defer></script>
+<script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=4" defer></script>
 {% endblock %}

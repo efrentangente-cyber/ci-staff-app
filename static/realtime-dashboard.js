@@ -13,6 +13,11 @@ function escapeHtml(s) {
     return div.innerHTML;
 }
 
+function memberHistoryHref(memberName) {
+    const base = typeof window.__MEMBER_HISTORY_URL === 'string' ? window.__MEMBER_HISTORY_URL : '/loan/member';
+    return base + '?name=' + encodeURIComponent(memberName || '');
+}
+
 function formatSubmittedSlash(val) {
     if (!val) return '';
     const d = val instanceof Date ? val : new Date(val);
@@ -252,18 +257,11 @@ function fetchJsonArray(url, onOk) {
 
 function renderLoanDashboardTables(applications) {
     const pendingBody = document.getElementById('pendingTableBody');
+    const ciCompletedBody = document.getElementById('ciCompletedTableBody');
     const processedBody = document.getElementById('processedTableBody');
     if (!pendingBody || !processedBody) return;
 
-    const PENDING_STATUSES = ['submitted', 'assigned_to_ci', 'ci_completed'];
-    const pendingApps = applications.filter(function (a) {
-        return PENDING_STATUSES.indexOf(a.status) >= 0;
-    });
-
-    function statusCellHtml(app) {
-        if (app.status === 'ci_completed') {
-            return '<span class="badge bg-info">CI Completed</span>';
-        }
+    function pipelineStatusHtml(app) {
         if (app.status === 'assigned_to_ci') {
             return '<span class="badge bg-warning">Assigned to CI</span>';
         }
@@ -277,13 +275,17 @@ function renderLoanDashboardTables(applications) {
         return '<span class="text-muted">Not Assigned</span>';
     }
 
+    const pipelineApps = applications.filter(function (a) {
+        return a.status === 'submitted' || a.status === 'assigned_to_ci';
+    });
+
     pendingBody.innerHTML = '';
-    pendingApps.forEach(function (app) {
+    pipelineApps.forEach(function (app) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name || '')}</td>
+            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
-            <td>${statusCellHtml(app)}</td>
+            <td>${pipelineStatusHtml(app)}</td>
             <td>${ciCellHtml(app)}</td>
             <td><span class="date-display">${escapeHtml(formatSubmittedSlash(app.submitted_at))}</span></td>
             <td>
@@ -295,6 +297,33 @@ function renderLoanDashboardTables(applications) {
         `;
         pendingBody.appendChild(tr);
     });
+
+    const ciCompletedApps = applications.filter(function (a) {
+        return a.status === 'ci_completed';
+    });
+
+    if (ciCompletedBody) {
+        ciCompletedBody.innerHTML = '';
+        ciCompletedApps.forEach(function (app) {
+            const tr = document.createElement('tr');
+            const doneStr = formatSubmittedSlash(app.ci_completed_at || app.ci_completedAt || '');
+            tr.innerHTML = `
+            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
+            <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
+            <td><span class="badge bg-info">Awaiting decision</span></td>
+            <td>${ciCellHtml(app)}</td>
+            <td><span class="date-display">${escapeHtml(formatSubmittedSlash(app.submitted_at))}</span></td>
+            <td><span class="date-display">${escapeHtml(doneStr || '—')}</span></td>
+            <td>
+                <a href="/loan/application/${app.id}" class="btn btn-sm btn-primary">
+                    <i class="bi bi-eye"></i>
+                    <span class="d-none d-md-inline">View</span>
+                </a>
+            </td>
+        `;
+            ciCompletedBody.appendChild(tr);
+        });
+    }
 
     function isProcessedStatus(st) {
         return st === 'approved' || st === 'rejected' || st === 'disapproved';
@@ -313,7 +342,7 @@ function renderLoanDashboardTables(applications) {
             badge = '<span class="badge bg-danger">Rejected</span>';
         }
         tr.innerHTML = `
-            <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name || '')}</td>
+            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
             <td>${badge}</td>
             <td>${ciCellHtml(app)}</td>
@@ -328,27 +357,25 @@ function renderLoanDashboardTables(applications) {
         processedBody.appendChild(tr);
     });
 
-    const pendingForStat = applications.filter(function (a) {
-        return a.status === 'submitted' || a.status === 'assigned_to_ci';
-    }).length;
+    const pipelineStatCount = pipelineApps.length;
+    const ciReviewStatCount = ciCompletedApps.length;
     const approvedCount = applications.filter(function (a) { return a.status === 'approved'; }).length;
     const totalStat = document.querySelector('.stat-card.blue h3');
     if (totalStat) totalStat.textContent = applications.length;
-    const pendingStatCard = document.querySelectorAll('.stat-card')[1]?.querySelector('h3');
-    if (pendingStatCard) pendingStatCard.textContent = pendingForStat;
-    const approvedStat = document.querySelectorAll('.stat-card')[2]?.querySelector('h3');
+    const pipelineStatCard = document.querySelectorAll('.stat-card')[1]?.querySelector('h3');
+    if (pipelineStatCard) pipelineStatCard.textContent = pipelineStatCount;
+    const ciReviewStatCard = document.querySelectorAll('.stat-card')[2]?.querySelector('h3');
+    if (ciReviewStatCard) ciReviewStatCard.textContent = ciReviewStatCount;
+    const approvedStat = document.querySelectorAll('.stat-card')[3]?.querySelector('h3');
     if (approvedStat) approvedStat.textContent = approvedCount;
-    const successStat = document.querySelectorAll('.stat-card')[3]?.querySelector('h3');
-    if (successStat) {
-        const rate = applications.length > 0 ? (approvedCount / applications.length * 10) : 0;
-        successStat.textContent = rate.toFixed(1);
-    }
 
     const pc = document.getElementById('pendingCount');
     if (pc) {
-        pc.textContent = applications.filter(function (a) {
-            return PENDING_STATUSES.indexOf(a.status) >= 0;
-        }).length + ' Pending';
+        pc.textContent = pipelineStatCount + ' In progress';
+    }
+    const cic = document.getElementById('ciCompletedCount');
+    if (cic) {
+        cic.textContent = ciReviewStatCount + ' For review';
     }
     const prc = document.getElementById('processedCount');
     if (prc) {
@@ -358,6 +385,7 @@ function renderLoanDashboardTables(applications) {
     try {
         if (typeof searchApplications === 'function') {
             searchApplications('pending');
+            searchApplications('ciCompleted');
             searchApplications('processed');
         }
     } catch (e) { /* ignore */ }
@@ -378,7 +406,7 @@ function renderCiDashboardTables(applications) {
     pendingApps.forEach(function (app) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name || '')}</td>
+            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
             <td>${escapeHtml(app.member_address || '')}</td>
             <td>
@@ -398,7 +426,7 @@ function renderCiDashboardTables(applications) {
     completedApps.forEach(function (app) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name || '')}</td>
+            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
             <td>${escapeHtml(app.member_address || '')}</td>
             <td>
@@ -426,7 +454,7 @@ function renderCiDashboardTables(applications) {
     const pBadge = document.getElementById('pendingCount');
     if (pBadge) pBadge.textContent = pendingApps.length + ' Pending';
     const cBadge = document.getElementById('completedCount');
-    if (cBadge) cBadge.textContent = completedApps.length + ' Completed';
+    if (cBadge) cBadge.textContent = completedApps.length + ' For review';
 
     try {
         if (typeof searchApplications === 'function') {
@@ -468,7 +496,7 @@ function renderAdminDashboardTables(applications, inProcess) {
     forReview.forEach(function (app) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name || '')}</td>
+            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
             <td>${reviewStatusBadge(app)}</td>
             <td>${escapeHtml(app.loan_staff_name || '')}</td>
@@ -491,7 +519,7 @@ function renderAdminDashboardTables(applications, inProcess) {
         else if (app.status === 'deferred') badgeClass = 'warning';
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name || '')}</td>
+            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
             <td>
                 <span class="badge bg-${badgeClass}">
@@ -517,7 +545,7 @@ function renderAdminDashboardTables(applications, inProcess) {
         const badgeClass = app.status === 'submitted' ? 'secondary' : 'info';
         const ciArg = app.assigned_ci_staff != null ? app.assigned_ci_staff : null;
         tr.innerHTML = `
-            <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name || '')}</td>
+            <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
             <td>
                 <span class="badge bg-${badgeClass}">
@@ -602,7 +630,7 @@ function updateApplicationsTable(applications) {
 
         if (currentDashboard === 'admin') {
             row.innerHTML = `
-                <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name)}</td>
+                <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name)}</a></td>
                 <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
                 <td>
                     <span class="badge bg-${badgeClass}">
@@ -621,7 +649,7 @@ function updateApplicationsTable(applications) {
             `;
         } else if (currentDashboard === 'loan') {
             row.innerHTML = `
-                <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name)}</td>
+                <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name)}</a></td>
                 <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
                 <td>
                     <span class="badge bg-${badgeClass}">
@@ -648,7 +676,7 @@ function updateApplicationsTable(applications) {
                    </a>`;
 
             row.innerHTML = `
-                <td><strong>#${app.id}</strong> ${escapeHtml(app.member_name)}</td>
+                <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name)}</a></td>
                 <td>${escapeHtml(date)}</td>
                 <td>${escapeHtml(app.member_address || 'N/A')}</td>
                 <td>${actionButton}</td>

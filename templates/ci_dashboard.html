@@ -124,7 +124,7 @@
                     {% for app in applications %}
                     {% if app.status == 'assigned_to_ci' %}
                     <tr>
-                        <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                        <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
                         <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                         <td>{{ app.member_address }}</td>
                         <td>
@@ -148,7 +148,10 @@
 <div class="content-card">
     <div class="content-card-header">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <h5 class="mb-0"><i class="bi bi-check-circle"></i> Completed Interviews</h5>
+            <div>
+                <h5 class="mb-0"><i class="bi bi-check-circle"></i> Completed interviews (for review)</h5>
+                <p class="text-muted small mb-0 mt-1">Your finished investigations appear here (loan officer / admin reviews next).</p>
+            </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <div class="search-container">
                     <div class="search-input-wrapper" id="searchWrapperCompleted">
@@ -159,7 +162,7 @@
                         </button>
                     </div>
                 </div>
-                <span class="badge bg-success" id="completedCount">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }} Completed</span>
+                <span class="badge bg-success" id="completedCount">{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }} For review</span>
             </div>
         </div>
     </div>
@@ -178,7 +181,7 @@
                     {% for app in applications %}
                     {% if app.status == 'ci_completed' %}
                     <tr>
-                        <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                        <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
                         <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                         <td>{{ app.member_address }}</td>
                         <td>
@@ -223,7 +226,7 @@ function searchApplications(tableType) {
     }
     const countBadge = document.getElementById(`${tableType === 'pending' ? 'pending' : 'completed'}Count`);
     if (countBadge) {
-        countBadge.textContent = `${visibleCount} ${q ? 'Found' : (tableType === 'pending' ? 'Pending' : 'Completed')}`;
+        countBadge.textContent = `${visibleCount} ${q ? 'Found' : (tableType === 'pending' ? 'Pending' : 'For review')}`;
     }
 }
 
@@ -346,6 +349,7 @@ function clearSearch(tableType) {
 </style>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=2" defer></script>
+<script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=4" defer></script>
 <script src="{{ url_for('static', filename='ci-dashboard-offline.js') }}?v=3-offline-download-sync" defer></script>
 {% endblock %}

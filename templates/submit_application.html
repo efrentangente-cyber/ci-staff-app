@@ -63,8 +63,11 @@
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Member Name *</label>
                     <input type="text" name="member_name" id="member_name" class="form-control" required autocomplete="name">
-                    <small class="text-muted">Members already on file: type the full name <strong>exactly</strong> as stored; if it matches a prior application, one option appears to tap so contact and address load (you may edit). While the name is incomplete or new, no name list is shown. Phone and address fields do not search the member database.</small>
+                    <small class="text-muted">Members already on file: type the full name <strong>exactly</strong> as stored (spacing/casing may differ). When it matches, leaving the name field syncs contact and address from the latest record (you may edit). Past loans appear in the list below—select one only if you want to copy its loan type and amount; otherwise enter a new loan type and amount for this application.</small>
                     <div id="existingLoanNotice" class="alert alert-warning py-2 mt-2 mb-0 small" style="display:none;"></div>
+                    <div id="memberHistoryLinkWrap" class="small mt-2" style="display:none;">
+                        <a href="#" id="memberHistoryLink" target="_blank" rel="noopener">Open full loan history for this member</a>
+                    </div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Contact Number</label>
@@ -168,6 +171,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 (function setupMemberApplicationPrefill() {
     const prefillUrl = {{ url_for('api_member_application_prefill') | tojson }};
+    const memberHistoryBase = {{ url_for('loan_member_history') | tojson }};
     let lastPrefillName = '';
     let cachedApps = [];
     const banner = document.getElementById('memberPrefillBanner');
@@ -181,6 +185,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const loanAmtRaw = document.getElementById('loan_amount_raw');
     const contact = document.getElementById('member_contact');
     const address = document.getElementById('member_address');
+    const memberHistoryWrap = document.getElementById('memberHistoryLinkWrap');
+    const memberHistoryLink = document.getElementById('memberHistoryLink');
 
     if (contact) {
         contact.addEventListener('input', function () {
@@ -238,11 +244,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 ? `₱${Number(rec.loan_amount).toLocaleString()}`
                 : 'No amount';
             const submitted = rec.submitted_at ? String(rec.submitted_at).slice(0, 10) : '';
+            const aid = rec.id != null ? `#${rec.id} ` : '';
             const opt = document.createElement('option');
             opt.value = String(idx);
             opt.textContent = submitted
-                ? `${lt} | ${amt} | ${status} | ${submitted}`
-                : `${lt} | ${amt} | ${status}`;
+                ? `${aid}${lt} | ${amt} | ${status} | ${submitted}`
+                : `${aid}${lt} | ${amt} | ${status}`;
             existingLoanTypeSelect.appendChild(opt);
         });
         existingLoanTypeWrap.style.display = 'block';
@@ -261,6 +268,7 @@ document.addEventListener('DOMContentLoaded', function() {
             lastPrefillName = '';
             hideExistingNotice();
             renderExistingLoanTypeDropdown([]);
+            if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
         } else if (t !== lastPrefillName) {
             lastPrefillName = '';
         }
@@ -288,40 +296,31 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!data.found) {
                 hideExistingNotice();
                 renderExistingLoanTypeDropdown([]);
+                if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
                 return;
             }
             let any = false;
             const activeCount = Number(data.active_application_count || 0);
             if (existingNotice) {
                 existingNotice.textContent = activeCount > 0
-                    ? `Existing active loan application(s) found for this member: ${activeCount}. You can still submit a new one; select an existing loan type below to sync details.`
-                    : 'Previous loan records found for this member. Select one to sync details.';
+                    ? `Existing active loan application(s) for this member: ${activeCount}. You may still submit another application. Contact and address are synced from the latest record; enter the new loan type and amount, or choose a past record below to copy its loan fields.`
+                    : 'Past loan records found for this member. Contact and address are synced from the latest record; enter the new loan type and amount, or choose a past record below to copy its loan fields.';
                 existingNotice.style.display = 'block';
             }
             renderExistingLoanTypeDropdown(data.applications || []);
 
-            if (contact && !contact.value.trim() && (data.member_contact || '').trim()) {
+            if (memberHistoryWrap && memberHistoryLink && memberHistoryBase) {
+                memberHistoryLink.href = memberHistoryBase + '?name=' + encodeURIComponent(name);
+                memberHistoryWrap.style.display = 'block';
+            }
+
+            if (contact && (data.member_contact || '').trim()) {
                 contact.value = (data.member_contact || '').replace(/\D/g, '').slice(0, 11);
                 any = true;
             }
-            if (address && !address.value.trim() && (data.member_address || '').trim()) {
+            if (address && (data.member_address || '').trim()) {
                 address.value = (data.member_address || '').trim();
                 any = true;
-            }
-            if (loanTypeIn && !loanTypeIn.value.trim() && (data.loan_type || '').trim()) {
-                const lt = (data.loan_type || '').trim();
-                loanTypeIn.value = lt;
-                if (loanTypeH) loanTypeH.value = lt;
-                any = true;
-            }
-            if (loanAmt && loanAmtRaw && (data.loan_amount != null && data.loan_amount !== '')) {
-                const n = Number(data.loan_amount);
-                if (!Number.isNaN(n) && n > 0 && !String(loanAmtRaw.value || '').trim()) {
-                    const raw = n % 1 === 0 ? String(Math.round(n)) : String(n);
-                    loanAmt.value = raw;
-                    loanAmt.dispatchEvent(new Event('input', { bubbles: true }));
-                    any = true;
-                }
             }
             if (any) {
                 showPrefillBanner();
