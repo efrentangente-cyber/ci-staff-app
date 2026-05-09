@@ -107,10 +107,7 @@
                 <tbody id="pendingTableBody">
                     {% for g in pipeline_groups %}
                     <tr>
-                        <td>
-                            <a href="{{ url_for('loan_member_history', name=g.member_name) }}"><strong>{{ g.member_name }}</strong></a>
-                            <div class="small text-muted mt-1">{% for a in g.apps %}#{{ a.id }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
-                        </td>
+                        <td>{% for a in g.apps %}<strong>#{{ a.id }}</strong>{% if not loop.last %} {% endif %}{% endfor %} <a href="{{ url_for('loan_member_history', name=g.member_name) }}">{{ g.member_name }}</a></td>
                         <td class="small">
                             {% for a in g.apps %}
                             <div class="mb-1">
@@ -151,7 +148,7 @@
                                 {% for a in g.apps %}
                                 <a href="{{ url_for('loan_application', id=a.id) }}" class="btn btn-sm btn-primary">
                                     <i class="bi bi-eye"></i>
-                                    <span class="d-none d-md-inline">View </span>#{{ a.id }}
+                                    <span class="d-none d-md-inline">View</span>
                                 </a>
                                 {% endfor %}
                             </div>
@@ -206,10 +203,7 @@
                 <tbody id="ciCompletedTableBody">
                     {% for g in ci_completed_groups %}
                     <tr>
-                        <td>
-                            <a href="{{ url_for('loan_member_history', name=g.member_name) }}"><strong>{{ g.member_name }}</strong></a>
-                            <div class="small text-muted mt-1">{% for a in g.apps %}#{{ a.id }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
-                        </td>
+                        <td>{% for a in g.apps %}<strong>#{{ a.id }}</strong>{% if not loop.last %} {% endif %}{% endfor %} <a href="{{ url_for('loan_member_history', name=g.member_name) }}">{{ g.member_name }}</a></td>
                         <td class="small">
                             {% for a in g.apps %}
                             <div class="mb-1">
@@ -245,7 +239,7 @@
                                 {% for a in g.apps %}
                                 <a href="{{ url_for('loan_application', id=a.id) }}" class="btn btn-sm btn-primary">
                                     <i class="bi bi-eye"></i>
-                                    <span class="d-none d-md-inline">View </span>#{{ a.id }}
+                                    <span class="d-none d-md-inline">View</span>
                                 </a>
                                 {% endfor %}
                             </div>
@@ -301,10 +295,7 @@
                 <tbody id="processedTableBody">
                     {% for g in processed_groups %}
                     <tr>
-                        <td>
-                            <a href="{{ url_for('loan_member_history', name=g.member_name) }}"><strong>{{ g.member_name }}</strong></a>
-                            <div class="small text-muted mt-1">{% for a in g.apps %}#{{ a.id }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
-                        </td>
+                        <td>{% for a in g.apps %}<strong>#{{ a.id }}</strong>{% if not loop.last %} {% endif %}{% endfor %} <a href="{{ url_for('loan_member_history', name=g.member_name) }}">{{ g.member_name }}</a></td>
                         <td class="small">
                             {% for a in g.apps %}
                             <div class="mb-1">
@@ -345,7 +336,7 @@
                                 {% for a in g.apps %}
                                 <a href="{{ url_for('loan_application', id=a.id) }}" class="btn btn-sm btn-primary">
                                     <i class="bi bi-eye"></i>
-                                    <span class="d-none d-md-inline">View </span>#{{ a.id }}
+                                    <span class="d-none d-md-inline">View</span>
                                 </a>
                                 {% endfor %}
                             </div>
@@ -578,5 +569,5 @@ function clearSearch(tableType) {
 {% block scripts %}
 <script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
 <script>window.__LPS_USER_ID = {{ current_user.id | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=5" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=6" defer></script>
 {% endblock %}

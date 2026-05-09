@@ -306,11 +306,13 @@ function renderLoanDashboardTables(applications) {
         });
     }
 
-    function idsSubtitleHtml(apps) {
-        const ids = apps.map(function (a) {
-            return '#' + a.id;
-        }).join(' · ');
-        return '<div class="small text-muted mt-1">' + escapeHtml(ids) + '</div>';
+    function memberIdsAndNameCellHtml(apps, memberName, nameHref) {
+        const idsPart = apps
+            .map(function (a) {
+                return '<strong>#' + escapeHtml(String(a.id)) + '</strong>';
+            })
+            .join(' ');
+        return idsPart + ' <a href="' + nameHref + '">' + escapeHtml(memberName) + '</a>';
     }
 
     function viewButtonsColumnHtml(apps) {
@@ -320,8 +322,7 @@ function renderLoanDashboardTables(applications) {
                 a.id +
                 '" class="btn btn-sm btn-primary">' +
                 '<i class="bi bi-eye"></i>' +
-                '<span class="d-none d-md-inline">View </span>#' +
-                a.id +
+                '<span class="d-none d-md-inline">View</span>' +
                 '</a>'
             );
         }).join('');
@@ -339,12 +340,7 @@ function renderLoanDashboardTables(applications) {
         const nameHref = memberHistoryHref(g.member_name);
         tr.innerHTML =
             '<td>' +
-            '<a href="' +
-            nameHref +
-            '"><strong>' +
-            escapeHtml(g.member_name) +
-            '</strong></a>' +
-            idsSubtitleHtml(g.apps) +
+            memberIdsAndNameCellHtml(g.apps, g.member_name, nameHref) +
             '</td>' +
             '<td class="small">' +
             stackedAmountsHtml(g.apps) +
@@ -378,12 +374,7 @@ function renderLoanDashboardTables(applications) {
             const nameHref = memberHistoryHref(g.member_name);
             tr.innerHTML =
                 '<td>' +
-                '<a href="' +
-                nameHref +
-                '"><strong>' +
-                escapeHtml(g.member_name) +
-                '</strong></a>' +
-                idsSubtitleHtml(g.apps) +
+                memberIdsAndNameCellHtml(g.apps, g.member_name, nameHref) +
                 '</td>' +
                 '<td class="small">' +
                 stackedAmountsHtml(g.apps) +
@@ -430,12 +421,7 @@ function renderLoanDashboardTables(applications) {
         const nameHref = memberHistoryHref(g.member_name);
         tr.innerHTML =
             '<td>' +
-            '<a href="' +
-            nameHref +
-            '"><strong>' +
-            escapeHtml(g.member_name) +
-            '</strong></a>' +
-            idsSubtitleHtml(g.apps) +
+            memberIdsAndNameCellHtml(g.apps, g.member_name, nameHref) +
             '</td>' +
             '<td class="small">' +
             stackedAmountsHtml(g.apps) +

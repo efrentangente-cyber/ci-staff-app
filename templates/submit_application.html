@@ -60,14 +60,20 @@
                 <button type="button" class="btn-close float-end" aria-label="Dismiss" id="memberPrefillBannerDismiss"></button>
             </div>
             <div class="row">
-                <div class="col-md-6 mb-3">
+                <div class="col-md-6 mb-3 position-relative">
                     <label class="form-label">Member Name *</label>
-                    <input type="text" name="member_name" id="member_name" class="form-control" required autocomplete="name" aria-busy="false">
+                    <input type="text" name="member_name" id="member_name" class="form-control" required autocomplete="off" aria-busy="false"
+                           aria-autocomplete="list" aria-controls="member_name_dropdown" aria-expanded="false">
+                    <div id="member_name_dropdown" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" role="listbox"
+                         style="z-index: 1050; max-height: 260px; overflow-y: auto; display: none;"></div>
                     <div id="memberNameLookupStatus" class="d-flex align-items-center gap-2 small text-muted mt-2" style="display: none;" aria-live="polite">
                         <span class="spinner-border spinner-border-sm text-secondary flex-shrink-0" role="status" aria-hidden="true"></span>
-                        <span>Checking for existing member records…</span>
+                        <span>Checking member records…</span>
                     </div>
                     <div id="memberNameLookupError" class="alert alert-danger py-2 mt-2 mb-0 small" style="display: none;" role="alert"></div>
+                    <div id="memberNameNoRecordNotice" class="alert alert-secondary py-2 mt-2 mb-0 small" style="display: none;" role="status">
+                        No matching loan records for this name. Enter contact and address manually.
+                    </div>
                     <div id="existingLoanNotice" class="alert alert-warning py-2 mt-2 mb-0 small" style="display:none;"></div>
                     <div id="memberHistoryLinkWrap" class="mt-2" style="display:none;">
                         <a href="#" id="memberHistoryLink" class="btn btn-sm btn-outline-primary"
@@ -174,16 +180,25 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 (function setupMemberApplicationPrefill() {
     const prefillUrl = {{ url_for('api_member_application_prefill') | tojson }};
+    const suggestionsUrl = {{ url_for('api_member_name_suggestions') | tojson }};
     const memberHistoryBase = {{ url_for('loan_member_history') | tojson }};
-    const DEBOUNCE_MS = 320;
+    const DEBOUNCE_MS = 110;
+    const SUGGEST_DEBOUNCE_MS = 85;
     let lastPrefillName = '';
     let cachedApps = [];
     let lookupSeq = 0;
     let prefillAbort = null;
     let debounceTimer = null;
+    let suggestionSeq = 0;
+    let suggestionAbort = null;
+    let suggestionDebounceTimer = null;
+    let blurHideDropdownTimer = null;
+    let pickedSuggestionExact = '';
     const memberNameInput = document.getElementById('member_name');
+    const memberNameDropdown = document.getElementById('member_name_dropdown');
     const lookupStatus = document.getElementById('memberNameLookupStatus');
     const lookupError = document.getElementById('memberNameLookupError');
+    const noRecordNotice = document.getElementById('memberNameNoRecordNotice');
     const banner = document.getElementById('memberPrefillBanner');
     const bannerDismiss = document.getElementById('memberPrefillBannerDismiss');
     const existingNotice = document.getElementById('existingLoanNotice');
@@ -216,12 +231,26 @@ document.addEventListener('DOMContentLoaded', function() {
     function hideExistingNotice() {
         if (existingNotice) existingNotice.style.display = 'none';
     }
+    function hideNoRecordNotice() {
+        if (noRecordNotice) noRecordNotice.style.display = 'none';
+    }
+    function showNoRecordNotice() {
+        hideExistingNotice();
+        renderExistingLoanTypeDropdown([]);
+        if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
+        if (noRecordNotice) noRecordNotice.style.display = 'block';
+    }
     function setMemberNameBusy(busy) {
         if (!memberNameInput) return;
         memberNameInput.setAttribute('aria-busy', busy ? 'true' : 'false');
     }
     function showLookupChecking() {
+        const t = (memberNameInput && memberNameInput.value ? memberNameInput.value : '').trim();
+        if (t.length < 2) {
+            return;
+        }
         if (lookupError) lookupError.style.display = 'none';
+        hideNoRecordNotice();
         if (lookupStatus) lookupStatus.style.display = 'flex';
         setMemberNameBusy(true);
     }
@@ -231,6 +260,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     function showLookupError(message) {
         hideLookupChecking();
+        hideNoRecordNotice();
         if (lookupError) {
             lookupError.textContent = message || 'Could not check this name right now. Try again in a moment.';
             lookupError.style.display = 'block';
@@ -298,11 +328,10 @@ document.addEventListener('DOMContentLoaded', function() {
     function applyPrefillPayload(name, data) {
         lastPrefillName = name;
         if (!data.found) {
-            hideExistingNotice();
-            renderExistingLoanTypeDropdown([]);
-            if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
+            showNoRecordNotice();
             return;
         }
+        hideNoRecordNotice();
         let any = false;
         const activeCount = Number(data.active_application_count || 0);
         if (existingNotice) {
@@ -355,10 +384,14 @@ document.addEventListener('DOMContentLoaded', function() {
         u.searchParams.set('name', name);
 
         try {
-            const res = await fetch(u.toString(), {
+            const fetchOpts = {
                 credentials: 'same-origin',
                 signal: prefillAbort.signal,
-            });
+            };
+            try {
+                fetchOpts.priority = 'high';
+            } catch (ePr) { /* not supported in all browsers */ }
+            const res = await fetch(u.toString(), fetchOpts);
             const data = await res.json();
             if (seq !== lookupSeq) {
                 return;
@@ -396,6 +429,157 @@ document.addEventListener('DOMContentLoaded', function() {
         }, DEBOUNCE_MS);
     }
 
+    function hideMemberNameDropdown() {
+        if (!memberNameDropdown) return;
+        memberNameDropdown.style.display = 'none';
+        memberNameDropdown.innerHTML = '';
+        if (memberNameInput) memberNameInput.setAttribute('aria-expanded', 'false');
+    }
+
+    function renderMemberNameDropdown(names) {
+        if (!memberNameDropdown || !memberNameInput) return;
+        const list = Array.isArray(names) ? names.filter(Boolean) : [];
+        if (!list.length) {
+            hideMemberNameDropdown();
+            return;
+        }
+        memberNameDropdown.innerHTML = '';
+        list.forEach(function (fullName) {
+            const label = String(fullName).trim();
+            if (!label) return;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action py-2 small text-start';
+            btn.setAttribute('role', 'option');
+            btn.textContent = label;
+            btn.addEventListener('mousedown', function (ev) {
+                ev.preventDefault();
+            });
+            btn.addEventListener('click', function () {
+                pickMemberNameSuggestion(label);
+            });
+            memberNameDropdown.appendChild(btn);
+        });
+        memberNameDropdown.style.display = 'block';
+        memberNameInput.setAttribute('aria-expanded', 'true');
+    }
+
+    function pickMemberNameSuggestion(fullName) {
+        const v = (fullName || '').trim();
+        if (!v || !memberNameInput) return;
+        pickedSuggestionExact = v;
+        memberNameInput.value = v;
+        hideMemberNameDropdown();
+        lastPrefillName = '';
+        hideLookupError();
+        schedulePrefill(v);
+    }
+
+    async function fetchMemberNameSuggestions(rawQ) {
+        const qt = (rawQ || '').trim();
+        if (qt.length < 2) {
+            hideMemberNameDropdown();
+            return;
+        }
+        if (pickedSuggestionExact && qt === pickedSuggestionExact) {
+            hideMemberNameDropdown();
+            return;
+        }
+        if (suggestionAbort) {
+            try { suggestionAbort.abort(); } catch (e) { /* ignore */ }
+        }
+        suggestionAbort = new AbortController();
+        const seq = ++suggestionSeq;
+        let u;
+        try {
+            u = new URL(suggestionsUrl, window.location.origin);
+        } catch (e) {
+            u = new URL('/api/member_name_suggestions', window.location.origin);
+        }
+        u.searchParams.set('q', qt);
+        try {
+            const res = await fetch(u.toString(), {
+                credentials: 'same-origin',
+                signal: suggestionAbort.signal,
+            });
+            const data = await res.json();
+            if (seq !== suggestionSeq) return;
+            if (!res.ok || !data || !data.ok || !Array.isArray(data.names)) {
+                hideMemberNameDropdown();
+                return;
+            }
+            const cur = (memberNameInput.value || '').trim();
+            if (pickedSuggestionExact && cur === pickedSuggestionExact) {
+                hideMemberNameDropdown();
+                return;
+            }
+            renderMemberNameDropdown(data.names);
+        } catch (err) {
+            if (err && (err.name === 'AbortError' || err.code === 20)) return;
+            hideMemberNameDropdown();
+        }
+    }
+
+    function scheduleMemberNameSuggestions(rawQ) {
+        const qt = (rawQ || '').trim();
+        if (qt.length < 2) {
+            clearTimeout(suggestionDebounceTimer);
+            suggestionDebounceTimer = null;
+            hideMemberNameDropdown();
+            return;
+        }
+        clearTimeout(suggestionDebounceTimer);
+        suggestionDebounceTimer = setTimeout(function () {
+            suggestionDebounceTimer = null;
+            fetchMemberNameSuggestions(memberNameInput.value);
+        }, SUGGEST_DEBOUNCE_MS);
+    }
+
+    document.addEventListener('click', function (ev) {
+        if (!memberNameInput || !memberNameDropdown) return;
+        if (memberNameDropdown.style.display === 'none') return;
+        const wrap = memberNameInput.closest('.position-relative');
+        if (wrap && !wrap.contains(ev.target)) {
+            hideMemberNameDropdown();
+        }
+    });
+
+    memberNameInput?.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') {
+            hideMemberNameDropdown();
+        }
+    });
+
+    memberNameInput?.addEventListener('focus', function () {
+        clearTimeout(blurHideDropdownTimer);
+        blurHideDropdownTimer = null;
+        const t = (this.value || '').trim();
+        if (t.length >= 2) {
+            return;
+        }
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+        clearTimeout(suggestionDebounceTimer);
+        suggestionDebounceTimer = null;
+        if (prefillAbort) {
+            try {
+                prefillAbort.abort();
+            } catch (e) { /* ignore */ }
+        }
+        if (suggestionAbort) {
+            try {
+                suggestionAbort.abort();
+            } catch (e) { /* ignore */ }
+        }
+        suggestionSeq += 1;
+        lookupSeq += 1;
+        hideLookupChecking();
+        hideLookupError();
+        hideNoRecordNotice();
+        hideMemberNameDropdown();
+        pickedSuggestionExact = '';
+    });
+
     memberNameInput?.addEventListener('input', function () {
         const t = (this.value || '').trim();
         hideLookupError();
@@ -409,7 +593,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             lookupSeq += 1;
             hideLookupChecking();
+            hideNoRecordNotice();
             lastPrefillName = '';
+            pickedSuggestionExact = '';
+            hideMemberNameDropdown();
             hideExistingNotice();
             renderExistingLoanTypeDropdown([]);
             if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
@@ -418,18 +605,31 @@ document.addEventListener('DOMContentLoaded', function() {
         if (t !== lastPrefillName) {
             lastPrefillName = '';
         }
+        if (pickedSuggestionExact && t !== pickedSuggestionExact) {
+            pickedSuggestionExact = '';
+        }
+        if (pickedSuggestionExact && t === pickedSuggestionExact) {
+            hideMemberNameDropdown();
+        } else {
+            scheduleMemberNameSuggestions(this.value);
+        }
         schedulePrefill(this.value);
     });
 
     memberNameInput?.addEventListener('blur', function () {
         clearTimeout(debounceTimer);
         debounceTimer = null;
+        clearTimeout(suggestionDebounceTimer);
+        suggestionDebounceTimer = null;
+        blurHideDropdownTimer = setTimeout(function () {
+            blurHideDropdownTimer = null;
+            hideMemberNameDropdown();
+        }, 200);
         const name = (this.value || '').trim();
-        if (name.length < 2 || name === lastPrefillName) {
+        if (name.length < 2) {
             hideLookupChecking();
-            return;
+            hideNoRecordNotice();
         }
-        performPrefill(name);
     });
 })(); 
 

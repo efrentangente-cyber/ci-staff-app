@@ -34,7 +34,9 @@ from document_helpers import (
 import os
 import uuid
 import re
+import unicodedata
 import json
+from difflib import SequenceMatcher
 import mimetypes
 import time
 from datetime import datetime, timedelta
@@ -1675,6 +1677,11 @@ def ensure_performance_indexes():
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_submitted_by ON loan_applications(submitted_by)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_member_name ON loan_applications(member_name)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_lower_member_name ON loan_applications(LOWER(member_name))",
+            (
+                "CREATE INDEX IF NOT EXISTS idx_loan_app_member_norm ON loan_applications ((LOWER(TRIM(COALESCE(member_name, ''))))))"
+                if is_postgresql()
+                else "CREATE INDEX IF NOT EXISTS idx_loan_app_member_norm ON loan_applications (LOWER(TRIM(COALESCE(member_name, ''))))"
+            ),
             "CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, is_read, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_documents_loan_uploaded ON documents(loan_application_id, uploaded_at)",
             "CREATE INDEX IF NOT EXISTS idx_messages_app_sent ON messages(loan_application_id, sent_at)",
@@ -3926,6 +3933,17 @@ def loan_dashboard():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     conn = get_db()
+    try:
+        _n_exact = dedupe_loan_applications_by_member_name_for_submitter(conn, current_user.id)
+        _n_fuzzy = _dedupe_fuzzy_member_clusters_for_submitter(conn, current_user.id)
+        if _n_exact or _n_fuzzy:
+            conn.commit()
+    except Exception as _dedupe_err:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        app.logger.warning('loan_dashboard member dedupe skipped: %s', _dedupe_err)
     # Only fetch the columns the template reads — avoids transferring ci_checklist_data,
     # admin_notes, loan_officer_notes, and other wide TEXT columns from PostgreSQL.
     # Oldest first so new submissions appear at the bottom (full list per LPS — no LIMIT).
@@ -3990,6 +4008,28 @@ def loan_member_history():
         if current_user.role == 'ci_staff':
             return redirect(url_for('ci_dashboard'))
         return redirect(url_for('admin_dashboard'))
+
+    def _member_history_return_url(req, fallback_url):
+        """Prefer the page the user came from (Referer) when same-origin and safe."""
+        from urllib.parse import urlparse
+
+        ref = (req.referrer or '').strip()
+        if not ref:
+            return fallback_url
+        try:
+            prev = urlparse(ref)
+            here = urlparse(req.url_root)
+            if prev.scheme not in ('http', 'https') or (prev.netloc or '').lower() != (here.netloc or '').lower():
+                return fallback_url
+            path = (prev.path or '').rstrip('/') or '/'
+            low = path.lower()
+            if low.startswith('/static'):
+                return fallback_url
+            if low in ('/login', '/logout', '/register'):
+                return fallback_url
+            return ref.split('#')[0]
+        except Exception:
+            return fallback_url
 
     name_q = (request.args.get('name') or '').strip()
     if len(name_q) < 2:
@@ -4089,6 +4129,8 @@ def loan_member_history():
     else:
         back_url = url_for('admin_dashboard')
 
+    return_url = _member_history_return_url(request, back_url)
+
     return render_template(
         'member_loan_history.html',
         display_name=display_name,
@@ -4097,6 +4139,7 @@ def loan_member_history():
         history=history,
         searched_as=name_q,
         back_url=back_url,
+        return_url=return_url,
     )
 
 
@@ -4276,11 +4319,24 @@ def submit_application():
                     return redirect(url_for('submit_application'))
 
                 conn = get_db()
-                removed = _purge_nonfinal_duplicate_applications(conn, member_name)
+                if _blocking_ci_completed_duplicate_exists(conn, member_name, current_user.id):
+                    conn.close()
+                    flash(
+                        'This member already has an application finished by CI/BI and awaiting a loan decision '
+                        '(same or very similar name). Resolve that record before submitting another.',
+                        'danger',
+                    )
+                    return redirect(url_for('submit_application'))
+
+                removed = _purge_pipeline_duplicate_member_applications(
+                    conn, member_name, current_user.id
+                )
                 if removed:
                     flash(
-                        f'Removed {removed} older open application(s) for this member name '
-                        '(submitted / assigned to CI / deferred only; completed and final decisions are kept).',
+                        'Removed '
+                        + str(removed)
+                        + ' duplicate open application(s) for this member (same name or very close spelling). '
+                        'Submitting this form replaces them with one new record.',
                         'info',
                     )
 
@@ -4487,17 +4543,18 @@ def api_member_application_prefill():
     name = (request.args.get('name') or '').strip()
     if len(name) < 2:
         return jsonify({'ok': True, 'found': False})
+    nk = name.lower()
     conn = get_db()
     try:
         related_rows = conn.execute(
             '''
             SELECT id, loan_type, loan_amount, status, member_contact, member_address, submitted_at
             FROM loan_applications
-            WHERE LOWER(TRIM(COALESCE(member_name, ''))) = LOWER(TRIM(?))
+            WHERE LOWER(TRIM(COALESCE(member_name, ''))) = ?
             ORDER BY id DESC
             LIMIT 30
             ''',
-            (name,),
+            (nk,),
         ).fetchall()
         if not related_rows:
             return jsonify({'ok': True, 'found': False})
@@ -4549,6 +4606,63 @@ def api_member_application_prefill():
         )
     except Exception as e:
         app.logger.exception('api_member_application_prefill: %s', e)
+        return jsonify({'ok': False, 'error': 'server_error'}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route('/api/member_name_suggestions')
+@login_required
+def api_member_name_suggestions():
+    """
+    Distinct member names whose first name (first token) prefix-matches q — case-insensitive.
+    Used by LPS submit form autocomplete (e.g. Julie → Julie Jane, Julie Jake).
+    """
+    if current_user.role != 'loan_staff':
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    q_raw = (request.args.get('q') or '').strip()
+    q_safe = ''.join(c for c in q_raw.lower() if c not in '%_\\')
+    if len(q_safe) < 2:
+        return jsonify({'ok': True, 'names': []})
+    conn = get_db()
+    try:
+        if is_postgresql():
+            token_expr = "LOWER(SPLIT_PART(TRIM(COALESCE(member_name, '')), ' ', 1))"
+        else:
+            token_expr = (
+                "LOWER(SUBSTR(TRIM(COALESCE(member_name, '')), 1, "
+                "INSTR(TRIM(COALESCE(member_name, '')) || ' ', ' ') - 1))"
+            )
+        rows = conn.execute(
+            f'''
+            SELECT DISTINCT TRIM(member_name) AS mn
+            FROM loan_applications
+            WHERE TRIM(COALESCE(member_name, '')) <> ''
+              AND LENGTH(TRIM(COALESCE(member_name, ''))) >= 2
+              AND ({token_expr}) LIKE ? || '%'
+            ORDER BY mn ASC
+            LIMIT 40
+            ''',
+            (q_safe,),
+        ).fetchall()
+        names = []
+        seen = set()
+        for r in rows or []:
+            d = dict(r)
+            mn = (d.get('mn') or '').strip()
+            if not mn:
+                continue
+            key = mn.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            names.append(mn)
+        return jsonify({'ok': True, 'names': names})
+    except Exception as e:
+        app.logger.exception('api_member_name_suggestions: %s', e)
         return jsonify({'ok': False, 'error': 'server_error'}), 500
     finally:
         try:
@@ -5703,7 +5817,7 @@ def loan_application(id):
             return redirect(url_for('loan_application', id=id))
         
         try:
-            member_name = request.form['member_name']
+            member_name = (request.form.get('member_name') or '').strip()
             _mc_raw = request.form.get('member_contact')
             member_contact = _sanitize_optional_ph_mobile_input(_mc_raw)
             if member_contact is None:
@@ -5719,18 +5833,26 @@ def loan_application(id):
             loan_type = request.form.get('loan_type')
             needs_ci_value = request.form.get('needs_ci', '1')
             
-            # Check for duplicate member name (excluding current application)
-            existing = conn.execute('''
-                SELECT id, member_name FROM loan_applications 
-                WHERE LOWER(member_name) = LOWER(?) 
-                AND status NOT IN ('disapproved', 'approved')
-                AND id != ?
-            ''', (member_name, id)).fetchone()
-            
-            if existing:
-                conn.close()
-                flash(f'An active application for "{member_name}" already exists (ID: #{existing["id"]}). Please use a different name.', 'warning')
-                return redirect(url_for('loan_application', id=id))
+            # Block duplicate member names for this LPS (including minor spelling variants).
+            dup_candidates = conn.execute(
+                '''
+                SELECT id, member_name FROM loan_applications
+                WHERE submitted_by = ?
+                  AND status NOT IN ('disapproved', 'approved', 'rejected')
+                  AND id != ?
+                ''',
+                (current_user.id, id),
+            ).fetchall()
+            for existing in dup_candidates or []:
+                if _member_names_likely_duplicate(member_name, existing['member_name']):
+                    conn.close()
+                    flash(
+                        'An active application for this member already exists '
+                        f'(ID #{existing["id"]}, stored as "{existing["member_name"]}"). '
+                        'Use one record per member name.',
+                        'warning',
+                    )
+                    return redirect(url_for('loan_application', id=id))
             
             # Check if specific CI staff was selected
             specific_ci_id = None
@@ -6346,6 +6468,32 @@ def _delete_loan_application_cascade(conn, app_id, status=None, assigned_ci_staf
         return False
 
 
+def _normalize_member_for_duplicate_compare(name):
+    """Lowercase, collapsed spacing, Unicode-normalized — used only for duplicate detection."""
+    s = unicodedata.normalize('NFKC', (name or '').strip())
+    s = s.casefold()
+    s = re.sub(r'\s+', ' ', s)
+    return s.strip()
+
+
+def _member_names_likely_duplicate(name_a, name_b):
+    """
+    True when names are the same after normalization, or differ only by a minor typo
+    (same person accidentally entered twice). Conservative on short names (exact only).
+    """
+    ka = _normalize_member_for_duplicate_compare(name_a)
+    kb = _normalize_member_for_duplicate_compare(name_b)
+    if not ka or not kb:
+        return ka == kb
+    if ka == kb:
+        return True
+    if min(len(ka), len(kb)) < 10:
+        return False
+    if abs(len(ka) - len(kb)) > 3:
+        return False
+    return SequenceMatcher(None, ka, kb).ratio() >= 0.94
+
+
 _MEMBER_NAME_DEDUPE_STATUS_RANK = {
     'approved': 1,
     'ci_completed': 2,
@@ -6410,28 +6558,152 @@ def dedupe_loan_applications_by_member_name(conn):
     return deleted
 
 
-def _purge_nonfinal_duplicate_applications(conn, member_name):
+def dedupe_loan_applications_by_member_name_for_submitter(conn, submitted_by_id):
     """
-    Remove non-final rows with the same member name (trimmed, case-insensitive)
-    before a new submit so duplicate pipeline records are not kept.
-    Decrements CI workload when deleting assigned_to_ci rows.
-    Returns number of loan_applications rows deleted.
+    Same rules as dedupe_loan_applications_by_member_name but only rows submitted_by this LPS.
+    """
+    dup_keys = conn.execute(
+        '''
+        SELECT nk FROM (
+            SELECT LOWER(TRIM(COALESCE(member_name, ''))) AS nk
+            FROM loan_applications
+            WHERE LENGTH(TRIM(COALESCE(member_name, ''))) >= 2
+              AND submitted_by = ?
+        ) x
+        GROUP BY nk
+        HAVING COUNT(*) > 1
+        ''',
+        (submitted_by_id,),
+    ).fetchall()
+    deleted = 0
+    for drow in dup_keys or []:
+        nk = (drow['nk'] if drow else '') or ''
+        nk = str(nk).strip()
+        if not nk:
+            continue
+        apps = conn.execute(
+            '''
+            SELECT id, status, assigned_ci_staff FROM loan_applications
+            WHERE LOWER(TRIM(COALESCE(member_name, ''))) = ?
+              AND submitted_by = ?
+            ''',
+            (nk, submitted_by_id),
+        ).fetchall()
+        if not apps or len(apps) < 2:
+            continue
+        apps_sorted = sorted(
+            apps,
+            key=lambda r: (
+                _member_name_dedupe_rank(r.get('status')),
+                -int(r['id']),
+            ),
+        )
+        for r in apps_sorted[1:]:
+            if _delete_loan_application_cascade(
+                conn, r['id'], r.get('status'), r.get('assigned_ci_staff')
+            ):
+                deleted += 1
+    return deleted
+
+
+def _dedupe_fuzzy_member_clusters_for_submitter(conn, submitted_by_id):
+    """
+    Merge duplicate pipeline rows when member_name differs only slightly (typo), per LPS.
+    Keeps the best-status row (same ranking as global dedupe), deletes the rest.
+    """
+    rows = conn.execute(
+        '''
+        SELECT id, member_name, status, assigned_ci_staff FROM loan_applications
+        WHERE submitted_by = ?
+          AND status IN ('submitted', 'assigned_to_ci', 'deferred', 'ci_completed')
+        ORDER BY id ASC
+        ''',
+        (submitted_by_id,),
+    ).fetchall()
+    apps = [dict(r) for r in rows]
+    n = len(apps)
+    if n < 2:
+        return 0
+
+    parent = list(range(n))
+
+    def uf_find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def uf_union(i, j):
+        pi, pj = uf_find(i), uf_find(j)
+        if pi != pj:
+            parent[pj] = pi
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if _member_names_likely_duplicate(apps[i]['member_name'], apps[j]['member_name']):
+                uf_union(i, j)
+
+    clusters = {}
+    for i in range(n):
+        root = uf_find(i)
+        clusters.setdefault(root, []).append(i)
+
+    deleted = 0
+    for idxs in clusters.values():
+        if len(idxs) < 2:
+            continue
+        cluster_apps = [apps[i] for i in idxs]
+        cluster_apps.sort(
+            key=lambda r: (_member_name_dedupe_rank(r.get('status')), -int(r['id']))
+        )
+        for loser in cluster_apps[1:]:
+            if _delete_loan_application_cascade(
+                conn, loser['id'], loser.get('status'), loser.get('assigned_ci_staff')
+            ):
+                deleted += 1
+    return deleted
+
+
+def _blocking_ci_completed_duplicate_exists(conn, member_name, submitted_by_id):
+    """True if this LPS already has a CI-completed row awaiting decision for the same member (or typo variant)."""
+    key = (member_name or '').strip()
+    if len(key) < 2:
+        return False
+    rows = conn.execute(
+        '''
+        SELECT member_name FROM loan_applications
+        WHERE submitted_by = ?
+          AND status = 'ci_completed'
+        ''',
+        (submitted_by_id,),
+    ).fetchall()
+    for r in rows or []:
+        if _member_names_likely_duplicate(key, r['member_name']):
+            return True
+    return False
+
+
+def _purge_pipeline_duplicate_member_applications(conn, member_name, submitted_by_id):
+    """
+    Before a new submission: delete open pipeline rows from this LPS that match this member
+    (exact normalized match OR minor typo vs submitted name). Avoids duplicate applicants.
     """
     key = (member_name or '').strip()
     if len(key) < 2:
         return 0
     rows = conn.execute(
         '''
-        SELECT id, assigned_ci_staff, status FROM loan_applications
-        WHERE LOWER(TRIM(COALESCE(member_name, ''))) = LOWER(TRIM(?))
+        SELECT id, member_name, assigned_ci_staff, status FROM loan_applications
+        WHERE submitted_by = ?
           AND status IN ('submitted', 'assigned_to_ci', 'deferred')
         ''',
-        (key,),
+        (submitted_by_id,),
     ).fetchall()
     deleted = 0
     for r in rows or []:
-        if _delete_loan_application_cascade(conn, r['id'], r.get('status'), r.get('assigned_ci_staff')):
-            deleted += 1
+        if _member_names_likely_duplicate(key, r['member_name']):
+            if _delete_loan_application_cascade(conn, r['id'], r.get('status'), r.get('assigned_ci_staff')):
+                deleted += 1
     return deleted
 
 
