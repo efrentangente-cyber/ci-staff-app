@@ -329,6 +329,40 @@ def route_tokens_filter(value):
     return [x.strip() for x in str(value).split(',') if x.strip()]
 
 
+def _custom_route_label_from_token(token: str) -> str | None:
+    """Decode `custom:<urlencoded>` assigned_route token to label; None if not valid custom."""
+    if not token:
+        return None
+    s = str(token).strip()
+    if not s.startswith('custom:'):
+        return None
+    from urllib.parse import unquote
+
+    try:
+        raw = unquote(s[7:])
+    except Exception:
+        return None
+    raw = (raw or '').strip()
+    if not raw or len(raw) > 200:
+        return None
+    return raw
+
+
+def is_valid_custom_route_token(p: str) -> bool:
+    return _custom_route_label_from_token(p) is not None
+
+
+@app.template_filter('custom_routes_prefill')
+def custom_routes_prefill(value):
+    """Decoded custom route labels for manage-users text field (semicolon-separated)."""
+    parts = []
+    for t in route_tokens_filter(value):
+        lab = _custom_route_label_from_token(t)
+        if lab:
+            parts.append(lab)
+    return '; '.join(parts)
+
+
 def _normalize_ci_staff_row_dict(row):
     """Single users row → dict with optional assigned_route / is_approved defaults."""
     if row is None:
@@ -359,7 +393,15 @@ def lps_ci_route_labels_by_staff_id(ci_staff_rows, label_dict=None):
         sid = str(int(uid))
         raw = (d.get('assigned_route') or '').strip()
         keys = [x.strip() for x in raw.split(',') if x.strip()]
-        out[sid] = [(label_dict.get(k) or str(k)).strip() for k in keys if k]
+        out[sid] = []
+        for k in keys:
+            if not k:
+                continue
+            c = _custom_route_label_from_token(k)
+            if c is not None:
+                out[sid].append(c)
+            else:
+                out[sid].append((label_dict.get(k) or str(k)).strip())
     return out
 
 
@@ -838,8 +880,12 @@ def list_ci_routes_for_ui():
 def ci_route_label_filter(rid):
     if not rid:
         return ''
+    s = str(rid).strip()
+    custom = _custom_route_label_from_token(s)
+    if custom is not None:
+        return custom
     d = get_ci_route_label_dict()
-    return d.get(str(rid).strip(), str(rid))
+    return d.get(s, s)
 
 
 # Allowed file extensions for uploads
@@ -1848,6 +1894,79 @@ def ensure_notification_aggregate_columns():
         print(f'⚠️  notifications columns migration warning: {e}')
 
 
+def ensure_loan_applications_member_uid_column():
+    """
+    Add loan_applications.member_uid: stable integer shared by all rows for the same
+    normalized member_name (cooperative-wide). Backfill uses MIN(id) per name group.
+    """
+    try:
+        conn = get_db()
+        db_type = get_database_type()
+        if db_type == 'sqlite':
+            rows = conn.execute('PRAGMA table_info(loan_applications)').fetchall()
+            existing = set()
+            for row in rows:
+                col_name = row['name'] if hasattr(row, 'keys') else row[1]
+                existing.add(col_name)
+            if 'member_uid' not in existing:
+                conn.execute('ALTER TABLE loan_applications ADD COLUMN member_uid INTEGER')
+        else:
+            conn.execute(
+                'ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS member_uid INTEGER'
+            )
+
+        conn.execute(
+            'CREATE INDEX IF NOT EXISTS idx_loan_app_submitter_member_uid '
+            'ON loan_applications(submitted_by, member_uid)'
+        )
+
+        pending_row = conn.execute(
+            'SELECT COUNT(*) AS c FROM loan_applications WHERE member_uid IS NULL'
+        ).fetchone()
+        pending = int((dict(pending_row).get('c') if pending_row else 0) or 0)
+        if pending:
+            groups = conn.execute(
+                '''
+                SELECT LOWER(TRIM(COALESCE(member_name, ''))) AS nk, MIN(id) AS uid
+                FROM loan_applications
+                WHERE member_uid IS NULL AND TRIM(COALESCE(member_name, '')) <> ''
+                GROUP BY nk
+                '''
+            ).fetchall()
+            for g in groups or []:
+                d = dict(g)
+                nk = d.get('nk') or ''
+                uid_val = int(d['uid'])
+                conn.execute(
+                    '''
+                    UPDATE loan_applications SET member_uid = ?
+                    WHERE member_uid IS NULL
+                      AND LOWER(TRIM(COALESCE(member_name, ''))) = ?
+                    ''',
+                    (uid_val, nk),
+                )
+            orphans = conn.execute(
+                'SELECT id FROM loan_applications WHERE member_uid IS NULL ORDER BY id ASC'
+            ).fetchall()
+            next_max_row = conn.execute(
+                'SELECT COALESCE(MAX(member_uid), 0) AS m FROM loan_applications'
+            ).fetchone()
+            next_uid = int((dict(next_max_row).get('m') if next_max_row else 0) or 0) + 1
+            for orow in orphans or []:
+                oid = int(dict(orow)['id'])
+                conn.execute(
+                    'UPDATE loan_applications SET member_uid = ? WHERE id = ?',
+                    (next_uid, oid),
+                )
+                next_uid += 1
+
+        conn.commit()
+        conn.close()
+        print('✓ loan_applications.member_uid ensured')
+    except Exception as e:
+        print(f'⚠️  loan_applications member_uid migration warning: {e}')
+
+
 NOTIF_GROUP_FAILED_LOGIN = 'failed_login'
 
 
@@ -2171,6 +2290,7 @@ ensure_user_login_sessions_table()
 ensure_ci_coverage_routes_table()
 ensure_ci_offline_packages_table()
 ensure_documents_blob_columns()
+ensure_loan_applications_member_uid_column()
 
 
 # ── Asset minification / bundling ────────────────────────────────────────────
@@ -4031,28 +4151,50 @@ def loan_member_history():
         except Exception:
             return fallback_url
 
+    mu_q = (request.args.get('member_uid') or '').strip()
     name_q = (request.args.get('name') or '').strip()
-    if len(name_q) < 2:
-        flash('Enter a member name to view loan history.', 'warning')
+
+    if not mu_q.isdigit() and len(name_q) < 2:
+        flash('Enter a member name or member ID to view loan history.', 'warning')
         return _dashboard_redirect()
+
+    role = current_user.role
+    uid = current_user.id
 
     conn = get_db()
     rows = []
     try:
+        conditions = []
+        params = []
+
+        if role == 'loan_staff':
+            conditions.append('la.submitted_by = ?')
+            params.append(uid)
+
+        if mu_q.isdigit():
+            conditions.append('la.member_uid = ?')
+            params.append(int(mu_q))
+        else:
+            conditions.append(
+                'LOWER(TRIM(COALESCE(la.member_name, ''))) = LOWER(TRIM(?))'
+            )
+            params.append(name_q)
+
+        where_sql = ' AND '.join(conditions)
         rows = conn.execute(
-            '''
+            f'''
             SELECT la.id, la.member_name, la.member_contact, la.member_address,
                    la.loan_type, la.loan_amount, la.status, la.submitted_at,
-                   la.submitted_by, la.assigned_ci_staff,
+                   la.submitted_by, la.assigned_ci_staff, la.member_uid,
                    u.name AS loan_staff_name,
                    u_ci.name AS ci_staff_name
             FROM loan_applications la
             LEFT JOIN users u ON la.submitted_by = u.id
             LEFT JOIN users u_ci ON la.assigned_ci_staff = u_ci.id
-            WHERE LOWER(TRIM(COALESCE(la.member_name, ''))) = LOWER(TRIM(?))
+            WHERE {where_sql}
             ORDER BY la.submitted_at DESC, la.id DESC
             ''',
-            (name_q,),
+            tuple(params),
         ).fetchall()
     finally:
         try:
@@ -4061,11 +4203,9 @@ def loan_member_history():
             pass
 
     if not rows:
-        flash('No loan records found for that name.', 'info')
+        flash('No loan records found for that member.', 'info')
         return _dashboard_redirect()
 
-    role = current_user.role
-    uid = current_user.id
     latest = dict(rows[0])
     display_name = (latest.get('member_name') or name_q).strip()
     member_contact = (latest.get('member_contact') or '').strip()
@@ -4137,7 +4277,7 @@ def loan_member_history():
         member_contact=member_contact,
         member_address=member_address,
         history=history,
-        searched_as=name_q,
+        searched_as=name_q if name_q else (f'Member ID #{mu_q}' if mu_q.isdigit() else ''),
         back_url=back_url,
         return_url=return_url,
     )
@@ -4371,6 +4511,7 @@ def submit_application():
                     lps_remarks,
                     needs_ci,
                     current_user.id,
+                    _resolve_member_uid_for_insert(conn, member_name),
                 )
                 if not app_id:
                     conn.rollback()
@@ -4535,30 +4676,105 @@ def submit_application():
 @login_required
 def api_member_application_prefill():
     """
-    For new submissions: return the most recent loan_application row for this member name
-    (case-insensitive, trimmed) so the form can prefill contact/address/loan — all still editable.
+    For new submissions: return recent loan_application rows for this LPS user so the form
+    can prefill contact/address/loan (still editable). Lookup by member name, member_uid,
+    or a specific application row id (must belong to this LPS user).
     """
     if current_user.role != 'loan_staff':
         return jsonify({'ok': False, 'error': 'forbidden'}), 403
+
+    sb = int(current_user.id)
+    app_id_raw = (request.args.get('application_id') or '').strip()
+    mu_raw = (request.args.get('member_uid') or '').strip()
     name = (request.args.get('name') or '').strip()
-    if len(name) < 2:
-        return jsonify({'ok': True, 'found': False})
-    nk = name.lower()
+
     conn = get_db()
     try:
-        related_rows = conn.execute(
-            '''
-            SELECT id, loan_type, loan_amount, status, member_contact, member_address, submitted_at
-            FROM loan_applications
-            WHERE LOWER(TRIM(COALESCE(member_name, ''))) = ?
-            ORDER BY id DESC
-            LIMIT 30
-            ''',
-            (nk,),
-        ).fetchall()
+        related_rows = None
+
+        if app_id_raw.isdigit():
+            anchor = conn.execute(
+                '''
+                SELECT id, member_uid, member_name, loan_type, loan_amount, status,
+                       member_contact, member_address, submitted_at
+                FROM loan_applications
+                WHERE id = ? AND submitted_by = ?
+                LIMIT 1
+                ''',
+                (int(app_id_raw), sb),
+            ).fetchone()
+            if anchor:
+                ad = dict(anchor)
+                mu = ad.get('member_uid')
+                if mu is not None:
+                    related_rows = conn.execute(
+                        '''
+                        SELECT id, loan_type, loan_amount, status, member_contact,
+                               member_address, submitted_at, member_uid
+                        FROM loan_applications
+                        WHERE submitted_by = ? AND member_uid = ?
+                        ORDER BY id DESC
+                        LIMIT 30
+                        ''',
+                        (sb, int(mu)),
+                    ).fetchall()
+                else:
+                    nk = _normalized_member_name_key(ad.get('member_name'))
+                    related_rows = conn.execute(
+                        '''
+                        SELECT id, loan_type, loan_amount, status, member_contact,
+                               member_address, submitted_at, member_uid
+                        FROM loan_applications
+                        WHERE submitted_by = ?
+                          AND LOWER(TRIM(COALESCE(member_name, ''))) = ?
+                        ORDER BY id DESC
+                        LIMIT 30
+                        ''',
+                        (sb, nk),
+                    ).fetchall()
+
+        elif mu_raw.isdigit():
+            mu_int = int(mu_raw)
+            related_rows = conn.execute(
+                '''
+                SELECT id, loan_type, loan_amount, status, member_contact,
+                       member_address, submitted_at, member_uid
+                FROM loan_applications
+                WHERE submitted_by = ? AND member_uid = ?
+                ORDER BY id DESC
+                LIMIT 30
+                ''',
+                (sb, mu_int),
+            ).fetchall()
+
+        elif len(name) >= 2:
+            nk = name.lower()
+            related_rows = conn.execute(
+                '''
+                SELECT id, loan_type, loan_amount, status, member_contact,
+                       member_address, submitted_at, member_uid
+                FROM loan_applications
+                WHERE submitted_by = ?
+                  AND LOWER(TRIM(COALESCE(member_name, ''))) = ?
+                ORDER BY id DESC
+                LIMIT 30
+                ''',
+                (sb, nk),
+            ).fetchall()
+
+        else:
+            return jsonify({'ok': True, 'found': False})
+
         if not related_rows:
             return jsonify({'ok': True, 'found': False})
+
         d = dict(related_rows[0])
+        member_uid_out = d.get('member_uid')
+        try:
+            member_uid_out = int(member_uid_out) if member_uid_out is not None else None
+        except (TypeError, ValueError):
+            member_uid_out = None
+
         la = d.get('loan_amount')
         try:
             la_out = float(la) if la is not None and la != '' else None
@@ -4581,6 +4797,11 @@ def api_member_application_prefill():
                 sub_at = sub_at.isoformat()
             elif sub_at is not None:
                 sub_at = str(sub_at)
+            mu_row = r.get('member_uid')
+            try:
+                mu_row = int(mu_row) if mu_row is not None else None
+            except (TypeError, ValueError):
+                mu_row = None
             applications.append(
                 {
                     'id': r.get('id'),
@@ -4590,12 +4811,15 @@ def api_member_application_prefill():
                     'member_contact': (r.get('member_contact') or '').strip(),
                     'member_address': (r.get('member_address') or '').strip(),
                     'submitted_at': sub_at,
+                    'member_uid': mu_row,
                 }
             )
         return jsonify(
             {
                 'ok': True,
                 'found': True,
+                'member_uid': member_uid_out,
+                'member_name': (d.get('member_name') or '').strip(),
                 'member_contact': (d.get('member_contact') or '') or '',
                 'member_address': (d.get('member_address') or '') or '',
                 'loan_type': (d.get('loan_type') or '') or '',
@@ -4618,17 +4842,71 @@ def api_member_application_prefill():
 @login_required
 def api_member_name_suggestions():
     """
-    Distinct member names whose first name (first token) prefix-matches q — case-insensitive.
-    Used by LPS submit form autocomplete (e.g. Julie → Julie Jane, Julie Jake).
+    LPS submit form autocomplete: first-name prefix match on member_name, or numeric prefix
+    match on member_uid / application id for this submitter only.
     """
     if current_user.role != 'loan_staff':
         return jsonify({'ok': False, 'error': 'forbidden'}), 403
-    q_raw = (request.args.get('q') or '').strip()
-    q_safe = ''.join(c for c in q_raw.lower() if c not in '%_\\')
-    if len(q_safe) < 2:
-        return jsonify({'ok': True, 'names': []})
+    q_raw = (request.args.get('q') or '').strip().lstrip('#').strip()
+    sb = int(current_user.id)
     conn = get_db()
     try:
+        if q_raw.isdigit():
+            like_pat = q_raw + '%'
+            rows = conn.execute(
+                '''
+                SELECT member_uid, id, TRIM(member_name) AS mn
+                FROM loan_applications
+                WHERE submitted_by = ?
+                  AND TRIM(COALESCE(member_name, '')) <> ''
+                  AND (
+                    CAST(id AS TEXT) LIKE ?
+                    OR (member_uid IS NOT NULL AND CAST(member_uid AS TEXT) LIKE ?)
+                  )
+                ORDER BY COALESCE(member_uid, id) ASC, id DESC
+                LIMIT 60
+                ''',
+                (sb, like_pat, like_pat),
+            ).fetchall()
+            id_matches = []
+            seen_keys = set()
+            for r in rows or []:
+                d = dict(r)
+                mn = (d.get('mn') or '').strip()
+                if not mn:
+                    continue
+                mu = d.get('member_uid')
+                rid = d.get('id')
+                try:
+                    key = int(mu) if mu is not None else int(rid)
+                except (TypeError, ValueError):
+                    continue
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                try:
+                    mu_out = int(mu) if mu is not None else int(rid)
+                except (TypeError, ValueError):
+                    mu_out = key
+                try:
+                    app_out = int(rid)
+                except (TypeError, ValueError):
+                    continue
+                id_matches.append(
+                    {
+                        'member_uid': mu_out,
+                        'member_name': mn,
+                        'application_id': app_out,
+                    }
+                )
+                if len(id_matches) >= 40:
+                    break
+            return jsonify({'ok': True, 'names': [], 'id_matches': id_matches})
+
+        q_safe = ''.join(c for c in q_raw.lower() if c not in '%_\\')
+        if len(q_safe) < 2:
+            return jsonify({'ok': True, 'names': [], 'id_matches': []})
+
         if is_postgresql():
             token_expr = "LOWER(SPLIT_PART(TRIM(COALESCE(member_name, '')), ' ', 1))"
         else:
@@ -4640,13 +4918,14 @@ def api_member_name_suggestions():
             f'''
             SELECT DISTINCT TRIM(member_name) AS mn
             FROM loan_applications
-            WHERE TRIM(COALESCE(member_name, '')) <> ''
+            WHERE submitted_by = ?
+              AND TRIM(COALESCE(member_name, '')) <> ''
               AND LENGTH(TRIM(COALESCE(member_name, ''))) >= 2
               AND ({token_expr}) LIKE ? || '%'
             ORDER BY mn ASC
             LIMIT 40
             ''',
-            (q_safe,),
+            (sb, q_safe),
         ).fetchall()
         names = []
         seen = set()
@@ -4660,7 +4939,7 @@ def api_member_name_suggestions():
                 continue
             seen.add(key)
             names.append(mn)
-        return jsonify({'ok': True, 'names': names})
+        return jsonify({'ok': True, 'names': names, 'id_matches': []})
     except Exception as e:
         app.logger.exception('api_member_name_suggestions: %s', e)
         return jsonify({'ok': False, 'error': 'server_error'}), 500
@@ -6683,6 +6962,43 @@ def _blocking_ci_completed_duplicate_exists(conn, member_name, submitted_by_id):
     return False
 
 
+def _normalized_member_name_key(member_name):
+    return (member_name or '').strip().lower()
+
+
+def _resolve_member_uid_for_insert(conn, member_name):
+    """
+    Return member_uid for a new row: reuse existing uid for same normalized name,
+    otherwise allocate max(member_uid)+1 coop-wide.
+    """
+    nk = _normalized_member_name_key(member_name)
+    if len(nk) < 2:
+        row = conn.execute(
+            'SELECT COALESCE(MAX(member_uid), 0) + 1 AS n FROM loan_applications'
+        ).fetchone()
+        return int(dict(row).get('n') or 1)
+
+    row = conn.execute(
+        '''
+        SELECT member_uid FROM loan_applications
+        WHERE LOWER(TRIM(COALESCE(member_name, ''))) = ?
+          AND member_uid IS NOT NULL
+        LIMIT 1
+        ''',
+        (nk,),
+    ).fetchone()
+    if row is not None:
+        d = dict(row)
+        mu = d.get('member_uid')
+        if mu is not None:
+            return int(mu)
+
+    row = conn.execute(
+        'SELECT COALESCE(MAX(member_uid), 0) + 1 AS n FROM loan_applications'
+    ).fetchone()
+    return int(dict(row).get('n') or 1)
+
+
 def _purge_pipeline_duplicate_member_applications(conn, member_name, submitted_by_id):
     """
     Before a new submission: delete open pipeline rows from this LPS that match this member
@@ -6717,6 +7033,7 @@ def _insert_loan_application(
     lps_remarks,
     needs_ci,
     submitted_by_id,
+    member_uid,
 ):
     """
     Insert a new row into loan_applications and return the new id.
@@ -6729,17 +7046,22 @@ def _insert_loan_application(
     except (TypeError, ValueError):
         amt = 0.0
     needs_flag = 1 if int(needs_ci) else 0
+    try:
+        mu = int(member_uid)
+    except (TypeError, ValueError):
+        mu = _resolve_member_uid_for_insert(conn, member_name)
 
     if is_postgresql():
         cursor = conn.execute(
             """
             INSERT INTO loan_applications
-            (member_name, member_contact, member_address, loan_amount, loan_type,
+            (member_uid, member_name, member_contact, member_address, loan_amount, loan_type,
              lps_remarks, needs_ci_interview, submitted_by, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
             """,
             (
+                mu,
                 member_name,
                 member_contact,
                 member_address,
@@ -6765,11 +7087,12 @@ def _insert_loan_application(
     cursor = conn.execute(
         """
         INSERT INTO loan_applications
-        (member_name, member_contact, member_address, loan_amount, loan_type,
+        (member_uid, member_name, member_contact, member_address, loan_amount, loan_type,
          lps_remarks, needs_ci_interview, submitted_by, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
+            mu,
             member_name,
             member_contact,
             member_address,
@@ -8201,7 +8524,10 @@ def update_ci_route():
         seen = set()
         ordered: list = []
         for p in parts:
-            if p and p in allowed and p not in seen:
+            p = str(p).strip()
+            if not p or p in seen:
+                continue
+            if p in allowed or is_valid_custom_route_token(p):
                 seen.add(p)
                 ordered.append(p)
         return ','.join(ordered) if ordered else None
@@ -8259,7 +8585,14 @@ def update_ci_route():
             if clash_keys:
                 clash_keys = list(dict.fromkeys(clash_keys))
                 labels = get_ci_route_label_dict()
-                human = ', '.join(labels.get(k, k) for k in clash_keys)
+
+                def _clash_label(k):
+                    c = _custom_route_label_from_token(k)
+                    if c is not None:
+                        return c
+                    return labels.get(k, k)
+
+                human = ', '.join(_clash_label(k) for k in clash_keys)
                 detail = (
                     'One or more routes are already assigned to another CI/BI user '
                     '(active or pending). '

@@ -153,6 +153,16 @@ select.ci-route-select.route-assign-await-js[multiple] {
                                     <option value="{{ r.route_key }}" {% if r.route_key in _sel %}selected{% endif %}>{{ r.label }}</option>
                                     {% endfor %}
                                 </select>
+                                <label class="form-label form-label-sm mb-0 mt-2 text-muted" for="custom-route-pending-{{ user.id }}">Custom route (optional)</label>
+                                <input type="text"
+                                       id="custom-route-pending-{{ user.id }}"
+                                       class="form-control form-control-sm custom-route-extra"
+                                       maxlength="220"
+                                       placeholder="e.g. Bayawan → extra area — separate several with ;"
+                                       autocomplete="off"
+                                       value="{{ user.assigned_route|custom_routes_prefill|e }}"
+                                       {% if user.role != 'ci_staff' %}disabled{% endif %}>
+                                <div class="small text-muted mt-1 route-custom-explain">Use the route list above, or type custom coverage names here only.</div>
                                 <button type="button"
                                         class="btn btn-sm btn-primary mt-1 w-100 save-ci-routes"
                                         onclick="saveRoutesFromSelect({{ user.id }})"
@@ -263,6 +273,15 @@ select.ci-route-select.route-assign-await-js[multiple] {
                                     <option value="{{ r.route_key }}" {% if r.route_key in _sel %}selected{% endif %}>{{ r.label }}</option>
                                     {% endfor %}
                                 </select>
+                                <label class="form-label form-label-sm mb-0 mt-2 text-muted" for="custom-route-active-{{ user.id }}">Custom route (optional)</label>
+                                <input type="text"
+                                       id="custom-route-active-{{ user.id }}"
+                                       class="form-control form-control-sm custom-route-extra"
+                                       maxlength="220"
+                                       placeholder="e.g. Bayawan → extra area — separate several with ;"
+                                       autocomplete="off"
+                                       value="{{ user.assigned_route|custom_routes_prefill|e }}">
+                                <div class="small text-muted mt-1 route-custom-explain">Use the route list above, or type custom coverage names here only.</div>
                                 <button type="button" class="btn btn-sm btn-primary mt-1 w-100 save-ci-routes" onclick="saveRoutesFromSelect({{ user.id }})">Save routes</button>
                             </div>
                             {% else %}
@@ -401,6 +420,19 @@ function saveRoutesFromSelect(userId) {
         return;
     }
     var assigned = Array.prototype.map.call(sel.selectedOptions || [], function (o) { return o.value; });
+    var customIn = wrap ? wrap.querySelector('input.custom-route-extra') : null;
+    if (customIn && !customIn.disabled && (customIn.value || '').trim()) {
+        var chunks = (customIn.value || '').split(/[;\n\r]+/);
+        var seenC = Object.create(null);
+        for (var j = 0; j < chunks.length; j++) {
+            var lab = (chunks[j] || '').trim();
+            if (!lab) continue;
+            var tok = 'custom:' + encodeURIComponent(lab);
+            if (seenC[tok]) continue;
+            seenC[tok] = true;
+            assigned.push(tok);
+        }
+    }
     var uid = parseInt(String(userId), 10);
     if (Number.isNaN(uid)) {
         alert('Invalid user.');
@@ -481,6 +513,10 @@ function assignRole(userId, role) {
                         routeSel.disabled = false;
                         routeSel.removeAttribute('title');
                     }
+                    var custEn = wrap.querySelector('input.custom-route-extra');
+                    if (custEn) {
+                        custEn.disabled = false;
+                    }
                     if (saveBtn) {
                         saveBtn.disabled = false;
                     }
@@ -488,6 +524,10 @@ function assignRole(userId, role) {
                     if (routeSel) {
                         routeSel.disabled = true;
                         routeSel.setAttribute('title', 'Select CI/BI role first');
+                    }
+                    var custDis = wrap.querySelector('input.custom-route-extra');
+                    if (custDis) {
+                        custDis.disabled = true;
                     }
                     if (saveBtn) {
                         saveBtn.disabled = true;

@@ -2,53 +2,6 @@
 {% block title %}Submit Application{% endblock %}
 {% block layout_feature_scripts %}{% include 'includes/assets_autocomplete.html' %}{% endblock %}
 
-<style>
-#address_suggestions {
-    max-width: 100%;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    border: 1px solid #dee2e6;
-    border-radius: 0.25rem;
-    margin-top: 2px;
-}
-
-#address_suggestions .list-group-item {
-    border-left: none;
-    border-right: none;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-#address_suggestions .list-group-item:first-child {
-    border-top: none;
-    border-top-left-radius: 0.25rem;
-    border-top-right-radius: 0.25rem;
-}
-
-#address_suggestions .list-group-item:last-child {
-    border-bottom: none;
-    border-bottom-left-radius: 0.25rem;
-    border-bottom-right-radius: 0.25rem;
-}
-
-#address_suggestions .list-group-item:hover {
-    background-color: #f8f9fa;
-}
-
-#address_suggestions h6 {
-    font-size: 0.95rem;
-    color: #212529;
-    margin-bottom: 0.25rem;
-}
-
-#address_suggestions small {
-    font-size: 0.8rem;
-}
-
-.position-relative {
-    position: relative;
-}
-</style>
-
 {% block content %}
 <h2>Submit New Loan Application</h2>
 <div class="card position-relative">
@@ -60,7 +13,16 @@
                 <button type="button" class="btn-close float-end" aria-label="Dismiss" id="memberPrefillBannerDismiss"></button>
             </div>
             <div class="row">
-                <div class="col-md-6 mb-3 position-relative">
+                <div class="col-md-4 mb-3 position-relative">
+                    <label class="form-label" for="member_uid_lookup">Member ID #</label>
+                    <input type="text" id="member_uid_lookup" class="form-control" inputmode="numeric"
+                           maxlength="12" autocomplete="off" placeholder="Optional — type ID to find member"
+                           aria-autocomplete="list" aria-controls="member_id_dropdown" aria-expanded="false">
+                    <div id="member_id_dropdown" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" role="listbox"
+                         style="z-index: 1050; max-height: 260px; overflow-y: auto; display: none;"></div>
+                    <small class="text-muted">Leave blank for a new member; an ID is saved automatically after the first application.</small>
+                </div>
+                <div class="col-md-4 mb-3 position-relative">
                     <label class="form-label">Member Name *</label>
                     <input type="text" name="member_name" id="member_name" class="form-control" required autocomplete="off" aria-busy="false"
                            aria-autocomplete="list" aria-controls="member_name_dropdown" aria-expanded="false">
@@ -80,7 +42,7 @@
                            title="Open full loan history for this member">Loan history</a>
                     </div>
                 </div>
-                <div class="col-md-6 mb-3">
+                <div class="col-md-4 mb-3">
                     <label class="form-label">Contact Number</label>
                     <input type="text" name="member_contact" id="member_contact" class="form-control" autocomplete="tel"
                            inputmode="numeric" maxlength="11" placeholder="09751762630"
@@ -184,6 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const memberHistoryBase = {{ url_for('loan_member_history') | tojson }};
     const DEBOUNCE_MS = 110;
     const SUGGEST_DEBOUNCE_MS = 85;
+    const SUGGEST_ID_DEBOUNCE_MS = 85;
     let lastPrefillName = '';
     let cachedApps = [];
     let lookupSeq = 0;
@@ -192,10 +155,16 @@ document.addEventListener('DOMContentLoaded', function() {
     let suggestionSeq = 0;
     let suggestionAbort = null;
     let suggestionDebounceTimer = null;
+    let suggestionIdSeq = 0;
+    let suggestionIdAbort = null;
+    let suggestionIdDebounceTimer = null;
     let blurHideDropdownTimer = null;
+    let blurHideIdDropdownTimer = null;
     let pickedSuggestionExact = '';
     const memberNameInput = document.getElementById('member_name');
     const memberNameDropdown = document.getElementById('member_name_dropdown');
+    const memberUidInput = document.getElementById('member_uid_lookup');
+    const memberIdDropdown = document.getElementById('member_id_dropdown');
     const lookupStatus = document.getElementById('memberNameLookupStatus');
     const lookupError = document.getElementById('memberNameLookupError');
     const noRecordNotice = document.getElementById('memberNameNoRecordNotice');
@@ -343,8 +312,19 @@ document.addEventListener('DOMContentLoaded', function() {
         renderExistingLoanTypeDropdown(data.applications || []);
 
         if (memberHistoryWrap && memberHistoryLink && memberHistoryBase) {
-            memberHistoryLink.href = memberHistoryBase + '?name=' + encodeURIComponent(name);
-            memberHistoryWrap.style.display = 'block';
+            const histName = (name || '').trim();
+            if (histName.length >= 2) {
+                let href = memberHistoryBase + '?name=' + encodeURIComponent(histName);
+                if (data.member_uid != null && data.member_uid !== '') {
+                    href += '&member_uid=' + encodeURIComponent(String(data.member_uid));
+                }
+                memberHistoryLink.href = href;
+                memberHistoryWrap.style.display = 'block';
+            }
+        }
+
+        if (memberUidInput && data.member_uid != null && data.member_uid !== '') {
+            memberUidInput.value = String(data.member_uid);
         }
 
         if (contact && (data.member_contact || '').trim()) {
@@ -360,9 +340,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    async function performPrefill(rawName) {
+    async function performPrefill(rawName, lookupOpts) {
+        lookupOpts = lookupOpts || {};
+        const muStr = lookupOpts.member_uid != null ? String(lookupOpts.member_uid).trim() : '';
+        const appStr = lookupOpts.application_id != null ? String(lookupOpts.application_id).trim() : '';
+        const byMu = muStr !== '';
+        const byApp = appStr !== '';
         const name = (rawName || '').trim();
-        if (name.length < 2) {
+
+        if (!byMu && !byApp && name.length < 2) {
             hideLookupChecking();
             return;
         }
@@ -381,7 +367,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (e) {
             u = new URL('/api/member_application_prefill', window.location.origin);
         }
-        u.searchParams.set('name', name);
+        if (byMu) {
+            u.searchParams.set('member_uid', muStr);
+        } else if (byApp) {
+            u.searchParams.set('application_id', appStr);
+        } else {
+            u.searchParams.set('name', name);
+        }
 
         try {
             const fetchOpts = {
@@ -405,7 +397,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             hideLookupError();
             hideLookupChecking();
-            applyPrefillPayload(name, data);
+            const labelName = (byMu || byApp) ? ((data.member_name || name || '').trim()) : name;
+            applyPrefillPayload(labelName || name, data);
         } catch (err) {
             if (err && (err.name === 'AbortError' || err.code === 20)) {
                 return;
@@ -419,13 +412,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function schedulePrefill(rawName) {
+    function schedulePrefill(rawName, lookupOpts) {
         const name = (rawName || '').trim();
-        if (name.length < 2) return;
+        const opts = lookupOpts || {};
+        if (!opts.member_uid && !opts.application_id && name.length < 2) return;
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(function () {
             debounceTimer = null;
-            performPrefill(name);
+            performPrefill(memberNameInput.value, opts);
         }, DEBOUNCE_MS);
     }
 
@@ -434,6 +428,13 @@ document.addEventListener('DOMContentLoaded', function() {
         memberNameDropdown.style.display = 'none';
         memberNameDropdown.innerHTML = '';
         if (memberNameInput) memberNameInput.setAttribute('aria-expanded', 'false');
+    }
+
+    function hideMemberIdDropdown() {
+        if (!memberIdDropdown) return;
+        memberIdDropdown.style.display = 'none';
+        memberIdDropdown.innerHTML = '';
+        if (memberUidInput) memberUidInput.setAttribute('aria-expanded', 'false');
     }
 
     function renderMemberNameDropdown(names) {
@@ -472,7 +473,57 @@ document.addEventListener('DOMContentLoaded', function() {
         hideMemberNameDropdown();
         lastPrefillName = '';
         hideLookupError();
-        schedulePrefill(v);
+        schedulePrefill(v, {});
+    }
+
+    function renderMemberIdDropdown(matches) {
+        if (!memberIdDropdown || !memberUidInput) return;
+        const list = Array.isArray(matches) ? matches.filter(Boolean) : [];
+        if (!list.length) {
+            hideMemberIdDropdown();
+            return;
+        }
+        memberIdDropdown.innerHTML = '';
+        list.forEach(function (entry) {
+            if (!entry || entry.member_uid == null) return;
+            const mn = String(entry.member_name || '').trim();
+            const uid = entry.member_uid;
+            const aid = entry.application_id != null ? entry.application_id : '';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action py-2 small text-start';
+            btn.setAttribute('role', 'option');
+            let line = '#' + uid;
+            if (mn) line += ' · ' + mn;
+            if (aid !== '') line += ' · App #' + aid;
+            btn.textContent = line;
+            btn.addEventListener('mousedown', function (ev) {
+                ev.preventDefault();
+            });
+            btn.addEventListener('click', function () {
+                pickMemberIdSuggestion(entry);
+            });
+            memberIdDropdown.appendChild(btn);
+        });
+        memberIdDropdown.style.display = 'block';
+        memberUidInput.setAttribute('aria-expanded', 'true');
+    }
+
+    function pickMemberIdSuggestion(entry) {
+        if (!entry || memberUidInput == null) return;
+        hideMemberIdDropdown();
+        memberUidInput.value = String(entry.member_uid);
+        const nm = String(entry.member_name || '').trim();
+        if (nm && memberNameInput) {
+            pickedSuggestionExact = nm;
+            memberNameInput.value = nm;
+        } else {
+            pickedSuggestionExact = '';
+        }
+        lastPrefillName = '';
+        hideLookupError();
+        hideNoRecordNotice();
+        performPrefill(nm, { member_uid: String(entry.member_uid) });
     }
 
     async function fetchMemberNameSuggestions(rawQ) {
@@ -504,7 +555,11 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             const data = await res.json();
             if (seq !== suggestionSeq) return;
-            if (!res.ok || !data || !data.ok || !Array.isArray(data.names)) {
+            if (!res.ok || !data || !data.ok) {
+                hideMemberNameDropdown();
+                return;
+            }
+            if (!Array.isArray(data.names)) {
                 hideMemberNameDropdown();
                 return;
             }
@@ -518,6 +573,60 @@ document.addEventListener('DOMContentLoaded', function() {
             if (err && (err.name === 'AbortError' || err.code === 20)) return;
             hideMemberNameDropdown();
         }
+    }
+
+    async function fetchMemberIdSuggestions(rawDigits) {
+        const qt = String(rawDigits || '').replace(/\D/g, '');
+        if (!qt.length) {
+            hideMemberIdDropdown();
+            return;
+        }
+        if (suggestionIdAbort) {
+            try { suggestionIdAbort.abort(); } catch (e) { /* ignore */ }
+        }
+        suggestionIdAbort = new AbortController();
+        const seq = ++suggestionIdSeq;
+        let u;
+        try {
+            u = new URL(suggestionsUrl, window.location.origin);
+        } catch (e) {
+            u = new URL('/api/member_name_suggestions', window.location.origin);
+        }
+        u.searchParams.set('q', qt);
+        try {
+            const res = await fetch(u.toString(), {
+                credentials: 'same-origin',
+                signal: suggestionIdAbort.signal,
+            });
+            const data = await res.json();
+            if (seq !== suggestionIdSeq) return;
+            if (!res.ok || !data || !data.ok) {
+                hideMemberIdDropdown();
+                return;
+            }
+            const matches = Array.isArray(data.id_matches) ? data.id_matches : [];
+            const cur = memberUidInput ? String(memberUidInput.value || '').replace(/\D/g, '') : '';
+            if (cur !== qt) return;
+            renderMemberIdDropdown(matches);
+        } catch (err) {
+            if (err && (err.name === 'AbortError' || err.code === 20)) return;
+            hideMemberIdDropdown();
+        }
+    }
+
+    function scheduleMemberIdSuggestions(rawDigits) {
+        const qt = String(rawDigits || '').replace(/\D/g, '');
+        if (!qt.length) {
+            clearTimeout(suggestionIdDebounceTimer);
+            suggestionIdDebounceTimer = null;
+            hideMemberIdDropdown();
+            return;
+        }
+        clearTimeout(suggestionIdDebounceTimer);
+        suggestionIdDebounceTimer = setTimeout(function () {
+            suggestionIdDebounceTimer = null;
+            fetchMemberIdSuggestions(qt);
+        }, SUGGEST_ID_DEBOUNCE_MS);
     }
 
     function scheduleMemberNameSuggestions(rawQ) {
@@ -536,11 +645,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.addEventListener('click', function (ev) {
-        if (!memberNameInput || !memberNameDropdown) return;
-        if (memberNameDropdown.style.display === 'none') return;
-        const wrap = memberNameInput.closest('.position-relative');
-        if (wrap && !wrap.contains(ev.target)) {
-            hideMemberNameDropdown();
+        if (memberNameInput && memberNameDropdown && memberNameDropdown.style.display !== 'none') {
+            const wrap = memberNameInput.closest('.position-relative');
+            if (wrap && !wrap.contains(ev.target)) {
+                hideMemberNameDropdown();
+            }
+        }
+        if (memberUidInput && memberIdDropdown && memberIdDropdown.style.display !== 'none') {
+            const wrapId = memberUidInput.closest('.position-relative');
+            if (wrapId && !wrapId.contains(ev.target)) {
+                hideMemberIdDropdown();
+            }
         }
     });
 
@@ -550,9 +665,62 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    memberUidInput?.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') {
+            hideMemberIdDropdown();
+        }
+    });
+
+    memberUidInput?.addEventListener('focus', function () {
+        clearTimeout(blurHideIdDropdownTimer);
+        blurHideIdDropdownTimer = null;
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+        clearTimeout(suggestionDebounceTimer);
+        suggestionDebounceTimer = null;
+        hideMemberNameDropdown();
+        if (prefillAbort) {
+            try {
+                prefillAbort.abort();
+            } catch (e) { /* ignore */ }
+        }
+        if (suggestionAbort) {
+            try {
+                suggestionAbort.abort();
+            } catch (e) { /* ignore */ }
+        }
+        suggestionSeq += 1;
+        lookupSeq += 1;
+    });
+
+    memberUidInput?.addEventListener('input', function () {
+        var v = this.value.replace(/\D/g, '').slice(0, 12);
+        if (this.value !== v) {
+            this.value = v;
+        }
+        hideLookupError();
+        hideNoRecordNotice();
+        if (!v.length) {
+            clearTimeout(suggestionIdDebounceTimer);
+            suggestionIdDebounceTimer = null;
+            suggestionIdSeq += 1;
+            hideMemberIdDropdown();
+            return;
+        }
+        scheduleMemberIdSuggestions(v);
+    });
+
+    memberUidInput?.addEventListener('blur', function () {
+        blurHideIdDropdownTimer = setTimeout(function () {
+            blurHideIdDropdownTimer = null;
+            hideMemberIdDropdown();
+        }, 200);
+    });
+
     memberNameInput?.addEventListener('focus', function () {
         clearTimeout(blurHideDropdownTimer);
         blurHideDropdownTimer = null;
+        hideMemberIdDropdown();
         const t = (this.value || '').trim();
         if (t.length >= 2) {
             return;
@@ -577,6 +745,7 @@ document.addEventListener('DOMContentLoaded', function() {
         hideLookupError();
         hideNoRecordNotice();
         hideMemberNameDropdown();
+        hideMemberIdDropdown();
         pickedSuggestionExact = '';
     });
 
@@ -597,6 +766,8 @@ document.addEventListener('DOMContentLoaded', function() {
             lastPrefillName = '';
             pickedSuggestionExact = '';
             hideMemberNameDropdown();
+            hideMemberIdDropdown();
+            if (memberUidInput) memberUidInput.value = '';
             hideExistingNotice();
             renderExistingLoanTypeDropdown([]);
             if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';

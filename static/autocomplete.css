@@ -4,6 +4,48 @@
     position: relative;
 }
 
+/* Shared LPS address suggestion dropdown (submit + edit application pages). */
+#address_suggestions {
+    max-width: 100%;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-top: 2px;
+}
+
+#address_suggestions .list-group-item {
+    border-left: none;
+    border-right: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#address_suggestions .list-group-item:first-child {
+    border-top: none;
+    border-top-left-radius: 0.25rem;
+    border-top-right-radius: 0.25rem;
+}
+
+#address_suggestions .list-group-item:last-child {
+    border-bottom: none;
+    border-bottom-left-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem;
+}
+
+#address_suggestions .list-group-item:hover {
+    background-color: #f8f9fa;
+}
+
+#address_suggestions h6 {
+    font-size: 0.95rem;
+    color: #212529;
+    margin-bottom: 0.25rem;
+}
+
+#address_suggestions small {
+    font-size: 0.8rem;
+}
+
 .autocomplete-suggestions {
     position: absolute;
     background: white;

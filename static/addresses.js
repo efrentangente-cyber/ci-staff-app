@@ -240,17 +240,4 @@ window.listCoverageBarangaysInMunicipality = listCoverageBarangaysInMunicipality
         console.error('addresses.js: catalogue build failed', err);
         window.__ADDRESS_CATALOGUE_ROWS__ = 0;
     }
-    try {
-        console.log(
-            'Address rows loaded: ' +
-                addressDatabase.length +
-                ' (PSGC Negros barangays; City of Bayawan NO + overrides + Wikipedia/DepEd-referenced subdivisions where listed + numbered Purok up to ' +
-                SYNTHETIC_PUROK_MAX_BAYAWAN_ORIENTAL +
-                ' there, ' +
-                SYNTHETIC_PUROK_MAX +
-                ' elsewhere where not overridden)',
-        );
-    } catch (_) {
-        /* ignore */
-    }
 })();

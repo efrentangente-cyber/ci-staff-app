@@ -28,6 +28,7 @@ CREATE TABLE users (
 
 CREATE TABLE loan_applications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    member_uid INTEGER,
     member_name TEXT NOT NULL,
     member_contact TEXT,
     member_address TEXT,

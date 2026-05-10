@@ -213,9 +213,6 @@ function loadVerificationData() {
             // Show notification that verification was completed
             showVerificationNotification(data);
             
-            // You can use this data to pre-fill or validate fields
-            console.log('Verification data loaded:', data);
-            
             // Clear session storage after loading
             sessionStorage.removeItem('ci_verification_data');
         } catch (e) {
@@ -778,7 +775,6 @@ function removeLoanRow(button) {
 // Load Excel data from saved checklist
 function loadExcelData() {
     if (!window.excelSheet) {
-        console.log('Excel sheet not initialized yet');
         return;
     }
     
@@ -786,7 +782,6 @@ function loadExcelData() {
     if (checklistData.excel_cashflow) {
         try {
             window.excelSheet.importData(checklistData.excel_cashflow);
-            console.log('Excel data loaded from checklist');
         } catch (e) {
             console.error('Error loading Excel data:', e);
         }
@@ -796,7 +791,6 @@ function loadExcelData() {
 // Sync Excel Cash Flow data to Computation page (Page 2.5 -> Page 3)
 function syncExcelToComputation() {
     if (!window.excelSheet) {
-        console.log('Excel sheet not available for sync');
         return;
     }
 

@@ -8,8 +8,6 @@ let locationTrackingInterval = null;
 let lastKnownLocation = { latitude: null, longitude: null };
 
 function startLocationTracking() {
-    console.log('Starting CI location tracking...');
-    
     // Check if geolocation is supported
     if (!navigator.geolocation) {
         console.error('Geolocation is not supported by this browser');
@@ -30,7 +28,6 @@ function stopLocationTracking() {
     if (locationTrackingInterval) {
         clearInterval(locationTrackingInterval);
         locationTrackingInterval = null;
-        console.log('Location tracking stopped');
         showLocationStatus('Location tracking stopped', 'info');
     }
 }
@@ -53,8 +50,6 @@ function captureLocation() {
             // Update status display
             const timestamp = new Date().toLocaleTimeString();
             showLocationStatus(`Location updated: ${timestamp}`, 'success');
-            
-            console.log(`Location captured: ${lastKnownLocation.latitude}, ${lastKnownLocation.longitude}`);
         },
         function(error) {
             let errorMessage = 'Location error: ';
