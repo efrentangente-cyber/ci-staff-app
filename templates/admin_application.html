@@ -105,7 +105,7 @@
                             <div class="card-body">
                                 <h6 class="card-title text-truncate" title="{{ doc_display_name }}">{{ doc_display_name }}</h6>
                                 <p class="card-text small text-muted">
-                                    <i class="bi bi-calendar"></i> {{ doc.uploaded_at }}<br>
+                                    <i class="bi bi-calendar"></i> {{ doc.uploaded_at|fmt_datetime('%d/%m/%Y %H:%M') }}<br>
                                     <i class="bi bi-person"></i> Uploaded by LPS
                                 </p>
                                 <a href="{{ url_for('download_document', doc_id=doc.id) }}" 

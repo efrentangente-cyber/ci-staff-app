@@ -39,7 +39,7 @@ import json
 from difflib import SequenceMatcher
 import mimetypes
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import pytz
 from dotenv import load_dotenv
 import resend
@@ -275,6 +275,8 @@ def fmt_datetime(value, fmt='%Y-%m-%d %H:%M'):
     if value is None:
         return ''
     if isinstance(value, datetime):
+        return value.strftime(fmt)
+    if isinstance(value, date):
         return value.strftime(fmt)
     if isinstance(value, str):
         try:
@@ -2777,33 +2779,6 @@ def _is_session_stale(last_seen_value):
     return (now_dt - last_seen_dt).total_seconds() > _SINGLE_LOGIN_STALE_SECONDS
 
 
-def _login_blocked_by_active_session(row) -> bool:
-    """
-    If True, a new login for this user must be rejected: the account still has an
-    active server session (not signed out) and last activity is within the idle window.
-    IP/User-Agent are not used to decide this—only session is_active + last_seen.
-    When last_seen is past the idle limit, allow login to replace the row (reclaims
-    abandoned sessions without a formal Log out).
-    """
-    if not row:
-        return False
-    try:
-        is_active = int(row['is_active']) if row['is_active'] is not None else 0
-    except (TypeError, ValueError, KeyError):
-        is_active = 0
-    if is_active != 1:
-        return False
-    ls = row['last_seen'] if 'last_seen' in row.keys() else None
-    # Missing last_seen: reclaim row (same class as stale for sign-in-from-login-screen).
-    if ls is None:
-        return False
-    if isinstance(ls, str) and not str(ls).strip():
-        return False
-    if _is_session_stale(ls):
-        return False
-    return True
-
-
 def _upsert_user_session(conn, user_id, session_token):
     now_iso = now_ph().isoformat()
     conn.execute('''
@@ -4023,22 +3998,8 @@ def login():
                 flash('Your account is pending admin approval. Please wait.', 'warning')
                 return render_template('login.html')
 
-            # Active session (not signed out, not idle-expired) blocks another sign-in until Log out or idle cutoff.
-            try:
-                sess_row = conn.execute(
-                    'SELECT is_active, last_seen FROM user_login_sessions WHERE user_id=?',
-                    (row['id'],),
-                ).fetchone()
-            except Exception:
-                sess_row = None
-            if _login_blocked_by_active_session(sess_row):
-                flash(
-                    'This account is still signed in. Use Log out in the open session first—then you can '
-                    'sign in again here from any device. '
-                    '(If the session was idle for a long time, sign-in may be allowed automatically.)',
-                    'warning',
-                )
-                return render_template('login.html')
+            # Allow sign-in even if a prior server session row exists (browser closed / lost cookie / new device).
+            # _upsert_user_session replaces session_token; the old browser's cookie fails enforce on next request.
 
             auth_session_token = uuid.uuid4().hex
             _upsert_user_session(conn, row['id'], auth_session_token)
@@ -4183,7 +4144,7 @@ def group_lps_dashboard_by_member(application_rows):
     """
     One LPS dashboard row per member name (case-insensitive).
     ``application_rows``: iterable of dict-like rows in display order (oldest first).
-    Returns [{'member_name': str, 'apps': [dict, ...]}, ...].
+    Returns [{'member_name': str, 'member_uid': optional int, 'apps': [dict, ...]}, ...].
     """
     buckets = {}
     order = []
@@ -4191,8 +4152,14 @@ def group_lps_dashboard_by_member(application_rows):
         d = dict(row)
         key = _lps_member_group_key(d.get('member_name'))
         if key not in buckets:
-            buckets[key] = {'member_name': (d.get('member_name') or '').strip(), 'apps': []}
+            buckets[key] = {
+                'member_name': (d.get('member_name') or '').strip(),
+                'member_uid': d.get('member_uid'),
+                'apps': [],
+            }
             order.append(key)
+        elif buckets[key].get('member_uid') is None and d.get('member_uid') is not None:
+            buckets[key]['member_uid'] = d.get('member_uid')
         buckets[key]['apps'].append(d)
     return [buckets[k] for k in order]
 
@@ -4226,9 +4193,9 @@ def loan_dashboard():
             app.logger.warning('loan_dashboard member dedupe skipped: %s', _dedupe_err)
     # Only fetch the columns the template reads — avoids transferring ci_checklist_data,
     # admin_notes, loan_officer_notes, and other wide TEXT columns from PostgreSQL.
-    # Oldest first so new submissions appear at the bottom (full list per LPS — no LIMIT).
+    # Oldest first so new submissions appear at the bottom of the full list per LPS — no LIMIT.
     applications = conn.execute('''
-        SELECT la.id, la.status, la.member_name, la.loan_amount, la.loan_type,
+        SELECT la.id, la.status, la.member_name, la.member_uid, la.loan_amount, la.loan_type,
                la.submitted_at, la.ci_completed_at, la.needs_ci_interview, la.assigned_ci_staff,
                u.name as ci_staff_name
         FROM loan_applications la
@@ -4377,6 +4344,15 @@ def loan_member_history():
         submitted_at = r.get('submitted_at')
         if hasattr(submitted_at, 'strftime'):
             submitted_disp = submitted_at.strftime('%d/%m/%Y %H:%M')
+        elif isinstance(submitted_at, str) and submitted_at.strip():
+            try:
+                submitted_disp = datetime.fromisoformat(
+                    submitted_at.strip().replace('Z', '+00:00')
+                ).strftime('%d/%m/%Y %H:%M')
+            except ValueError:
+                submitted_disp = (
+                    submitted_at[:16] if len(submitted_at) >= 16 else submitted_at
+                )
         else:
             submitted_disp = str(submitted_at) if submitted_at is not None else ''
 
@@ -4411,6 +4387,7 @@ def loan_member_history():
         history.append(
             {
                 'id': r['id'],
+                'member_uid': r.get('member_uid'),
                 'loan_type': (r.get('loan_type') or '').strip(),
                 'loan_amount': r.get('loan_amount'),
                 'loan_amount_display': loan_amount_display,
@@ -4431,9 +4408,17 @@ def loan_member_history():
 
     return_url = _member_history_return_url(request, back_url)
 
+    try:
+        header_member_uid = latest.get('member_uid')
+        if header_member_uid is not None:
+            header_member_uid = int(header_member_uid)
+    except (TypeError, ValueError):
+        header_member_uid = None
+
     return render_template(
         'member_loan_history.html',
         display_name=display_name,
+        header_member_uid=header_member_uid,
         member_contact=member_contact,
         member_address=member_address,
         history=history,
@@ -4640,6 +4625,21 @@ def submit_application():
                         'info',
                     )
 
+                mu_parsed, mu_err = _parse_member_uid_for_new_application(
+                    conn,
+                    request.form.get('member_uid'),
+                    member_name,
+                )
+                if mu_err:
+                    conn.close()
+                    flash(mu_err, 'danger')
+                    return redirect(url_for('submit_application'))
+                resolved_uid = (
+                    mu_parsed
+                    if mu_parsed is not None
+                    else _resolve_member_uid_for_insert(conn, member_name)
+                )
+
                 # Check if specific CI staff was selected
                 specific_ci_id = None
                 if needs_ci_value.startswith('ci_'):
@@ -4671,7 +4671,7 @@ def submit_application():
                     lps_remarks,
                     needs_ci,
                     current_user.id,
-                    _resolve_member_uid_for_insert(conn, member_name),
+                    resolved_uid,
                 )
                 if not app_id:
                     conn.rollback()
@@ -4909,7 +4909,7 @@ def api_member_application_prefill():
             ).fetchall()
 
         elif len(name) >= 2:
-            nk = name.lower()
+            nk = _normalized_member_name_key(name)
             related_rows = conn.execute(
                 '''
                 SELECT id, loan_type, loan_amount, status, member_contact,
@@ -5124,7 +5124,7 @@ def ci_dashboard():
     # Select only columns the CI dashboard template needs.
     # Oldest first so new assignments appear at the bottom of each section (no LIMIT).
     applications = conn.execute('''
-        SELECT la.id, la.status, la.member_name, la.member_address, la.loan_amount,
+        SELECT la.id, la.status, la.member_name, la.member_uid, la.member_address, la.loan_amount,
                la.loan_type, la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
                u.name as loan_staff_name
         FROM loan_applications la
@@ -5876,7 +5876,7 @@ def admin_dashboard():
         # admin_notes, loan_officer_notes, and other large TEXT/JSON columns for
         # every row, potentially MBs from Render's managed PostgreSQL node.
         _LA_COLS = (
-            'la.id, la.status, la.member_name, la.loan_amount, la.loan_type,'
+            'la.id, la.status, la.member_name, la.member_uid, la.loan_amount, la.loan_type,'
             ' la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,'
             ' u1.name AS loan_staff_name, u2.name AS ci_staff_name'
         )
@@ -7128,6 +7128,38 @@ def _blocking_ci_completed_duplicate_exists(conn, member_name, submitted_by_id):
 
 def _normalized_member_name_key(member_name):
     return (member_name or '').strip().lower()
+
+
+def _parse_member_uid_for_new_application(conn, raw_uid, member_name):
+    """
+    Optional Member ID # from LPS submit form. Empty → use auto (_resolve_member_uid_for_insert).
+    Returns (member_uid_int_or_none, error_message_or_none). error_message is user-facing flash text.
+    """
+    s = (raw_uid or '').strip()
+    if not s:
+        return None, None
+    if not s.isdigit():
+        return None, 'Member ID must be a positive whole number, or leave the field blank for an automatic ID.'
+    mu = int(s)
+    if mu <= 0:
+        return None, 'Member ID must be a positive whole number, or leave the field blank for an automatic ID.'
+    nk = _normalized_member_name_key(member_name)
+    row = conn.execute(
+        '''
+        SELECT member_name FROM loan_applications
+        WHERE member_uid = ? AND TRIM(COALESCE(member_name, '')) <> ''
+        LIMIT 1
+        ''',
+        (mu,),
+    ).fetchone()
+    if row:
+        existing_nk = _normalized_member_name_key(dict(row).get('member_name'))
+        if existing_nk != nk:
+            return None, (
+                'That Member ID is already assigned to a different member name in the system. '
+                'Clear the ID field to assign automatically, or use the ID that belongs to this member.'
+            )
+    return mu, None
 
 
 def _resolve_member_uid_for_insert(conn, member_name):
@@ -10120,7 +10152,7 @@ def api_admin_applications():
 
     conn = get_db()
     _LA_COLS = (
-        'la.id, la.status, la.member_name, la.loan_amount, la.loan_type,'
+        'la.id, la.status, la.member_name, la.member_uid, la.loan_amount, la.loan_type,'
         ' la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,'
         ' u1.name AS loan_staff_name, u2.name AS ci_staff_name'
     )
@@ -10155,7 +10187,7 @@ def api_loan_applications():
 
     conn = get_db()
     applications = conn.execute('''
-        SELECT la.id, la.status, la.member_name, la.loan_amount, la.loan_type,
+        SELECT la.id, la.status, la.member_name, la.member_uid, la.loan_amount, la.loan_type,
                la.submitted_at, la.ci_completed_at, la.needs_ci_interview, la.assigned_ci_staff,
                u.name as ci_staff_name
         FROM loan_applications la
@@ -10175,7 +10207,7 @@ def api_ci_applications():
 
     conn = get_db()
     applications = conn.execute('''
-        SELECT la.id, la.status, la.member_name, la.member_address, la.loan_amount,
+        SELECT la.id, la.status, la.member_name, la.member_uid, la.member_address, la.loan_amount,
                la.loan_type, la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
                u.name as loan_staff_name
         FROM loan_applications la

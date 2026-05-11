@@ -16,6 +16,8 @@
     <div class="card-body">
         <h5 class="card-title mb-3">{{ display_name }}</h5>
         <dl class="row mb-0 small">
+            <dt class="col-sm-3 col-md-2">Member ID</dt>
+            <dd class="col-sm-9 col-md-10">{% if header_member_uid is not none %}{{ header_member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</dd>
             <dt class="col-sm-3 col-md-2">Contact</dt>
             <dd class="col-sm-9 col-md-10">{{ member_contact or '—' }}</dd>
             <dt class="col-sm-3 col-md-2">Address</dt>
@@ -34,6 +36,7 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
+                        <th>Member ID</th>
                         <th>App</th>
                         <th>Loan type</th>
                         <th>Amount</th>
@@ -47,6 +50,7 @@
                 <tbody>
                     {% for h in history %}
                     <tr>
+                        <td class="text-nowrap">{% if h.member_uid is not none %}{{ h.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td><strong>#{{ h.id }}</strong></td>
                         <td>{{ h.loan_type or '—' }}</td>
                         <td>{{ h.loan_amount_display }}</td>

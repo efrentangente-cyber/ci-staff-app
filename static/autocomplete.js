@@ -61,6 +61,12 @@ class AutocompleteManager {
 
     attachAutocomplete(input, endpoint) {
         if (!input) return;
+        // Pages with their own member lookup (e.g. LPS submit) must opt out — global names
+        // API is unscoped + ILIKE %q% and fires with no debounce, which duplicates work and
+        // slows typing on large databases.
+        if (String(input.dataset.globalAutocomplete || '').toLowerCase() === 'off') {
+            return;
+        }
 
         // Add autocomplete attribute
         input.setAttribute('autocomplete', 'off');

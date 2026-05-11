@@ -24,14 +24,31 @@ function groupLpsDashboardByMember(appList) {
     appList.forEach(function (app) {
         const key = String(app.member_name || '').trim().toLowerCase();
         if (!buckets[key]) {
-            buckets[key] = { member_name: String(app.member_name || '').trim(), apps: [] };
+            buckets[key] = {
+                member_name: String(app.member_name || '').trim(),
+                member_uid: app.member_uid != null && app.member_uid !== '' ? app.member_uid : null,
+                apps: [],
+            };
             order.push(key);
+        } else if (
+            (buckets[key].member_uid == null || buckets[key].member_uid === '') &&
+            app.member_uid != null &&
+            app.member_uid !== ''
+        ) {
+            buckets[key].member_uid = app.member_uid;
         }
         buckets[key].apps.push(app);
     });
     return order.map(function (k) {
         return buckets[k];
     });
+}
+
+function formatMemberUidCell(mu) {
+    if (mu == null || mu === '') {
+        return '<span class="text-muted">—</span>';
+    }
+    return '<span class="text-nowrap">' + escapeHtml(String(mu)) + '</span>';
 }
 
 function formatSubmittedSlash(val) {
@@ -340,6 +357,8 @@ function renderLoanDashboardTables(applications) {
         const nameHref = memberHistoryHref(g.member_name);
         tr.innerHTML =
             '<td>' +
+            formatMemberUidCell(g.member_uid) +
+            '</td><td>' +
             memberIdsAndNameCellHtml(g.apps, g.member_name, nameHref) +
             '</td>' +
             '<td class="small">' +
@@ -374,6 +393,8 @@ function renderLoanDashboardTables(applications) {
             const nameHref = memberHistoryHref(g.member_name);
             tr.innerHTML =
                 '<td>' +
+                formatMemberUidCell(g.member_uid) +
+                '</td><td>' +
                 memberIdsAndNameCellHtml(g.apps, g.member_name, nameHref) +
                 '</td>' +
                 '<td class="small">' +
@@ -421,6 +442,8 @@ function renderLoanDashboardTables(applications) {
         const nameHref = memberHistoryHref(g.member_name);
         tr.innerHTML =
             '<td>' +
+            formatMemberUidCell(g.member_uid) +
+            '</td><td>' +
             memberIdsAndNameCellHtml(g.apps, g.member_name, nameHref) +
             '</td>' +
             '<td class="small">' +
@@ -502,6 +525,7 @@ function renderCiDashboardTables(applications) {
     pendingApps.forEach(function (app) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
+            <td>${formatMemberUidCell(app.member_uid)}</td>
             <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
             <td>${escapeHtml(app.member_address || '')}</td>
@@ -522,6 +546,7 @@ function renderCiDashboardTables(applications) {
     completedApps.forEach(function (app) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
+            <td>${formatMemberUidCell(app.member_uid)}</td>
             <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
             <td>${escapeHtml(app.member_address || '')}</td>
@@ -592,6 +617,7 @@ function renderAdminDashboardTables(applications, inProcess) {
     forReview.forEach(function (app) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
+            <td>${formatMemberUidCell(app.member_uid)}</td>
             <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
             <td>${reviewStatusBadge(app)}</td>
@@ -615,6 +641,7 @@ function renderAdminDashboardTables(applications, inProcess) {
         else if (app.status === 'deferred') badgeClass = 'warning';
         const tr = document.createElement('tr');
         tr.innerHTML = `
+            <td>${formatMemberUidCell(app.member_uid)}</td>
             <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
             <td>
@@ -641,6 +668,7 @@ function renderAdminDashboardTables(applications, inProcess) {
         const badgeClass = app.status === 'submitted' ? 'secondary' : 'info';
         const ciArg = app.assigned_ci_staff != null ? app.assigned_ci_staff : null;
         tr.innerHTML = `
+            <td>${formatMemberUidCell(app.member_uid)}</td>
             <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name || '')}</a></td>
             <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
             <td>
@@ -726,6 +754,7 @@ function updateApplicationsTable(applications) {
 
         if (currentDashboard === 'admin') {
             row.innerHTML = `
+                <td>${formatMemberUidCell(app.member_uid)}</td>
                 <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name)}</a></td>
                 <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
                 <td>
@@ -745,6 +774,7 @@ function updateApplicationsTable(applications) {
             `;
         } else if (currentDashboard === 'loan') {
             row.innerHTML = `
+                <td>${formatMemberUidCell(app.member_uid)}</td>
                 <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name)}</a></td>
                 <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
                 <td>
@@ -772,6 +802,7 @@ function updateApplicationsTable(applications) {
                    </a>`;
 
             row.innerHTML = `
+                <td>${formatMemberUidCell(app.member_uid)}</td>
                 <td><strong>#${app.id}</strong> <a href="${memberHistoryHref(app.member_name)}">${escapeHtml(app.member_name)}</a></td>
                 <td>${escapeHtml(date)}</td>
                 <td>${escapeHtml(app.member_address || 'N/A')}</td>

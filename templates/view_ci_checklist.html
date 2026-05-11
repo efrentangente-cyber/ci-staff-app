@@ -1584,7 +1584,7 @@
             <table class="view-table">
                 <tr>
                     <td width="40%"><strong>Completed Date:</strong></td>
-                    <td>{{ application.ci_completed_at }}</td>
+                    <td>{{ application.ci_completed_at|fmt_datetime('%d/%m/%Y %H:%M') if application.ci_completed_at else '—' }}</td>
                 </tr>
                 {% if application.ci_latitude and application.ci_longitude %}
                 <tr>

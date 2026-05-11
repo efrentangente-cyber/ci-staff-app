@@ -282,16 +282,23 @@
 
         if (pending.length === 0) {
             pendingTbody.innerHTML =
-                '<tr><td colspan="4" class="text-muted text-center py-3">No pending interviews. Download from the list above when online, or use the cloud download button.</td></tr>';
+                '<tr><td colspan="5" class="text-muted text-center py-3">No pending interviews. Download from the list above when online, or use the cloud download button.</td></tr>';
         } else {
             pendingTbody.innerHTML = pending
                 .sort(appSort)
                 .map(function (app) {
                     var id = app.id;
+                    var mu =
+                        app.member_uid != null && app.member_uid !== ''
+                            ? escapeHtml(String(app.member_uid))
+                            : '<span class="text-muted">—</span>';
                     var name = escapeHtml(app.member_name || '');
                     var loc = escapeHtml(app.member_address || '—');
                     return (
                         '<tr>' +
+                        '<td class="text-nowrap">' +
+                        mu +
+                        '</td>' +
                         '<td><strong>#' +
                         id +
                         '</strong> ' +
@@ -320,16 +327,23 @@
 
         if (completed.length === 0) {
             completedTbody.innerHTML =
-                '<tr><td colspan="4" class="text-muted text-center py-3">No completed interviews in local cache yet.</td></tr>';
+                '<tr><td colspan="5" class="text-muted text-center py-3">No completed interviews in local cache yet.</td></tr>';
         } else {
             completedTbody.innerHTML = completed
                 .sort(appSort)
                 .map(function (app) {
                     var id = app.id;
+                    var mu =
+                        app.member_uid != null && app.member_uid !== ''
+                            ? escapeHtml(String(app.member_uid))
+                            : '<span class="text-muted">—</span>';
                     var name = escapeHtml(app.member_name || '');
                     var loc = escapeHtml(app.member_address || '—');
                     return (
                         '<tr>' +
+                        '<td class="text-nowrap">' +
+                        mu +
+                        '</td>' +
                         '<td><strong>#' +
                         id +
                         '</strong> ' +

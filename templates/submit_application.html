@@ -15,7 +15,7 @@
             <div class="row">
                 <div class="col-md-4 mb-3 position-relative">
                     <label class="form-label" for="member_uid_lookup">Member ID #</label>
-                    <input type="text" id="member_uid_lookup" class="form-control" inputmode="numeric"
+                    <input type="text" name="member_uid" id="member_uid_lookup" class="form-control" inputmode="numeric"
                            maxlength="12" autocomplete="off" placeholder="Optional — type ID to find member"
                            aria-autocomplete="list" aria-controls="member_id_dropdown" aria-expanded="false">
                     <div id="member_id_dropdown" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" role="listbox"
@@ -25,6 +25,7 @@
                 <div class="col-md-4 mb-3 position-relative">
                     <label class="form-label">Member Name *</label>
                     <input type="text" name="member_name" id="member_name" class="form-control" required autocomplete="off" aria-busy="false"
+                           data-global-autocomplete="off"
                            aria-autocomplete="list" aria-controls="member_name_dropdown" aria-expanded="false">
                     <div id="member_name_dropdown" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" role="listbox"
                          style="z-index: 1050; max-height: 260px; overflow-y: auto; display: none;"></div>
@@ -44,9 +45,10 @@
                 </div>
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Contact Number</label>
-                    <input type="text" name="member_contact" id="member_contact" class="form-control" autocomplete="tel"
-                           inputmode="numeric" maxlength="11" placeholder="09751762630"
-                           pattern="(09[0-9]{9})?" title="Optional: exactly 11 digits starting with 09">
+                    <input type="text" name="member_contact" id="member_contact" class="form-control" value=""
+                           autocomplete="off" autocorrect="off" spellcheck="false"
+                           inputmode="numeric" maxlength="11" placeholder="Optional — 11 digits, starts with 09"
+                           pattern="(09[0-9]{9})?" title="Optional: exactly 11 digits starting with 09 (leave blank if unknown)">
                 </div>
             </div>
             <div class="mb-3 position-relative">
@@ -144,9 +146,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const prefillUrl = {{ url_for('api_member_application_prefill') | tojson }};
     const suggestionsUrl = {{ url_for('api_member_name_suggestions') | tojson }};
     const memberHistoryBase = {{ url_for('loan_member_history') | tojson }};
-    const DEBOUNCE_MS = 110;
-    const SUGGEST_DEBOUNCE_MS = 85;
-    const SUGGEST_ID_DEBOUNCE_MS = 85;
+    // Prefill hits the DB for an exact normalized name — debounce aggressively while typing.
+    const DEBOUNCE_PREFILL_MS = 400;
+    const SUGGEST_DEBOUNCE_MS = 100;
+    const SUGGEST_ID_DEBOUNCE_MS = 100;
+    const LOOKUP_SPINNER_DELAY_MS = 120;
     let lastPrefillName = '';
     let cachedApps = [];
     let lookupSeq = 0;
@@ -161,6 +165,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let blurHideDropdownTimer = null;
     let blurHideIdDropdownTimer = null;
     let pickedSuggestionExact = '';
+    let lookupSpinnerTimer = null;
     const memberNameInput = document.getElementById('member_name');
     const memberNameDropdown = document.getElementById('member_name_dropdown');
     const memberUidInput = document.getElementById('member_uid_lookup');
@@ -220,10 +225,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (lookupError) lookupError.style.display = 'none';
         hideNoRecordNotice();
-        if (lookupStatus) lookupStatus.style.display = 'flex';
-        setMemberNameBusy(true);
+        if (lookupSpinnerTimer) {
+            clearTimeout(lookupSpinnerTimer);
+        }
+        lookupSpinnerTimer = setTimeout(function () {
+            lookupSpinnerTimer = null;
+            if (lookupStatus) lookupStatus.style.display = 'flex';
+            setMemberNameBusy(true);
+        }, LOOKUP_SPINNER_DELAY_MS);
     }
     function hideLookupChecking() {
+        if (lookupSpinnerTimer) {
+            clearTimeout(lookupSpinnerTimer);
+            lookupSpinnerTimer = null;
+        }
         if (lookupStatus) lookupStatus.style.display = 'none';
         setMemberNameBusy(false);
     }
@@ -420,7 +435,7 @@ document.addEventListener('DOMContentLoaded', function() {
         debounceTimer = setTimeout(function () {
             debounceTimer = null;
             performPrefill(memberNameInput.value, opts);
-        }, DEBOUNCE_MS);
+        }, DEBOUNCE_PREFILL_MS);
     }
 
     function hideMemberNameDropdown() {
@@ -473,7 +488,9 @@ document.addEventListener('DOMContentLoaded', function() {
         hideMemberNameDropdown();
         lastPrefillName = '';
         hideLookupError();
-        schedulePrefill(v, {});
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+        performPrefill(v, {});
     }
 
     function renderMemberIdDropdown(matches) {
@@ -771,6 +788,7 @@ document.addEventListener('DOMContentLoaded', function() {
             hideExistingNotice();
             renderExistingLoanTypeDropdown([]);
             if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
+            if (contact) contact.value = '';
             return;
         }
         if (t !== lastPrefillName) {
@@ -800,6 +818,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (name.length < 2) {
             hideLookupChecking();
             hideNoRecordNotice();
+        } else if (name !== lastPrefillName) {
+            performPrefill(name, {});
         }
     });
 })(); 

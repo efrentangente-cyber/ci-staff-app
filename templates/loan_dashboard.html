@@ -96,6 +96,7 @@
             <table class="table table-hover" id="pendingTable">
                 <thead>
                     <tr>
+                        <th>Member ID</th>
                         <th>Member Name</th>
                         <th>Loan Amount</th>
                         <th>Status</th>
@@ -107,6 +108,7 @@
                 <tbody id="pendingTableBody">
                     {% for g in pipeline_groups %}
                     <tr>
+                        <td class="text-nowrap">{% if g.member_uid is not none %}{{ g.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td>{% for a in g.apps %}<strong>#{{ a.id }}</strong>{% if not loop.last %} {% endif %}{% endfor %} <a href="{{ url_for('loan_member_history', name=g.member_name) }}">{{ g.member_name }}</a></td>
                         <td class="small">
                             {% for a in g.apps %}
@@ -191,6 +193,7 @@
             <table class="table table-hover" id="ciCompletedTable">
                 <thead>
                     <tr>
+                        <th>Member ID</th>
                         <th>Member Name</th>
                         <th>Loan Amount</th>
                         <th>Status</th>
@@ -203,6 +206,7 @@
                 <tbody id="ciCompletedTableBody">
                     {% for g in ci_completed_groups %}
                     <tr>
+                        <td class="text-nowrap">{% if g.member_uid is not none %}{{ g.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td>{% for a in g.apps %}<strong>#{{ a.id }}</strong>{% if not loop.last %} {% endif %}{% endfor %} <a href="{{ url_for('loan_member_history', name=g.member_name) }}">{{ g.member_name }}</a></td>
                         <td class="small">
                             {% for a in g.apps %}
@@ -284,6 +288,7 @@
             <table class="table table-hover" id="processedTable">
                 <thead>
                     <tr>
+                        <th>Member ID</th>
                         <th>Member Name</th>
                         <th>Loan Amount</th>
                         <th>Status</th>
@@ -295,6 +300,7 @@
                 <tbody id="processedTableBody">
                     {% for g in processed_groups %}
                     <tr>
+                        <td class="text-nowrap">{% if g.member_uid is not none %}{{ g.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                         <td>{% for a in g.apps %}<strong>#{{ a.id }}</strong>{% if not loop.last %} {% endif %}{% endfor %} <a href="{{ url_for('loan_member_history', name=g.member_name) }}">{{ g.member_name }}</a></td>
                         <td class="small">
                             {% for a in g.apps %}
@@ -569,5 +575,5 @@ function clearSearch(tableType) {
 {% block scripts %}
 <script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
 <script>window.__LPS_USER_ID = {{ current_user.id | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=6" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=7" defer></script>
 {% endblock %}
