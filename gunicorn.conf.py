@@ -1,6 +1,10 @@
 # Auto-loaded for any `gunicorn app:app` run from this directory (Gunicorn default).
 # Also loaded by scripts/start_gunicorn.sh via GUNICORN_CMD_ARGS / default file discovery.
 import os
+
+# Ensure startup prints from app import (migrations, warnings) reach Render logs immediately.
+os.environ.setdefault('PYTHONUNBUFFERED', '1')
+
 import warnings
 
 # ──────────────────────────────────────────────────────────────────────────────

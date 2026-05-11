@@ -163,6 +163,8 @@ for _fd in (
 ):
     os.makedirs(_fd, exist_ok=True)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
+# Filled asynchronously by _build_minified_assets() so import finishes before bind.
+app.config.setdefault('USE_MINIFIED_ASSETS', False)
 app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 app.config['WTF_CSRF_ENABLED'] = os.getenv('WTF_CSRF_ENABLED', 'True').lower() == 'true'
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
@@ -1782,6 +1784,8 @@ def ensure_performance_indexes():
     """Create indexes for login, dashboards, and high-traffic actions."""
     try:
         conn = get_db()
+        # Each statement commits independently so one blocked/superseded CREATE INDEX
+        # on Postgres (e.g. during a rolling deploy) cannot stall the entire boot.
         statements = [
             "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
             "CREATE INDEX IF NOT EXISTS idx_users_role_approved_workload ON users(role, is_approved, current_workload)",
@@ -1848,13 +1852,29 @@ def ensure_performance_indexes():
             "CREATE INDEX IF NOT EXISTS idx_notif_user_created ON notifications(user_id, created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_notif_user_group_read ON notifications(user_id, group_key, is_read)",
         ]
+        _ok = 0
         for statement in statements:
-            conn.execute(statement)
-        conn.commit()
-        conn.close()
-        print("✓ Performance indexes ensured")
+            try:
+                conn.execute(statement)
+                try:
+                    conn.commit()
+                except Exception:
+                    pass
+                _ok += 1
+            except Exception as _idx_err:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                # Partial indexes / expression indexes may fail on older SQLite; skip quietly.
+                print(f"   ⚠  index skipped: {_idx_err}", flush=True)
+        try:
+            conn.close()
+        except Exception:
+            pass
+        print(f"✓ Performance indexes: {_ok}/{len(statements)} applied", flush=True)
     except Exception as e:
-        print(f"⚠️  Performance index warning: {e}")
+        print(f"⚠️  Performance index warning: {e}", flush=True)
 
 
 def ensure_direct_message_columns():
@@ -2359,6 +2379,27 @@ except Exception as e:
 # Wrap each step individually so a single slow/locked migration can never block
 # the rest of import. Per-step timing is printed so we can spot the slow one in
 # the Render log stream without needing a profiler.
+# ├─ Deferred (background thread): non-critical work after import returns so the worker
+# │  can bind 0.0.0.0:$PORT before Render's port-scan times out.
+# └─ Called from module tail after SocketIO exists (production_users may touch DB).
+def _start_deferred_startup(task_name, fn):
+    import threading
+
+    def _runner():
+        try:
+            print(f'▶ deferred:{task_name}…', flush=True)
+            fn()
+            print(f'✓ deferred:{task_name}', flush=True)
+        except Exception as _defer_err:
+            print(f'⚠ deferred:{task_name}: {_defer_err}', flush=True)
+            try:
+                app.logger.warning('deferred startup %s failed: %s', task_name, _defer_err)
+            except Exception:
+                pass
+
+    threading.Thread(target=_runner, name=f'dccco_{task_name}', daemon=True).start()
+
+
 def _run_startup_migration(step_name, fn, hard_timeout_sec=15.0):
     import time as _t_mig
     _t_start = _t_mig.monotonic()
@@ -2366,18 +2407,18 @@ def _run_startup_migration(step_name, fn, hard_timeout_sec=15.0):
         fn()
         _t_elapsed = _t_mig.monotonic() - _t_start
         if _t_elapsed >= 1.0:
-            print(f"   ⏱  {step_name}: {_t_elapsed:.2f}s")
+            print(f"   ⏱  {step_name}: {_t_elapsed:.2f}s", flush=True)
     except Exception as _mig_err:
         _t_elapsed = _t_mig.monotonic() - _t_start
         # Never raise — port binding must always proceed.
-        print(f"   ⚠  {step_name} skipped after {_t_elapsed:.2f}s: {_mig_err}")
+        print(f"   ⚠  {step_name} skipped after {_t_elapsed:.2f}s: {_mig_err}", flush=True)
         try:
             app.logger.warning('startup migration %s failed: %s', step_name, _mig_err)
         except Exception:
             pass
 
 
-print("▶ Running startup migrations…")
+print("▶ Running startup migrations…", flush=True)
 for _step_name, _step_fn in (
     ('ensure_performance_indexes', ensure_performance_indexes),
     ('ensure_direct_message_columns', ensure_direct_message_columns),
@@ -2393,7 +2434,7 @@ for _step_name, _step_fn in (
     ('ensure_loan_applications_member_uid_column', ensure_loan_applications_member_uid_column),
 ):
     _run_startup_migration(_step_name, _step_fn)
-print("✓ Startup migrations finished — Flask app ready to bind.")
+print("✓ Startup migrations finished — Flask app ready to bind.", flush=True)
 
 
 # ── Asset minification / bundling ────────────────────────────────────────────
@@ -2483,7 +2524,7 @@ def _build_minified_assets():
         print("✓ Minified assets active — base.html will use .min files")
 
 
-_build_minified_assets()
+_start_deferred_startup('minified_assets', _build_minified_assets)
 
 
 # Setup production users (runs on every startup to ensure correct roles)
@@ -2625,11 +2666,7 @@ def setup_production_users():
         traceback.print_exc()
         print("⚠️  Continuing app startup despite setup warnings...")
 
-try:
-    setup_production_users()
-except Exception as e:
-    print(f"⚠️  Production users setup failed: {e}")
-    print("⚠️  App will continue without default users")
+_start_deferred_startup('production_users', setup_production_users)
 
 def create_notification(user_id, message, link=None, group_key=None):
     """Insert a notification, or increment stack_count on an unread row when group_key is set."""

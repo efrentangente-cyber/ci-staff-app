@@ -10,6 +10,8 @@ services:
     # Use the script so Render dashboard "gunicorn app:app" overrides cannot drop --no-control-socket / --timeout 0.
     startCommand: bash scripts/start_gunicorn.sh
     envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: PYTHON_VERSION
         value: 3.11.0
       # Belt-and-suspenders: Gunicorn always merges GUNICORN_CMD_ARGS even when the dashboard
