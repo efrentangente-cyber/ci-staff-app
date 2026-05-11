@@ -1012,14 +1012,6 @@ def utility_processor():
             return True
         return permission_name in user_perm_list(user)
     
-    def get_user_by_id(user_id):
-        if not user_id:
-            return None
-        try:
-            return get_db().execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
-        except Exception:
-            return None
-    
     def secure_token(resource_type, resource_id):
         """Generate a secure token for hiding IDs in URLs"""
         return SecureRouter.generate_token(resource_type, resource_id)
@@ -1032,7 +1024,6 @@ def utility_processor():
     message_unread_count = 0
 
     return dict(
-        get_user_by_id=get_user_by_id,
         message_unread_count=message_unread_count,
         secure_token=secure_token,
         csrf_token=csrf_token,
@@ -1269,9 +1260,9 @@ online_users = {}  # {user_id: {'name': name, 'role': role, 'last_seen': timesta
 
 # Tiny in-memory caches to reduce repeated COUNT(*) queries per user (message + notification badges).
 try:
-    _COUNT_CACHE_TTL_SECONDS = int((os.getenv('COUNT_CACHE_TTL_SECONDS') or '90').strip() or '90')
+    _COUNT_CACHE_TTL_SECONDS = int((os.getenv('COUNT_CACHE_TTL_SECONDS') or '120').strip() or '120')
 except ValueError:
-    _COUNT_CACHE_TTL_SECONDS = 90
+    _COUNT_CACHE_TTL_SECONDS = 120
 _count_cache_lock = eventlet.semaphore.Semaphore()
 # Skip user_login_sessions SELECT on rapid GET navigations (default ~20s throttle). POST/PUT/PATCH/DELETE always validate.
 # Set SESSION_ENFORCE_GET_MIN_SEC=0 to check every request (slowest, strictest).
@@ -1597,7 +1588,8 @@ def can_access_manage_users_actions():
 
 # --- Coverage route wizard catalogue (parses generated PSGC JS; survives broken static/script order) ---
 _PSGC_CATALOGUE_ROWS_CACHE = None
-_PSGC_CATALOGUE_INDEX_CACHE = None
+_PSGC_CATALOGUE_MUNICIPALITIES_CACHE = None
+_PSGC_BARANGAYS_BY_KEY_CACHE = None
 _MUN_MATCH_CITY_OF = re.compile(r'^City\s+of\s+', re.IGNORECASE)
 
 
@@ -1671,38 +1663,46 @@ def get_psgc_negros_catalogue_rows():
     return _PSGC_CATALOGUE_ROWS_CACHE
 
 
-def get_psgc_negros_catalogue_index():
-    """Pre-index catalogue by municipality/province for fast coverage route dropdowns."""
-    global _PSGC_CATALOGUE_INDEX_CACHE
-    if _PSGC_CATALOGUE_INDEX_CACHE is not None:
-        return _PSGC_CATALOGUE_INDEX_CACHE
+def _ensure_psgc_municipalities_list():
+    """Unique municipalities only — lazy; avoids building barangay maps for /municipalities search."""
+    global _PSGC_CATALOGUE_MUNICIPALITIES_CACHE
+    if _PSGC_CATALOGUE_MUNICIPALITIES_CACHE is not None:
+        return _PSGC_CATALOGUE_MUNICIPALITIES_CACHE
+    municipalities: dict[tuple[str, str], dict] = {}
+    for row in get_psgc_negros_catalogue_rows():
+        if not isinstance(row, dict):
+            continue
+        mun = str(row.get('municipality') or '').strip()
+        prov = str(row.get('province') or '').strip()
+        if not mun:
+            continue
+        key = (mun, prov)
+        municipalities[key] = {'municipality': mun, 'province': prov}
+    _PSGC_CATALOGUE_MUNICIPALITIES_CACHE = sorted(
+        municipalities.values(),
+        key=lambda item: (item['municipality'].lower(), item['province'].lower()),
+    )
+    return _PSGC_CATALOGUE_MUNICIPALITIES_CACHE
 
-    municipalities = {}
-    barangays_by_key = {}
+
+def _ensure_psgc_barangays_by_key():
+    """Barangay names keyed by (municipality, province); lazy; lists sorted only when serving one area."""
+    global _PSGC_BARANGAYS_BY_KEY_CACHE
+    if _PSGC_BARANGAYS_BY_KEY_CACHE is not None:
+        return _PSGC_BARANGAYS_BY_KEY_CACHE
+    barangays_by_key: dict[tuple[str, str], set[str]] = {}
     for row in get_psgc_negros_catalogue_rows():
         if not isinstance(row, dict):
             continue
         mun = str(row.get('municipality') or '').strip()
         prov = str(row.get('province') or '').strip()
         brgy = str(row.get('barangay') or '').strip()
-        if not mun:
+        if not mun or not brgy:
             continue
         key = (mun, prov)
-        municipalities[key] = {'municipality': mun, 'province': prov}
-        if brgy:
-            barangays_by_key.setdefault(key, set()).add(brgy)
-
-    _PSGC_CATALOGUE_INDEX_CACHE = {
-        'municipalities': sorted(
-            municipalities.values(),
-            key=lambda item: (item['municipality'].lower(), item['province'].lower()),
-        ),
-        'barangays_by_key': {
-            key: sorted(vals, key=lambda s: s.lower())
-            for key, vals in barangays_by_key.items()
-        },
-    }
-    return _PSGC_CATALOGUE_INDEX_CACHE
+        barangays_by_key.setdefault(key, set()).add(brgy)
+    _PSGC_BARANGAYS_BY_KEY_CACHE = barangays_by_key
+    return _PSGC_BARANGAYS_BY_KEY_CACHE
 
 
 def _coverage_municipality_matches(row_mun_lower, mun_trimmed, raw_q_lower):
@@ -1721,12 +1721,15 @@ def _coverage_municipality_matches(row_mun_lower, mun_trimmed, raw_q_lower):
 
 
 def coverage_find_municipalities_from_catalogue(rows, raw_query):
-    """Mirror addresses.js findCoverageMunicipalitiesMatching (dedupe by municipality + province)."""
+    """Mirror addresses.js findCoverageMunicipalitiesMatching (dedupe by municipality + province).
+
+    `rows` is ignored; kept for call-site compatibility. Uses lazy municipalities index only.
+    """
     q = (raw_query or '').lower().strip()
     if not q:
         return []
     out = []
-    for item in get_psgc_negros_catalogue_index().get('municipalities', []):
+    for item in _ensure_psgc_municipalities_list():
         mun = item.get('municipality') or ''
         if not _coverage_municipality_matches(mun.lower(), mun, q):
             continue
@@ -1738,15 +1741,30 @@ def coverage_list_barangays_from_catalogue(rows, municipality, province):
     """Mirror addresses.js listCoverageBarangaysInMunicipality."""
     mun = (municipality or '').strip()
     prov = (province or '').strip()
-    idx = get_psgc_negros_catalogue_index().get('barangays_by_key', {})
+    idx = _ensure_psgc_barangays_by_key()
     if prov:
-        return list(idx.get((mun, prov), []))
+        return sorted(idx.get((mun, prov), []), key=lambda s: s.lower())
 
-    bag = set()
+    bag: set[str] = set()
     for (row_mun, _row_prov), labels in idx.items():
         if row_mun == mun:
             bag.update(labels)
     return sorted(bag, key=lambda s: s.lower())
+
+
+def _warm_psgc_coverage_catalogue():
+    """Background: parse PSGC file and build indexes so /coverage_catalogue APIs don't stall first clicks."""
+    try:
+        rows = get_psgc_negros_catalogue_rows()
+        if not rows:
+            return
+        _ensure_psgc_municipalities_list()
+        _ensure_psgc_barangays_by_key()
+    except Exception as e:
+        try:
+            app.logger.warning('warm psgc coverage catalogue: %s', e)
+        except Exception:
+            pass
 
 
 def init_db():
@@ -1800,6 +1818,8 @@ def ensure_performance_indexes():
             "CREATE INDEX IF NOT EXISTS idx_users_role_approved_workload ON users(role, is_approved, current_workload)",
             "CREATE INDEX IF NOT EXISTS idx_users_approved_role_name ON users(is_approved, role, name)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_status_submitted_at ON loan_applications(status, submitted_at)",
+            # Tie-breaker id matches admin/LPS dashboard ORDER BY submitted_at, id (avoids extra sort work).
+            "CREATE INDEX IF NOT EXISTS idx_loan_app_status_submitted_id ON loan_applications(status, submitted_at, id)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_assigned_ci_staff ON loan_applications(assigned_ci_staff)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_submitted_by ON loan_applications(submitted_by)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_member_name ON loan_applications(member_name)",
@@ -2541,6 +2561,7 @@ def _build_minified_assets():
 
 
 _start_deferred_startup('minified_assets', _build_minified_assets)
+_start_deferred_startup('psgc_coverage_catalogue', _warm_psgc_coverage_catalogue)
 
 
 # Setup production users (runs on every startup to ensure correct roles)
@@ -3513,7 +3534,14 @@ def load_user(user_id):
                 return g._login_user_obj
         conn = get_db()
         try:
-            row = conn.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+            row = conn.execute(
+                """
+                SELECT id, email, name, role, signature_path, backup_email, profile_photo,
+                       assigned_route, permissions
+                FROM users WHERE id=?
+                """,
+                (uid,),
+            ).fetchone()
             if not row:
                 return None
             normalized_role = normalize_role(row['role'] if 'role' in row.keys() else None)
@@ -8848,9 +8876,15 @@ def api_coverage_catalogue_municipalities():
     rows = get_psgc_negros_catalogue_rows()
     if not rows:
         return jsonify({'ok': True, 'municipalities': [], 'empty_catalogue': True})
-    return jsonify(
-        {'ok': True, 'municipalities': coverage_find_municipalities_from_catalogue(rows, q)}
-    )
+    matched = coverage_find_municipalities_from_catalogue(rows, q)
+    payload: dict = {'ok': True, 'municipalities': matched}
+    # One HTTP round-trip for the common case (e.g. "Bayawan City" → single LGU).
+    if len(matched) == 1:
+        m0 = matched[0]
+        payload['barangays'] = coverage_list_barangays_from_catalogue(
+            rows, m0.get('municipality') or '', m0.get('province') or ''
+        )
+    return jsonify(payload)
 
 
 @app.route('/api/admin/coverage_catalogue/barangays')
@@ -10161,17 +10195,31 @@ def api_admin_applications():
         ' LEFT JOIN users u1 ON la.submitted_by = u1.id'
         ' LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id'
     )
-    applications = conn.execute(
+    # Single round-trip (matches admin_dashboard): two SELECTs doubled Socket.IO refresh load.
+    all_rows = conn.execute(
         f'SELECT {_LA_COLS} {_LA_JOIN}'
-        " WHERE la.status IN ('ci_completed','approved','disapproved','deferred')"
-        " OR (la.needs_ci_interview = 0 AND la.status = 'submitted')"
+        " WHERE la.status IN ('submitted','assigned_to_ci','ci_completed',"
+        "                     'approved','disapproved','deferred')"
         ' ORDER BY la.submitted_at ASC, la.id ASC'
     ).fetchall()
-    in_process_applications = conn.execute(
-        f'SELECT {_LA_COLS} {_LA_JOIN}'
-        " WHERE la.status IN ('submitted','assigned_to_ci')"
-        ' ORDER BY la.submitted_at ASC, la.id ASC'
-    ).fetchall()
+
+    def _needs_ci_is_zero(value):
+        if value is None:
+            return False
+        try:
+            return int(value) == 0
+        except (TypeError, ValueError):
+            return False
+
+    applications = [
+        r for r in all_rows
+        if r['status'] in ('ci_completed', 'approved', 'disapproved', 'deferred')
+        or (r['status'] == 'submitted' and _needs_ci_is_zero(r['needs_ci_interview']))
+    ]
+    in_process_applications = [
+        r for r in all_rows
+        if r['status'] in ('submitted', 'assigned_to_ci')
+    ]
     conn.close()
 
     return jsonify({

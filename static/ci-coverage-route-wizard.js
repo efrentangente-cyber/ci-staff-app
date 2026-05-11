@@ -104,7 +104,7 @@
 
         /** Network JSON for catalogue endpoints; survives HTML error pages / timeouts without hanging UI. */
         function fetchCatalogueJson(url, timeoutMs) {
-            var ms = timeoutMs || 30000;
+            var ms = timeoutMs || 120000;
             var ctrl = new AbortController();
             var timer = setTimeout(function () {
                 ctrl.abort();
@@ -424,6 +424,17 @@
                             return;
                         }
                         var matched = outData.municipalities || [];
+                        if (
+                            matched.length === 1 &&
+                            Array.isArray(outData.barangays)
+                        ) {
+                            var m0 = matched[0];
+                            var preKey =
+                                (m0.municipality || '') +
+                                '\n' +
+                                (m0.province != null ? m0.province : '');
+                            barangaysCache[preKey] = outData.barangays;
+                        }
                         municipalitiesCache[qKey] = matched;
                         if (!matched.length) {
                             if (munRow) {

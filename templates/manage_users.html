@@ -183,13 +183,13 @@ select.ci-route-select.route-assign-await-js[multiple] {
                         </td>
                         <td>{{ user.created_at|fmt_datetime('%d-%m-%Y') }}</td>
                         <td>
-                            <form method="POST" action="{{ url_for('approve_user', user_id=user.id) }}" style="display: inline;">
-                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Approve this user?')">
+                            <form method="POST" action="{{ url_for('approve_user', user_id=user.id) }}" style="display: inline;" onsubmit="return submitManageUserDecision(this);" data-confirm="Approve this user?" data-busy="Approving…">
+                                <button type="submit" class="btn btn-sm btn-success">
                                     <i class="bi bi-check-circle"></i> Approve
                                 </button>
                             </form>
-                            <form method="POST" action="{{ url_for('disapprove_user', user_id=user.id) }}" style="display: inline;">
-                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Disapprove this user?')">
+                            <form method="POST" action="{{ url_for('disapprove_user', user_id=user.id) }}" style="display: inline;" onsubmit="return submitManageUserDecision(this);" data-confirm="Disapprove this user?" data-busy="Removing…">
+                                <button type="submit" class="btn btn-sm btn-danger">
                                     <i class="bi bi-x-circle"></i> Disapprove
                                 </button>
                             </form>
@@ -313,7 +313,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
 }
 </style>
 
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=7" defer></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=9" defer></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
@@ -346,6 +346,31 @@ function manageUsersApiHeaders() {
         h['X-CSRFToken'] = t;
     }
     return h;
+}
+
+/** Pending table: confirm once, disable row actions, show spinner — avoids double-submit and clarifies full-page POST wait. */
+function submitManageUserDecision(form) {
+    var msg = form.getAttribute('data-confirm');
+    if (msg && !window.confirm(msg)) {
+        return false;
+    }
+    var busy = form.getAttribute('data-busy') || 'Please wait…';
+    var btn = form.querySelector('button[type="submit"]');
+    var row = form.closest('tr');
+    if (row) {
+        row.querySelectorAll('button[type="submit"]').forEach(function (b) {
+            if (b !== btn) {
+                b.disabled = true;
+            }
+        });
+    }
+    if (btn) {
+        btn.innerHTML =
+            '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>' +
+            busy;
+        btn.disabled = true;
+    }
+    return true;
 }
 
 document.addEventListener('DOMContentLoaded', function () {

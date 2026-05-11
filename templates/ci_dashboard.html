@@ -114,7 +114,7 @@
             <table class="table table-hover" id="pendingTable">
                 <thead>
                     <tr>
-                        <th>Member ID</th>
+                        <th>ID</th>
                         <th>Member Name</th>
                         <th>Date Submitted</th>
                         <th>Location</th>
@@ -173,7 +173,7 @@
             <table class="table table-hover" id="completedTable">
                 <thead>
                     <tr>
-                        <th>Member ID</th>
+                        <th>ID</th>
                         <th>Member Name</th>
                         <th>Date Submitted</th>
                         <th>Location</th>
@@ -354,6 +354,6 @@ function clearSearch(tableType) {
 {% endblock %}
 {% block scripts %}
 <script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=7" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=8" defer></script>
 <script src="{{ url_for('static', filename='ci-dashboard-offline.js') }}?v=4-member-id-col" defer></script>
 {% endblock %}

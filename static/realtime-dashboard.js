@@ -126,7 +126,7 @@ function scheduleRefreshApplications(immediate) {
     refreshDebounce = setTimeout(function () {
         refreshDebounce = null;
         refreshApplications();
-    }, 50);
+    }, 300);
 }
 
 function hasLegacyApplicationsTable() {
