@@ -334,12 +334,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 ? `₱${Number(rec.loan_amount).toLocaleString()}`
                 : 'No amount';
             const submitted = rec.submitted_at ? String(rec.submitted_at).slice(0, 10) : '';
-            const aid = rec.id != null ? `#${rec.id} ` : '';
             const opt = document.createElement('option');
             opt.value = String(idx);
             opt.textContent = submitted
-                ? `${aid}${lt} | ${amt} | ${status} | ${submitted}`
-                : `${aid}${lt} | ${amt} | ${status}`;
+                ? `${lt} | ${amt} | ${status} | ${submitted}`
+                : `${lt} | ${amt} | ${status}`;
             existingLoanTypeSelect.appendChild(opt);
         });
         existingLoanTypeWrap.style.display = 'block';
@@ -603,14 +602,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!entry || entry.member_uid == null) return;
             const mn = String(entry.member_name || '').trim();
             const uid = entry.member_uid;
-            const aid = entry.application_id != null ? entry.application_id : '';
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'list-group-item list-group-item-action py-2 small text-start';
             btn.setAttribute('role', 'option');
-            let line = '#' + uid;
-            if (mn) line += ' · ' + mn;
-            if (aid !== '') line += ' · App #' + aid;
+            const line = mn || String(uid);
             btn.textContent = line;
             btn.addEventListener('mousedown', function (ev) {
                 ev.preventDefault();

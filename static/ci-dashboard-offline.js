@@ -27,11 +27,21 @@
         if (v == null || v === '') {
             return '—';
         }
-        var s = String(v);
-        if (s.length >= 10) {
-            return s.substring(8, 10) + '-' + s.substring(5, 7) + '-' + s.substring(2, 4);
+        if (v instanceof Date) {
+            v = v.toISOString();
         }
-        return s;
+        var str = String(v).trim();
+        var d = new Date(str);
+        if (!Number.isNaN(d.getTime())) {
+            var dd = String(d.getDate()).padStart(2, '0');
+            var mm = String(d.getMonth() + 1).padStart(2, '0');
+            var yy = String(d.getFullYear()).slice(-2);
+            return dd + '-' + mm + '-' + yy;
+        }
+        if (str.length >= 10 && str[4] === '-' && str[7] === '-') {
+            return str.slice(8, 10) + '-' + str.slice(5, 7) + '-' + str.slice(2, 4);
+        }
+        return str;
     }
 
     function appSort(a, b) {
@@ -273,6 +283,19 @@
         });
     }
 
+    function memberHistoryHrefOffline(memberName, memberUid) {
+        var base = typeof window.__MEMBER_HISTORY_URL === 'string' ? window.__MEMBER_HISTORY_URL : '/loan/member';
+        var mu = memberUid != null && memberUid !== '' ? String(memberUid).trim() : '';
+        var next =
+            typeof window.location !== 'undefined' && window.location.pathname
+                ? '&next=' + encodeURIComponent(window.location.pathname + window.location.search)
+                : '';
+        if (mu !== '' && /^\d+$/.test(mu)) {
+            return base + '?member_uid=' + encodeURIComponent(mu) + next;
+        }
+        return base + '?name=' + encodeURIComponent(memberName || '') + next;
+    }
+
     function renderRows(pending, completed) {
         var pendingTbody = document.querySelector('#pendingTable tbody');
         var completedTbody = document.querySelector('#completedTable tbody');
@@ -292,18 +315,20 @@
                         app.member_uid != null && app.member_uid !== ''
                             ? escapeHtml(String(app.member_uid))
                             : '<span class="text-muted">—</span>';
-                    var name = escapeHtml(app.member_name || '');
+                    var nameRaw = app.member_name || '';
+                    var nameEsc = escapeHtml(nameRaw);
+                    var nameHref = memberHistoryHrefOffline(nameRaw, app.member_uid);
                     var loc = escapeHtml(app.member_address || '—');
                     return (
                         '<tr>' +
                         '<td class="text-nowrap">' +
                         mu +
                         '</td>' +
-                        '<td><strong>#' +
-                        id +
-                        '</strong> ' +
-                        name +
-                        '</td>' +
+                        '<td><a href="' +
+                        nameHref +
+                        '">' +
+                        nameEsc +
+                        '</a></td>' +
                         '<td>' +
                         formatSubmittedAt(app.submitted_at) +
                         '</td>' +
@@ -337,25 +362,27 @@
                         app.member_uid != null && app.member_uid !== ''
                             ? escapeHtml(String(app.member_uid))
                             : '<span class="text-muted">—</span>';
-                    var name = escapeHtml(app.member_name || '');
+                    var nameRaw = app.member_name || '';
+                    var nameEsc = escapeHtml(nameRaw);
+                    var nameHref = memberHistoryHrefOffline(nameRaw, app.member_uid);
                     var loc = escapeHtml(app.member_address || '—');
                     return (
                         '<tr>' +
                         '<td class="text-nowrap">' +
                         mu +
                         '</td>' +
-                        '<td><strong>#' +
-                        id +
-                        '</strong> ' +
-                        name +
-                        '</td>' +
+                        '<td><a href="' +
+                        nameHref +
+                        '">' +
+                        nameEsc +
+                        '</a></td>' +
                         '<td>' +
                         formatSubmittedAt(app.submitted_at) +
                         '</td>' +
                         '<td>' +
                         loc +
                         '</td>' +
-                        '<td><a href="/ci/review/' +
+                        '<td><a href="/ci/application/' +
                         id +
                         '" class="btn btn-sm btn-primary"><i class="bi bi-eye"></i> <span class="btn-text">View</span></a></td></tr>'
                     );

@@ -56,15 +56,24 @@ select.ci-route-select.route-assign-await-js[multiple] {
     </summary>
     <div class="content-card-body border-top" id="ciCoverageRouteWizard" data-create-url="{{ url_for('api_ci_coverage_routes') }}">
         <ol class="small text-muted mb-3 ps-3">
-            <li>Type part of the <strong>municipality or city name</strong> (e.g. Bayawan) and choose <strong>Load barangays</strong>.</li>
-            <li>If more than one place matches, pick the correct municipality.</li>
-            <li>Choose <strong>From barangay</strong> and <strong>To barangay</strong> to pin the coverage segment.</li>
-            <li>Save — matching uses only the barangays and “extra keywords”; add municipalities or provinces there if needed.</li>
+            <li><strong>Whole south Negros chain in one go:</strong> choose <strong>Corridor preset</strong> (e.g. Sipalay through Dumaguete) — loads merged <strong>PSGC barangays</strong> for every LGU in that preset into From/To.</li>
+            <li><strong>Or one municipality:</strong> type <strong>one city/municipality</strong> (or several names separated by <strong>comma or dash</strong>), click <strong>Load barangays</strong>, and if several LGUs match pick <strong>Municipality</strong>.</li>
+            <li><strong>Puroks / sitio</strong> are not national PSGC rows; where the address catalogue lists them for the selected <strong>From barangay</strong>, use <strong>Optional purok</strong> (appends to <strong>Extra keywords</strong>) or type under Extra keywords.</li>
+            <li>Save — route matching uses barangay-related keywords plus extras.</li>
         </ol>
         <div class="row g-2 align-items-end mb-2">
             <div class="col-md-8">
+                <label class="form-label small mb-1" for="coverageCorridorPreset">Corridor preset (optional)</label>
+                <select class="form-select form-select-sm" id="coverageCorridorPreset">
+                    <option value="">— Search a single municipality instead —</option>
+                    <option value="south_negros">South Negros (Sipalay–Bayawan–Dumaguete chain)</option>
+                </select>
+            </div>
+        </div>
+        <div class="row g-2 align-items-end mb-2">
+            <div class="col-md-8">
                 <label class="form-label small mb-1" for="coveragePlaceSearch">Area / municipality search</label>
-                <input type="text" class="form-control form-control-sm" id="coveragePlaceSearch" maxlength="120" placeholder="e.g. Bayawan, Sipalay, Basay, Dumaguete" autocomplete="off">
+                <input type="text" class="form-control form-control-sm" id="coveragePlaceSearch" maxlength="120" placeholder="e.g. Bayawan — or Dumaguete - Bayawan - Sipalay" autocomplete="off">
             </div>
             <div class="col-md-4">
                 <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="coverageLoadBrgysBtn"><i class="bi bi-search" aria-hidden="true"></i> Load barangays</button>
@@ -313,7 +322,9 @@ select.ci-route-select.route-assign-await-js[multiple] {
 }
 </style>
 
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=9" defer></script>
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}" defer></script>
+<script src="{{ url_for('static', filename='addresses.js') }}" defer></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=10" defer></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
@@ -397,6 +408,7 @@ document.addEventListener('DOMContentLoaded', function () {
         useCoverageCatalogApi: true,
         coverageMunicipalitiesUrl: COVERAGE_CAT_MUNICIPALITIES_URL,
         coverageBarangaysUrl: COVERAGE_CAT_BARANGAYS_URL,
+        coverageCorridorBarangaysUrl: COVERAGE_CAT_CORRIDOR_URL,
     });
 });
 

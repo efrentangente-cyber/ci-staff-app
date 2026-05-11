@@ -931,14 +931,7 @@ function updateApplicationsTable(applications) {
     applications.forEach(function (app) {
         const row = document.createElement('tr');
 
-        let date = '';
-        if (app.submitted_at && typeof app.submitted_at === 'string' && app.submitted_at.length >= 10) {
-            date = app.submitted_at.substring(8, 10) + '-' +
-                app.submitted_at.substring(5, 7) + '-' +
-                app.submitted_at.substring(2, 4);
-        } else {
-            date = formatSubmittedShort(app.submitted_at);
-        }
+        const date = formatSubmittedShort(app.submitted_at);
 
         let badgeClass = 'warning';
         if (app.status === 'approved') badgeClass = 'success';

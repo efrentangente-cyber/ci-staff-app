@@ -1720,20 +1720,40 @@ def _coverage_municipality_matches(row_mun_lower, mun_trimmed, raw_q_lower):
     return bool(q_norm and q_norm in shorts)
 
 
+def _coverage_split_search_segments(raw_query):
+    """Split user input like 'Dumaguete - Bayawan - Sipalay' into per-area tokens."""
+    s = (raw_query or '').strip()
+    if not s:
+        return []
+    parts = re.split(r'\s*[-–—]\s*|[,;|]+', s)
+    return [p.strip() for p in parts if p and str(p).strip()]
+
+
 def coverage_find_municipalities_from_catalogue(rows, raw_query):
     """Mirror addresses.js findCoverageMunicipalitiesMatching (dedupe by municipality + province).
 
     `rows` is ignored; kept for call-site compatibility. Uses lazy municipalities index only.
+    Supports several place names separated by commas or dashes (e.g. corridor hints).
     """
-    q = (raw_query or '').lower().strip()
-    if not q:
+    segments = _coverage_split_search_segments(raw_query)
+    if not segments:
         return []
-    out = []
-    for item in _ensure_psgc_municipalities_list():
-        mun = item.get('municipality') or ''
-        if not _coverage_municipality_matches(mun.lower(), mun, q):
+    seen: set[tuple[str, str]] = set()
+    out: list[dict] = []
+    for seg in segments:
+        q = seg.lower().strip()
+        if not q:
             continue
-        out.append(item)
+        for item in _ensure_psgc_municipalities_list():
+            mun = item.get('municipality') or ''
+            prov = str(item.get('province') or '')
+            key = (mun, prov)
+            if key in seen:
+                continue
+            if not _coverage_municipality_matches(mun.lower(), mun, q):
+                continue
+            seen.add(key)
+            out.append(item)
     return out
 
 
@@ -9041,6 +9061,94 @@ def api_coverage_catalogue_barangays():
         return jsonify({'ok': True, 'barangays': [], 'empty_catalogue': True})
     labels = coverage_list_barangays_from_catalogue(rows, mun, prov)
     return jsonify({'ok': True, 'barangays': labels})
+
+
+# Multi-LGU presets: merged PSGC barangay lists for Manage Users coverage wizard (south Negros chain).
+COVERAGE_CORRIDOR_PRESET_LABELS = {
+    'south_negros': 'South Negros (Dumaguete–Bayawan–Sipalay corridor)',
+}
+
+COVERAGE_CORRIDOR_PRESETS = {
+    'south_negros': [
+        ('City of Sipalay', 'Negros Occidental'),
+        ('Candoni', 'Negros Occidental'),
+        ('Hinoba-an', 'Negros Occidental'),
+        ('Basay', 'Negros Oriental'),
+        ('City of Bayawan', 'Negros Oriental'),
+        ('Santa Catalina', 'Negros Oriental'),
+        ('Siaton', 'Negros Oriental'),
+        ('City of Dumaguete', 'Negros Oriental'),
+        ('City of Tanjay', 'Negros Oriental'),
+        ('Mabinay', 'Negros Oriental'),
+        ('Manjuyod', 'Negros Oriental'),
+    ],
+}
+
+
+def coverage_corridor_barangay_items(rows, preset_key):
+    """Flatten barangays for all LGUs in a named corridor (dedupe by mun+prov+brgy)."""
+    pairs = COVERAGE_CORRIDOR_PRESETS.get(preset_key) or []
+    if not pairs:
+        return []
+    seen = set()
+    items = []
+    for mun, prov in pairs:
+        for b in coverage_list_barangays_from_catalogue(rows, mun, prov):
+            key = (mun, prov, b)
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(
+                {
+                    'municipality': mun,
+                    'province': prov,
+                    'barangay': b,
+                    'label': f'{b} — {mun}, {prov}',
+                }
+            )
+    items.sort(key=lambda x: (x.get('label') or '').lower())
+    return items
+
+
+@app.route('/api/admin/coverage_catalogue/corridor_barangays')
+@login_required
+def api_coverage_catalogue_corridor_barangays():
+    """Merged barangay list for a multi-municipality coverage preset (e.g. south Negros)."""
+    if not can_access_manage_users_actions():
+        return jsonify({'ok': False, 'error': 'Unauthorized'}), 403
+    preset = (request.args.get('preset') or '').strip()
+    if not preset or preset not in COVERAGE_CORRIDOR_PRESETS:
+        return (
+            jsonify(
+                {
+                    'ok': False,
+                    'error': 'preset is required (e.g. south_negros)',
+                    'known': list(COVERAGE_CORRIDOR_PRESETS.keys()),
+                }
+            ),
+            400,
+        )
+    rows = get_psgc_negros_catalogue_rows()
+    if not rows:
+        return jsonify(
+            {
+                'ok': True,
+                'preset': preset,
+                'preset_label': COVERAGE_CORRIDOR_PRESET_LABELS.get(preset, preset),
+                'items': [],
+                'empty_catalogue': True,
+            }
+        )
+    items = coverage_corridor_barangay_items(rows, preset)
+    return jsonify(
+        {
+            'ok': True,
+            'preset': preset,
+            'preset_label': COVERAGE_CORRIDOR_PRESET_LABELS.get(preset, preset),
+            'items': items,
+            'count': len(items),
+        }
+    )
 
 
 @app.route('/api/admin/ci_coverage_routes', methods=['GET', 'POST'])

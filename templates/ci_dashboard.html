@@ -376,6 +376,6 @@ function clearSearch(tableType) {
 {% endblock %}
 {% block scripts %}
 <script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=9" defer></script>
-<script src="{{ url_for('static', filename='ci-dashboard-offline.js') }}?v=4-member-id-col" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=10" defer></script>
+<script src="{{ url_for('static', filename='ci-dashboard-offline.js') }}?v=5-date-fix" defer></script>
 {% endblock %}

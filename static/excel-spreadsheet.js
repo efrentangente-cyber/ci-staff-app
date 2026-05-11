@@ -22,6 +22,14 @@ class ExcelSpreadsheet {
         this.loadSavedData();
     }
 
+    _sessionStorageKey() {
+        const id =
+            typeof window.__CI_APP_ID__ !== 'undefined' && window.__CI_APP_ID__ !== null
+                ? String(window.__CI_APP_ID__).trim()
+                : '';
+        return id ? 'ci_excel_grid_' + id : 'ci_excel_grid';
+    }
+
     // Render the spreadsheet
     render() {
         this.container.innerHTML = '';
@@ -82,7 +90,7 @@ class ExcelSpreadsheet {
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.clearAll()" title="Clear All">
                 <i class="bi bi-trash"></i> Clear
             </button>
-            <button type="button" class="btn btn-sm btn-primary" onclick="excelSheet.saveData()" title="Save">
+            <button type="button" class="btn btn-sm btn-primary" onclick="excelSheet.saveDraftWithFeedback()" title="Save cash flow into this application draft (same as auto-save)">
                 <i class="bi bi-save"></i> Save
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" onclick="excelSheet.printSpreadsheet()" title="Print">
@@ -2071,12 +2079,51 @@ class ExcelSpreadsheet {
             mergedCells: this.mergedCells
         };
         // Silent save to sessionStorage - no notifications or submissions
-        sessionStorage.setItem('excel_data', JSON.stringify(data));
+        sessionStorage.setItem(this._sessionStorageKey(), JSON.stringify(data));
+    }
+
+    saveDraftWithFeedback() {
+        this.saveData();
+        if (typeof window.saveCurrentPageData === 'function') {
+            try {
+                window.saveCurrentPageData();
+            } catch (e) {
+                void e;
+            }
+        }
+        if (typeof window.showCINotification === 'function') {
+            window.showCINotification(
+                'success',
+                'Cash flow sheet saved with this checklist. Your rows and edits stay when you change pages or come back later.'
+            );
+        } else {
+            window.alert('Cash flow saved with this checklist draft.');
+        }
+    }
+    loadSessionGridSnapshot() {
+        try {
+            const raw = sessionStorage.getItem(this._sessionStorageKey());
+            if (!raw) {
+                return null;
+            }
+            const data = JSON.parse(raw);
+            if (!data || typeof data !== 'object') {
+                return null;
+            }
+            return {
+                cells: data.cells || {},
+                rows: data.rows,
+                cols: data.cols,
+                mergedCells: data.mergedCells || {},
+            };
+        } catch (e) {
+            return null;
+        }
     }
 
     // Load saved data
     loadSavedData() {
-        const saved = sessionStorage.getItem('excel_data');
+        const saved = sessionStorage.getItem(this._sessionStorageKey());
         if (saved) {
             try {
                 const data = JSON.parse(saved);

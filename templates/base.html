@@ -121,6 +121,11 @@
                 <a href="{% if current_user.role in ['admin', 'loan_officer'] %}{{ url_for('admin_dashboard') }}{% elif current_user.role == 'ci_staff' %}{{ url_for('ci_dashboard') }}{% else %}{{ url_for('loan_dashboard') }}{% endif %}">
                     <i class="bi bi-house-door"></i> Home
                 </a>
+                {% if current_user.role in ['admin', 'loan_officer', 'loan_staff', 'ci_staff'] %}
+                <a href="{{ url_for('messages') }}">
+                    <i class="bi bi-messenger"></i> Messages
+                </a>
+                {% endif %}
                 {% if current_user.role == 'loan_staff' %}
                 <a href="{{ url_for('submit_application') }}">
                     <i class="bi bi-file-earmark-plus"></i> New Application
@@ -179,6 +184,12 @@
                 <i class="bi bi-house-door-fill"></i>
                 <span>Home</span>
             </a>
+            {% if current_user.role in ['admin', 'loan_officer', 'loan_staff', 'ci_staff'] %}
+            <a href="{{ url_for('messages') }}">
+                <i class="bi bi-chat-dots-fill"></i>
+                <span>Messages</span>
+            </a>
+            {% endif %}
             {% if current_user.role in ['admin', 'loan_officer'] %}
             <a href="{{ url_for('ci_tracking') }}">
                 <i class="bi bi-geo-alt-fill"></i>
@@ -460,11 +471,11 @@
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=13" defer></script>
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=14" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
     <script src="{{ url_for('static', filename='session-security.js') }}?v=20260430-perf" defer></script>
-    <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=7" defer></script>
+    <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=8" defer></script>
     <script src="{{ url_for('static', filename='offline-request-queue.js') }}?v=1" defer></script>
     {% endif %}
     
@@ -479,7 +490,7 @@
         }
         (function () {
             var hbUrl = {{ url_for('session_heartbeat') | tojson }};
-            var intervalMs = 3 * 60 * 1000;
+            var intervalMs = 60 * 1000;
             function csrfToken() {
                 var m = document.querySelector('meta[name="csrf-token"]');
                 return m ? m.getAttribute('content') : '';
@@ -502,7 +513,7 @@
                 if (!document.hidden) sessionHeartbeat();
             });
             document.addEventListener('DOMContentLoaded', function () {
-                setTimeout(sessionHeartbeat, 8000);
+                setTimeout(sessionHeartbeat, 3000);
             });
         })();
     </script>

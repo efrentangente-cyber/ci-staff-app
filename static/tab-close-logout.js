@@ -15,7 +15,9 @@
     var EXPECT_NAV_KEY = 'dccco_expect_nav';
 
     var HEARTBEAT_MS = 12000;
-    var STALE_MS = 36000;
+    // Drop entries older than this so "dead" tabs don't block last-tab logout forever.
+    // Keep generous — throttled background tabs may miss heartbeats for tens of seconds.
+    var STALE_MS = 120000;
 
     function tabId() {
         try {
@@ -122,6 +124,60 @@
             setExpectInAppNavigation();
         }
     }, true);
+
+    /**
+     * JS redirects (location.href / assign / replace / reload) do not fire link-click handlers.
+     * Without this, pagehide looks like "tab closed" and the last tab would GET /logout mid-workflow.
+     */
+    function patchLocationNavHooks() {
+        try {
+            var L = window.location;
+            var assignOrig = L.assign.bind(L);
+            L.assign = function (url) {
+                try {
+                    var x = new URL(String(url), location.href);
+                    if (x.origin === location.origin) {
+                        setExpectInAppNavigation();
+                    }
+                } catch (e) { /* */ }
+                return assignOrig(url);
+            };
+            var replaceOrig = L.replace.bind(L);
+            L.replace = function (url) {
+                try {
+                    var x = new URL(String(url), location.href);
+                    if (x.origin === location.origin) {
+                        setExpectInAppNavigation();
+                    }
+                } catch (e) { /* */ }
+                return replaceOrig(url);
+            };
+            var reloadOrig = L.reload.bind(L);
+            L.reload = function () {
+                setExpectInAppNavigation();
+                return reloadOrig();
+            };
+            var desc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+            if (desc && desc.set) {
+                Object.defineProperty(L, 'href', {
+                    set: function (v) {
+                        try {
+                            var x = new URL(String(v), location.href);
+                            if (x.origin === location.origin) {
+                                setExpectInAppNavigation();
+                            }
+                        } catch (e) { /* */ }
+                        desc.set.call(L, v);
+                    },
+                    get: desc.get,
+                    configurable: true,
+                    enumerable: true,
+                });
+            }
+        } catch (e) { /* strict mode / exotic browsers */ }
+    }
+
+    patchLocationNavHooks();
 
     heartbeat();
     setInterval(heartbeat, HEARTBEAT_MS);

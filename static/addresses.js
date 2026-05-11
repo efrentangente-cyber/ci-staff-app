@@ -155,12 +155,24 @@ function buildAddressDatabaseFromPsgc() {
     return true;
 }
 
-/** Coverage route builder — barangays by municipality using addressDatabase */
-function findCoverageMunicipalitiesMatching(rawQuery) {
-    var q = (rawQuery || '').toLowerCase().trim();
-    if (!q) {
+/** Split "Dumaguete - Bayawan, Sipalay" into separate search tokens. */
+function splitCoverageSearchSegments(rawQuery) {
+    var s = String(rawQuery || '').trim();
+    if (!s) {
         return [];
     }
+    return s
+        .split(/\s*[-–—]\s*|[,;|]+/)
+        .map(function (x) {
+            return String(x || '').trim();
+        })
+        .filter(function (x) {
+            return x.length > 0;
+        });
+}
+
+/** Coverage route builder — barangays by municipality using addressDatabase */
+function findCoverageMunicipalitiesMatching(rawQuery) {
     function munMatches(rowMunLower, munTrimmed, rawQLower) {
         if (rowMunLower.indexOf(rawQLower) !== -1) {
             return true;
@@ -179,22 +191,33 @@ function findCoverageMunicipalitiesMatching(rawQuery) {
         return qNorm.length > 0 && shorts.indexOf(qNorm) !== -1;
     }
 
+    var segments = splitCoverageSearchSegments(rawQuery);
+    if (!segments.length) {
+        return [];
+    }
+
     var dedupe = {};
     var out = [];
-    for (var i = 0; i < addressDatabase.length; i++) {
-        var row = addressDatabase[i];
-        var mun = (row.municipality || '').trim();
-        var prov = (row.province || '').trim();
-        if (!mun) {
+    for (var si = 0; si < segments.length; si++) {
+        var q = segments[si].toLowerCase().trim();
+        if (!q) {
             continue;
         }
-        if (!munMatches(mun.toLowerCase(), mun, q)) {
-            continue;
-        }
-        var key = mun + '\n' + prov;
-        if (!dedupe[key]) {
-            dedupe[key] = true;
-            out.push({ municipality: mun, province: prov });
+        for (var i = 0; i < addressDatabase.length; i++) {
+            var row = addressDatabase[i];
+            var mun = (row.municipality || '').trim();
+            var prov = (row.province || '').trim();
+            if (!mun) {
+                continue;
+            }
+            if (!munMatches(mun.toLowerCase(), mun, q)) {
+                continue;
+            }
+            var key = mun + '\n' + prov;
+            if (!dedupe[key]) {
+                dedupe[key] = true;
+                out.push({ municipality: mun, province: prov });
+            }
         }
     }
     return out.sort(function (a, b) {
@@ -224,8 +247,43 @@ function listCoverageBarangaysInMunicipality(municipality, province) {
     });
 }
 
+/** Purok / sitio labels for one barangay (for coverage wizard optional picker). */
+function listPurokLabelsForBarangayCell(municipality, province, barangay) {
+    var mun = (municipality || '').trim();
+    var prov = (province || '').trim();
+    var brgy = (barangay || '').trim();
+    var seen = {};
+    var out = [];
+    for (var i = 0; i < addressDatabase.length; i++) {
+        var row = addressDatabase[i];
+        if ((row.municipality || '').trim() !== mun) {
+            continue;
+        }
+        if ((row.province || '').trim() !== prov) {
+            continue;
+        }
+        if ((row.barangay || '').trim() !== brgy) {
+            continue;
+        }
+        var p = String(row.purok || '').trim();
+        if (!p) {
+            continue;
+        }
+        var k = p.toLowerCase();
+        if (seen[k]) {
+            continue;
+        }
+        seen[k] = true;
+        out.push(p);
+    }
+    return out.sort(function (a, b) {
+        return a.localeCompare(b, undefined, { sensitivity: 'base' });
+    });
+}
+
 window.findCoverageMunicipalitiesMatching = findCoverageMunicipalitiesMatching;
 window.listCoverageBarangaysInMunicipality = listCoverageBarangaysInMunicipality;
+window.listPurokLabelsForBarangayCell = listPurokLabelsForBarangayCell;
 
 (function initAddressCatalogue() {
     try {

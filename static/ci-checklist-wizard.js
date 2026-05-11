@@ -124,6 +124,18 @@ function buildChecklistPayloadFromForm() {
     return payload;
 }
 
+/** Grid snapshot for cash-flow page — kept in checklistData / localStorage draft / final POST. */
+function snapshotExcelCashflowForDraft() {
+    if (!window.excelSheet || typeof window.excelSheet.exportData !== 'function') {
+        return null;
+    }
+    try {
+        return window.excelSheet.exportData();
+    } catch (e) {
+        return null;
+    }
+}
+
 // Initialize wizard
 document.addEventListener('DOMContentLoaded', function() {
     loadSavedData();
@@ -298,8 +310,14 @@ function updateProgressBar() {
 
 // Save current page data
 function saveCurrentPageData() {
-    // Save full form state so DB gets complete payload (checkboxes optional).
+    const prevExcel = checklistData && checklistData.excel_cashflow;
     checklistData = buildChecklistPayloadFromForm();
+    const snap = snapshotExcelCashflowForDraft();
+    if (snap) {
+        checklistData.excel_cashflow = snap;
+    } else if (prevExcel) {
+        checklistData.excel_cashflow = prevExcel;
+    }
     try {
         localStorage.setItem(draftStorageKey(), JSON.stringify(checklistData));
     } catch (e) {
@@ -328,12 +346,27 @@ function loadSavedData() {
             console.error('Error loading saved data:', e);
         }
     }
+    try {
+        const srv = window.__CI_SERVER_PREFILL__;
+        if (
+            srv &&
+            typeof srv === 'object' &&
+            srv.excel_cashflow &&
+            (!checklistData || !checklistData.excel_cashflow)
+        ) {
+            checklistData = checklistData && typeof checklistData === 'object' ? checklistData : {};
+            checklistData.excel_cashflow = srv.excel_cashflow;
+        }
+    } catch (e) {
+        /* ignore */
+    }
 }
 
 // Populate form with saved data
 function populateFormData() {
     Object.keys(checklistData).forEach(key => {
         if (_DRAFT_SKIP_FIELDS.has(key)) return;
+        if (key === 'excel_cashflow') return;
         const input = document.querySelector(`[name="${key}"]`);
         if (input) {
             if (input.type === 'checkbox') {
@@ -777,11 +810,26 @@ function loadExcelData() {
     if (!window.excelSheet) {
         return;
     }
-    
-    // Check if there's saved data in checklistData
-    if (checklistData.excel_cashflow) {
+
+    let payload = checklistData && checklistData.excel_cashflow;
+    if (!payload) {
         try {
-            window.excelSheet.importData(checklistData.excel_cashflow);
+            const srv = window.__CI_SERVER_PREFILL__;
+            if (srv && srv.excel_cashflow) {
+                payload = srv.excel_cashflow;
+            }
+        } catch (e) {
+            payload = null;
+        }
+    }
+    if (!payload && window.excelSheet && typeof window.excelSheet.loadSessionGridSnapshot === 'function') {
+        payload = window.excelSheet.loadSessionGridSnapshot();
+    }
+
+    if (payload) {
+        try {
+            window.excelSheet.importData(payload);
+            window.excelSheet.saveData();
         } catch (e) {
             console.error('Error loading Excel data:', e);
         }
@@ -929,12 +977,9 @@ function showSyncNotification(amount) {
     }, 5000);
 }
 
-// Auto-save Excel data periodically (silently in background)
+// Auto-save Excel into the same localStorage draft as the rest of the wizard (every 10s on cash-flow page)
 setInterval(() => {
     if (window.excelSheet && currentPage === 2.5) {
-        const excelData = window.excelSheet.exportData();
-        checklistData.excel_cashflow = excelData;
-        sessionStorage.setItem('ci_checklist_data', JSON.stringify(checklistData));
-        // Silent save - no notification or submission
+        saveCurrentPageData();
     }
 }, 10000); // Save every 10 seconds when on Excel page

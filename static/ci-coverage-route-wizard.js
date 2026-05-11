@@ -45,8 +45,15 @@
         }
     }
 
-    /** From/to barangays + extras only — no city/province (would match every applicant in that area). */
-    function buildKeywords(fromB, toB, extraCsv) {
+    /** From/to barangays + municipality disambiguation hints + extras. */
+    function municipalityKeywordHint(mun) {
+        return String(mun || '')
+            .replace(/^City\s+of\s+/i, '')
+            .trim()
+            .toLowerCase();
+    }
+
+    function buildKeywordsDecoded(fromD, toD, extraCsv) {
         var kws = [];
         function add(s) {
             var t = String(s || '').trim().toLowerCase();
@@ -55,12 +62,38 @@
             }
             kws.push(t);
         }
-        add(fromB);
-        add(toB);
+        if (fromD && fromD.barangay) {
+            add(fromD.barangay);
+            add(municipalityKeywordHint(fromD.municipality));
+        }
+        if (toD && toD.barangay) {
+            add(toD.barangay);
+            add(municipalityKeywordHint(toD.municipality));
+        }
         (extraCsv || '').split(',').forEach(function (x) {
             add(x.trim());
         });
         return kws;
+    }
+
+    function encodeCovOpt(mun, prov, brgy) {
+        return 'cov\t' + mun + '\t' + prov + '\t' + brgy;
+    }
+
+    function decodeCovOpt(v) {
+        var raw = String(v || '');
+        if (raw.indexOf('cov\t') !== 0) {
+            return null;
+        }
+        var parts = raw.slice(4).split('\t');
+        if (parts.length !== 3) {
+            return null;
+        }
+        return {
+            municipality: parts[0],
+            province: parts[1],
+            barangay: parts[2],
+        };
     }
 
     window.initCiCoverageRouteWizard = function (opts) {
@@ -89,6 +122,10 @@
         var coverageMunicipalitiesUrl =
             useCatalogueApi ? String(opts.coverageMunicipalitiesUrl) : '';
         var coverageBarangaysUrl = useCatalogueApi ? String(opts.coverageBarangaysUrl) : '';
+        var coverageCorridorBarangaysUrl =
+            opts && opts.coverageCorridorBarangaysUrl
+                ? String(opts.coverageCorridorBarangaysUrl)
+                : '';
 
         function catalogueFetchHeaders() {
             var headers = {
@@ -150,15 +187,124 @@
         var preview = el('coverageRoutePreview');
         var kwExtra = el('coverageExtraKeywords');
         var saveBtn = el('createRouteSubmitBtn');
+        var corridorPresetSel = el('coverageCorridorPreset');
 
         var state = {
             municipality: '',
             province: '',
             labels: [],
             multi: [],
+            corridorPresetKey: '',
+            corridorPresetDisplay: '',
         };
         var municipalitiesCache = Object.create(null);
         var barangaysCache = Object.create(null);
+
+        function fillSelectCorridor(sel, items) {
+            if (!sel) {
+                return;
+            }
+            sel.innerHTML = '';
+            var ph = document.createElement('option');
+            ph.value = '';
+            ph.textContent = items && items.length ? 'Select…' : '—';
+            sel.appendChild(ph);
+            (items || []).forEach(function (it) {
+                var o = document.createElement('option');
+                o.value = encodeCovOpt(it.municipality, it.province, it.barangay);
+                o.textContent =
+                    it.label || it.barangay + ' — ' + it.municipality + ', ' + it.province;
+                sel.appendChild(o);
+            });
+            sel.disabled = !items || items.length === 0;
+        }
+
+        function decodeBarangayChoice(v) {
+            var raw = String(v || '').trim();
+            if (!raw) {
+                return null;
+            }
+            var d = decodeCovOpt(raw);
+            if (d) {
+                return d;
+            }
+            if (state.municipality) {
+                return {
+                    municipality: state.municipality,
+                    province: state.province || '',
+                    barangay: raw,
+                };
+            }
+            return {
+                municipality: '',
+                province: '',
+                barangay: raw,
+            };
+        }
+
+        function refreshPurokOptions() {
+            var ps = el('coveragePurokSelect');
+            if (!ps) {
+                return;
+            }
+            ps.innerHTML = '';
+            var ph = document.createElement('option');
+            ph.value = '';
+            ph.textContent = '— Optional purok (choose “From barangay” first) —';
+            ps.appendChild(ph);
+            var v = fromSel && fromSel.value ? fromSel.value.trim() : '';
+            var d = decodeCovOpt(v);
+            if (!d && state.municipality && v && !state.corridorPresetKey) {
+                d = {
+                    municipality: state.municipality,
+                    province: state.province || '',
+                    barangay: v,
+                };
+            }
+            if (!d || typeof window.listPurokLabelsForBarangayCell !== 'function') {
+                ps.disabled = true;
+                return;
+            }
+            var labels = window.listPurokLabelsForBarangayCell(
+                d.municipality,
+                d.province,
+                d.barangay
+            );
+            ps.disabled = labels.length === 0;
+            labels.forEach(function (lbl) {
+                var o = document.createElement('option');
+                o.value = lbl;
+                o.textContent = lbl;
+                ps.appendChild(o);
+            });
+        }
+
+        function applyCorridorItems(presetKey, presetLabel, items) {
+            state.corridorPresetKey = presetKey || '';
+            state.corridorPresetDisplay = presetLabel || '';
+            state.municipality = presetLabel || '';
+            state.province = '';
+            state.labels = [];
+            fillSelectCorridor(fromSel, items);
+            fillSelectCorridor(toSel, items);
+            mirrorToOptions(fromSel, toSel);
+            if (pickRow) {
+                pickRow.hidden = !(items && items.length);
+            }
+            if (munRow) {
+                munRow.hidden = true;
+            }
+            refreshPurokOptions();
+            updatePreview();
+        }
+
+        function clearCorridorSelection() {
+            state.corridorPresetKey = '';
+            state.corridorPresetDisplay = '';
+            if (corridorPresetSel) {
+                corridorPresetSel.value = '';
+            }
+        }
 
         function setMsg(txt, isError) {
             if (!msgEl) {
@@ -180,12 +326,25 @@
         }
 
         function updatePreview() {
-            var fromB = fromSel && fromSel.value ? fromSel.value : '';
-            var toB = toSel && toSel.value ? toSel.value : '';
-            if (preview && state.municipality && fromB && toB) {
+            var fromIdx = fromSel ? fromSel.selectedIndex : 0;
+            var toIdx = toSel ? toSel.selectedIndex : 0;
+            var fromTxt =
+                fromSel && fromIdx > 0 && fromSel.options[fromIdx]
+                    ? fromSel.options[fromIdx].textContent.trim()
+                    : '';
+            var toTxt =
+                toSel && toIdx > 0 && toSel.options[toIdx]
+                    ? toSel.options[toIdx].textContent.trim()
+                    : '';
+            var head =
+                state.corridorPresetDisplay ||
+                (state.municipality
+                    ? state.municipality +
+                      (state.province ? ', ' + state.province : '')
+                    : '');
+            if (preview && head && fromTxt && toTxt) {
                 preview.hidden = false;
-                preview.textContent =
-                    state.municipality + ': ' + fromB + ' → ' + toB;
+                preview.textContent = head + ': ' + fromTxt + ' → ' + toTxt;
             } else if (preview) {
                 preview.hidden = true;
                 preview.textContent = '';
@@ -194,6 +353,7 @@
 
         function finishBarangayList(labels, msgOpts) {
             msgOpts = msgOpts || {};
+            clearCorridorSelection();
             state.labels = labels || [];
             fillSelect(fromSel, state.labels);
             fillSelect(toSel, state.labels);
@@ -219,6 +379,7 @@
                     );
                 }
             }
+            refreshPurokOptions();
             updatePreview();
         }
 
@@ -379,6 +540,7 @@
                 );
                 return;
             }
+            clearCorridorSelection();
             if (useCatalogueApi) {
                 if (loadBtn) {
                     loadBtn.disabled = true;
@@ -522,6 +684,70 @@
             populateMunicipalityPicker(matched);
         }
 
+        if (corridorPresetSel && coverageCorridorBarangaysUrl) {
+            corridorPresetSel.addEventListener('change', function () {
+                var pk = (corridorPresetSel.value || '').trim();
+                if (!pk) {
+                    clearCorridorSelection();
+                    state.municipality = '';
+                    state.province = '';
+                    state.labels = [];
+                    fillSelect(fromSel, []);
+                    fillSelect(toSel, []);
+                    if (pickRow) {
+                        pickRow.hidden = true;
+                    }
+                    refreshPurokOptions();
+                    updatePreview();
+                    setMsg('', false);
+                    return;
+                }
+                var sep = coverageCorridorBarangaysUrl.indexOf('?') >= 0 ? '&' : '?';
+                fetch(
+                    coverageCorridorBarangaysUrl + sep + 'preset=' + encodeURIComponent(pk)
+                )
+                    .then(function (r) {
+                        return r.json();
+                    })
+                    .then(function (j) {
+                        if (!j || !j.ok) {
+                            setMsg(
+                                (j && (j.message || j.error)) ||
+                                    'Could not load corridor barangays.',
+                                true
+                            );
+                            return;
+                        }
+                        if (j.empty_catalogue) {
+                            setMsg(
+                                'Address catalogue is empty on the server. Deploy static/generated/address_psgc_negros.generated.js.',
+                                true
+                            );
+                            applyCorridorItems(
+                                pk,
+                                j.preset_label || pk,
+                                []
+                            );
+                            return;
+                        }
+                        applyCorridorItems(
+                            pk,
+                            j.preset_label || pk,
+                            j.items || []
+                        );
+                        setMsg(
+                            'Loaded ' +
+                                (j.count || 0) +
+                                ' barangays for this corridor. Choose From / To.',
+                            false
+                        );
+                    })
+                    .catch(function () {
+                        setMsg('Network error loading corridor barangays.', true);
+                    });
+            });
+        }
+
         if (munSel) {
             munSel.addEventListener('change', function () {
                 var info = decodeMunicipalitySelect();
@@ -535,11 +761,29 @@
         if (fromSel) {
             fromSel.addEventListener('change', function () {
                 mirrorToOptions(fromSel, toSel);
+                refreshPurokOptions();
                 updatePreview();
             });
         }
         if (toSel) {
             toSel.addEventListener('change', updatePreview);
+        }
+
+        var purokSel = el('coveragePurokSelect');
+        if (purokSel && kwExtra) {
+            purokSel.addEventListener('change', function () {
+                var chunk = (purokSel.value || '').trim();
+                if (!chunk) {
+                    return;
+                }
+                var cur = (kwExtra.value || '').trim();
+                if (cur.indexOf(chunk) !== -1) {
+                    purokSel.value = '';
+                    return;
+                }
+                kwExtra.value = cur ? cur + ', ' + chunk : chunk;
+                purokSel.value = '';
+            });
         }
 
         if (placeIn) {
@@ -561,25 +805,45 @@
                 alert('Create route endpoint not configured.');
                 return;
             }
-            var mun = state.municipality;
-            var prov = state.province;
             var fromB = fromSel && fromSel.value ? fromSel.value.trim() : '';
             var toB = toSel && toSel.value ? toSel.value.trim() : '';
+            var fd = decodeBarangayChoice(fromB);
+            var td = decodeBarangayChoice(toB);
 
-            if (!mun || !fromB || !toB) {
+            if (!fd || !td || !fd.barangay || !td.barangay) {
                 alert(
-                    'Search for an area, load barangays, then choose both “from” and “to” barangays.'
+                    'Load barangays (or choose a corridor preset), then choose both “from” and “to” barangays.'
                 );
                 return;
             }
 
-            var label =
-                mun + ': ' + fromB + ' → ' + toB;
+            var head =
+                state.corridorPresetDisplay ||
+                (state.municipality
+                    ? state.municipality +
+                      (state.province ? ', ' + state.province : '')
+                    : '');
+            if (!head) {
+                alert('Search for an area or pick a corridor preset first.');
+                return;
+            }
+
+            var fromIdx = fromSel ? fromSel.selectedIndex : -1;
+            var toIdx = toSel ? toSel.selectedIndex : -1;
+            var fromLbl =
+                fromSel && fromIdx > 0 && fromSel.options[fromIdx]
+                    ? fromSel.options[fromIdx].textContent.trim()
+                    : '';
+            var toLbl =
+                toSel && toIdx > 0 && toSel.options[toIdx]
+                    ? toSel.options[toIdx].textContent.trim()
+                    : '';
+            var label = head + ': ' + fromLbl + ' → ' + toLbl;
             if (label.length > 200) {
                 label = label.slice(0, 197) + '…';
             }
             var extras = kwExtra && kwExtra.value ? kwExtra.value.trim() : '';
-            var keywords = buildKeywords(fromB, toB, extras);
+            var keywords = buildKeywordsDecoded(fd, td, extras);
 
             var btn = saveBtn;
             if (btn) {

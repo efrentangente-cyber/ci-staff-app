@@ -611,7 +611,8 @@ nav[style*="position: fixed"][style*="bottom"],
                         <li><strong>Enter formulas</strong>: Type = in a cell or formula bar (e.g., =A1+B1, =SUM(A1:A10))</li>
                         <li><strong>Formula display</strong>: Cells show calculated values, formulas appear in the formula bar</li>
                         <li><strong>Navigate</strong>: Use arrow keys, Tab, or Enter to move between cells</li>
-                        <li><strong>Auto-save</strong>: Your changes are saved automatically</li>
+                        <li><strong>Save your grid</strong>: Click toolbar <strong>Save</strong> (or change page / wait for auto-save) — your cash flow is stored in this application’s <strong>browser draft</strong> and is sent when you submit the full checklist</li>
+                        <li><strong>Auto-save</strong>: The wizard saves the whole form (including this sheet) every 30 seconds and when you leave this step</li>
                     </ul>
                 </div>
 
@@ -1280,17 +1281,18 @@ nav[style*="position: fixed"][style*="bottom"],
     </form>
 </div>
 
-<script src="{{ url_for('static', filename='excel-spreadsheet.js') }}?v=20260428-sari-costing-table"></script>
+<script src="{{ url_for('static', filename='excel-spreadsheet.js') }}?v=20260511-excel-draft-save"></script>
 <script>
 window.__CI_APP_ID__ = {{ application.id }};
 window.__CI_HAS_REGISTERED_SIGNATURE__ = {{ 'true' if current_user.signature_path else 'false' }};
+window.__CI_SERVER_PREFILL__ = {{ (prefill_data or {})|tojson }};
 </script>
-<script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}?v=20260501-submit-overlay"></script>
+<script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}?v=20260511-excel-draft-save"></script>
 <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
 
 <script>
-const serverPrefillData = {{ (prefill_data or {})|tojson }};
+const serverPrefillData = window.__CI_SERVER_PREFILL__ || {};
 const _ciDraftKey = 'ci_checklist_draft_' + {{ application.id }};
 
 function applyServerPrefill() {
