@@ -1808,7 +1808,12 @@ def init_db():
 
 
 def ensure_performance_indexes():
-    """Create indexes for login, dashboards, and high-traffic actions."""
+    """Create indexes for login, dashboards, and high-traffic actions.
+
+    On Render this can take 10–30s on a large PostgreSQL database when new indexes
+    are created. It runs via ``_start_deferred_startup('ensure_performance_indexes', …)``
+    so Gunicorn can bind $PORT before the port scan — not during module import.
+    """
     try:
         conn = get_db()
         # Each statement commits independently so one blocked/superseded CREATE INDEX
@@ -2456,7 +2461,6 @@ def _run_startup_migration(step_name, fn, hard_timeout_sec=15.0):
 
 print("▶ Running startup migrations…", flush=True)
 for _step_name, _step_fn in (
-    ('ensure_performance_indexes', ensure_performance_indexes),
     ('ensure_direct_message_columns', ensure_direct_message_columns),
     ('ensure_users_columns', ensure_users_columns),
     ('ensure_notification_aggregate_columns', ensure_notification_aggregate_columns),
@@ -2471,6 +2475,10 @@ for _step_name, _step_fn in (
 ):
     _run_startup_migration(_step_name, _step_fn)
 print("✓ Startup migrations finished — Flask app ready to bind.", flush=True)
+print(
+    "ℹ  Performance indexes (CREATE INDEX) run in deferred:ensure_performance_indexes after bind — avoids Render port-scan timeout.",
+    flush=True,
+)
 
 
 # ── Asset minification / bundling ────────────────────────────────────────────
@@ -2562,6 +2570,7 @@ def _build_minified_assets():
 
 _start_deferred_startup('minified_assets', _build_minified_assets)
 _start_deferred_startup('psgc_coverage_catalogue', _warm_psgc_coverage_catalogue)
+_start_deferred_startup('ensure_performance_indexes', ensure_performance_indexes)
 
 
 # Setup production users (runs on every startup to ensure correct roles)
@@ -8960,7 +8969,9 @@ def reports():
         return redirect(url_for('index'))
     
     conn = get_db()
-    ci_staff = conn.execute("SELECT id, name FROM users WHERE role='ci_staff' ORDER BY name").fetchall()
+    ci_staff = conn.execute(
+        "SELECT id, name FROM users WHERE role='ci_staff' AND is_approved=1 ORDER BY name"
+    ).fetchall()
     conn.close()
     
     return render_template('reports.html', ci_staff=ci_staff)
