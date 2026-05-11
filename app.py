@@ -241,6 +241,7 @@ _SKIP_SESSION_ENFORCE_ENDPOINTS = frozenset(
         'logout',
         'serve_static',
         'favicon',
+        'healthz',
         'serve_upload',
         'serve_signature',
         'serve_message_file',
@@ -954,7 +955,7 @@ limiter = Limiter(
 @limiter.request_filter
 def _limiter_exempt_static():
     p = request.path or ''
-    return p.startswith('/static/') or p == '/favicon.ico'
+    return p.startswith('/static/') or p in ('/favicon.ico', '/healthz')
 
 # Configure Resend
 resend.api_key = os.getenv('RESEND_API_KEY')
@@ -1347,6 +1348,12 @@ def serve_static(filename):
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory('static/images', 'logo.jpg', mimetype='image/jpeg')
+
+
+@app.route('/healthz')
+def healthz():
+    """Liveness probe: no DB, no session — use for load balancers / quick sanity checks."""
+    return 'ok', 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -1796,7 +1803,7 @@ def ensure_performance_indexes():
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_member_name ON loan_applications(member_name)",
             "CREATE INDEX IF NOT EXISTS idx_loan_applications_lower_member_name ON loan_applications(LOWER(member_name))",
             (
-                "CREATE INDEX IF NOT EXISTS idx_loan_app_member_norm ON loan_applications ((LOWER(TRIM(COALESCE(member_name, ''))))))"
+                "CREATE INDEX IF NOT EXISTS idx_loan_app_member_norm ON loan_applications ((LOWER(TRIM(COALESCE(member_name, '')))))"
                 if is_postgresql()
                 else "CREATE INDEX IF NOT EXISTS idx_loan_app_member_norm ON loan_applications (LOWER(TRIM(COALESCE(member_name, ''))))"
             ),
@@ -1821,8 +1828,7 @@ def ensure_performance_indexes():
             # the existing composite index narrows the set enough.  Add a covering
             # index so the COUNT needs no heap fetch.
             "CREATE INDEX IF NOT EXISTS idx_notif_user_read_msg ON notifications(user_id, is_read, message)",
-            # ── messages (internal loan-application thread) ────────────────────
-            "CREATE INDEX IF NOT EXISTS idx_messages_receiver_read ON messages(receiver_id, is_read)",
+            # Loan-application `messages` uses idx_messages_app_sent only (no receiver_id/is_read).
             # ── direct_messages bilateral history query ────────────────────────
             # Speeds up the chat_with_user pair query (sender+receiver in both directions).
             "CREATE INDEX IF NOT EXISTS idx_dm_sender_receiver ON direct_messages(sender_id, receiver_id, sent_at DESC)",
@@ -2383,8 +2389,12 @@ except Exception as e:
 # │  can bind 0.0.0.0:$PORT before Render's port-scan times out.
 # └─ Called from module tail after SocketIO exists (production_users may touch DB).
 def _start_deferred_startup(task_name, fn):
-    import threading
+    """Run non-critical startup after import using a greenlet (not a real thread).
 
+    Gunicorn uses ``worker_class = eventlet``. Mixing ``threading.Thread`` here with
+    psycopg2's pool and eventlet's hub has caused hung workers and Render 502s.
+    ``eventlet.spawn`` stays on the cooperative model the worker already uses.
+    """
     def _runner():
         try:
             print(f'▶ deferred:{task_name}…', flush=True)
@@ -2397,7 +2407,11 @@ def _start_deferred_startup(task_name, fn):
             except Exception:
                 pass
 
-    threading.Thread(target=_runner, name=f'dccco_{task_name}', daemon=True).start()
+    try:
+        eventlet.spawn(_runner)
+    except Exception:
+        import threading
+        threading.Thread(target=_runner, name=f'dccco_{task_name}', daemon=True).start()
 
 
 def _run_startup_migration(step_name, fn, hard_timeout_sec=15.0):

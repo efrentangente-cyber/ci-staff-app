@@ -18,4 +18,4 @@ exec gunicorn \
   --timeout 0 \
   --graceful-timeout 120 \
   --worker-connections 1000 \
-  app:app
+  wsgi:application
