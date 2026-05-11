@@ -1,4 +1,5 @@
-// Cross-tab heartbeat (localStorage) + logout when the last authenticated tab/window closes.
+// Optional: cross-tab heartbeat + GET /logout when the last authenticated tab closes.
+// Disabled by default (see body data-tab-close-auto-logout / TAB_CLOSE_AUTO_LOGOUT); easy to misfire on mobile.
 //
 // We skip logout when the unload is likely an in-app navigation (same-origin link follow,
 // form submit, reload shortcut, or programmatic same-origin redirect) using a short
@@ -12,6 +13,11 @@
     'use strict';
 
     if (!document.body.classList.contains('authenticated')) {
+        return;
+    }
+
+    var auto = (document.body.getAttribute('data-tab-close-auto-logout') || '').toLowerCase();
+    if (auto !== 'true' && auto !== '1') {
         return;
     }
 

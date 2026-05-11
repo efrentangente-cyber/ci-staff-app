@@ -1321,10 +1321,14 @@ except ValueError:
     _SESSION_STALE_HOURS = 8.0
 _SESSION_STALE_HOURS = max(1.0, min(72.0, _SESSION_STALE_HOURS))
 _SINGLE_LOGIN_STALE_SECONDS = int(_SESSION_STALE_HOURS * 3600)
-# When false (default), do not sign users out based on last_seen idle time — only explicit Log out
-# or the last-browser-tab handler (see static/tab-close-logout.js). Set SESSION_IDLE_LOGOUT=true
+# When false (default), do not sign users out based on last_seen idle time. TAB_CLOSE_AUTO_LOGOUT is
+# also off by default. Set SESSION_IDLE_LOGOUT=true to restore idle timeout (uses SESSION_STALE_HOURS).
 # to restore idle timeout (uses SESSION_STALE_HOURS, max 72h).
 _SESSION_IDLE_LOGOUT = (os.getenv('SESSION_IDLE_LOGOUT', 'false').lower() in ('1', 'true', 'yes'))
+# When true, tab-close-logout.js sends GET /logout if all app tabs are gone. Default off — it often misfires
+# (mobile pagehide, PWA, switching apps) and feels like random logout while working. Set TAB_CLOSE_AUTO_LOGOUT=true
+# if you want that behavior on shared PCs. Users still sign out via the Log out link.
+app.config['TAB_CLOSE_AUTO_LOGOUT'] = (os.getenv('TAB_CLOSE_AUTO_LOGOUT', 'false').lower() in ('1', 'true', 'yes'))
 # How often to update last_seen in the DB (keeps long single-page work from going stale).
 try:
     _SESSION_TOUCH_MIN_SEC = int((os.getenv('SESSION_TOUCH_MIN_SEC') or '45').strip() or '45')

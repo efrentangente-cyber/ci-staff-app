@@ -43,49 +43,6 @@ function syncCsrfIntoForm(form) {
     inp.value = tok;
 }
 
-async function probeSessionAlive() {
-    try {
-        /* Use the dedicated JSON endpoint — HEAD on the wizard URL is flaky behind some
-         * proxies / stacks (403, spurious redirects) and we were treating any 3xx as logout. */
-        const r = await fetch('/api/session_status', {
-            method: 'GET',
-            credentials: 'same-origin',
-            redirect: 'manual',
-            cache: 'no-store',
-            headers: {
-                Accept: 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-        });
-        if (r.status === 401) {
-            return false;
-        }
-        if (r.status >= 300 && r.status < 400) {
-            return false;
-        }
-        if (r.status === 403) {
-            return false;
-        }
-        if (r.status >= 200 && r.status < 300) {
-            try {
-                const data = await r.json();
-                return !!(data && data.ok);
-            } catch (e) {
-                return true;
-            }
-        }
-        if (r.status === 429) {
-            return true;
-        }
-        if (r.status >= 500) {
-            return true;
-        }
-        return false;
-    } catch (e) {
-        return true;
-    }
-}
-
 function countCiChecklistUploadFiles() {
     let n = 0;
     const ci = document.getElementById('ci_photos');
@@ -444,7 +401,7 @@ function nextPage() {
     }
 }
 
-// Submit form (GPS → session probe → sync CSRF → POST). Inline template override removed — single implementation.
+// Submit form (GPS → sync CSRF → POST). Session check removed — server validates; probes caused false "signed out".
 function submitChecklist() {
     const signatureInput = document.getElementById('ci_signature');
     const hasReg =
@@ -492,14 +449,6 @@ function submitChecklist() {
         checklistData = buildChecklistPayloadFromForm();
         if (excelData) checklistData.excel_cashflow = excelData;
         document.getElementById('checklist_data').value = JSON.stringify(checklistData);
-
-        const alive = await probeSessionAlive();
-        if (!alive) {
-            alert(
-                'Your session expired or you were signed out. Your draft is saved on this device — sign in again and reopen this checklist.',
-            );
-            return;
-        }
 
         const form = document.getElementById('ciChecklistForm');
         syncCsrfIntoForm(form);
