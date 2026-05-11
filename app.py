@@ -523,6 +523,7 @@ _ROUTE5_BARANGAYS_ASSIGNED_TO_CORRIDOR = frozenset({'san jose', 'dawis'})
 
 _ci_route_label_cache: dict | None = None
 _ci_route_sort_index_cache: dict | None = None
+_ci_route_address_match_cache: dict | None = None
 
 # Municipality / province placeholders that custom routes used to keyword — must not decide a match alone,
 # or every "…Bayawan City…" applicant hits whichever route appears first (wrong CI).
@@ -542,9 +543,10 @@ _CI_ROUTE_GENERIC_ADDRESS_KEYWORDS = frozenset({
 
 
 def invalidate_ci_route_label_cache() -> None:
-    global _ci_route_label_cache, _ci_route_sort_index_cache
+    global _ci_route_label_cache, _ci_route_sort_index_cache, _ci_route_address_match_cache
     _ci_route_label_cache = None
     _ci_route_sort_index_cache = None
+    _ci_route_address_match_cache = None
 
 
 def get_ci_route_label_dict() -> dict:
@@ -575,7 +577,14 @@ def get_ci_route_label_dict() -> dict:
 
 
 def get_ci_route_address_match_map() -> dict:
-    """route_key -> list of lowercase address keywords. DB keywords override/extend fallbacks for same key."""
+    """route_key -> list of lowercase address keywords. DB keywords override/extend fallbacks for same key.
+
+    Cached per process (invalidate_ci_route_label_cache() also clears this) so address-based
+    CI assignment does not re-query ci_coverage_routes on every loan submit / update.
+    """
+    global _ci_route_address_match_cache
+    if _ci_route_address_match_cache is not None:
+        return _ci_route_address_match_cache
     merged = {k: list(v) for k, v in _FALLBACK_ADDRESS_KEYWORDS.items()}
     try:
         conn = get_db()
@@ -607,6 +616,7 @@ def get_ci_route_address_match_map() -> dict:
             ]
     except Exception:
         pass
+    _ci_route_address_match_cache = merged
     return merged
 
 
@@ -1267,6 +1277,44 @@ except ValueError:
 _ENFORCE_GET_MIN_SEC = max(0.0, _ENFORCE_GET_MIN_SEC)
 _notification_count_cache = {}
 _message_count_cache = {}
+# Per-LPS "last dedupe ran at" map so the O(n²) fuzzy-dedupe in loan_dashboard
+# does not re-execute on every page click. Writes to loan_applications invalidate
+# this entry so the next dashboard load runs a fresh dedupe pass.
+_lps_dedupe_last_ran: dict = {}
+try:
+    _LPS_DEDUPE_MIN_INTERVAL_SEC = int(
+        (os.getenv('LPS_DEDUPE_MIN_INTERVAL_SEC') or '300').strip() or '300'
+    )
+except ValueError:
+    _LPS_DEDUPE_MIN_INTERVAL_SEC = 300
+_LPS_DEDUPE_MIN_INTERVAL_SEC = max(0, min(3600, _LPS_DEDUPE_MIN_INTERVAL_SEC))
+
+
+def _should_skip_lps_dedupe(user_id):
+    if _LPS_DEDUPE_MIN_INTERVAL_SEC <= 0:
+        return False
+    try:
+        last = float(_lps_dedupe_last_ran.get(int(user_id), 0.0))
+    except (TypeError, ValueError):
+        return False
+    return (time.time() - last) < _LPS_DEDUPE_MIN_INTERVAL_SEC
+
+
+def _mark_lps_dedupe_ran(user_id):
+    try:
+        _lps_dedupe_last_ran[int(user_id)] = time.time()
+    except (TypeError, ValueError):
+        pass
+
+
+def _invalidate_lps_dedupe(user_id):
+    """Call after any write that may introduce a new duplicate for this LPS."""
+    try:
+        _lps_dedupe_last_ran.pop(int(user_id), None)
+    except (TypeError, ValueError):
+        pass
+
+
 # System settings cache — invalidated on every write to system_settings table.
 _system_settings_cache: dict = {'data': None, 'ts': 0.0}
 _SYSTEM_SETTINGS_CACHE_TTL = 60  # seconds
@@ -1538,6 +1586,7 @@ def can_access_manage_users_actions():
 
 # --- Coverage route wizard catalogue (parses generated PSGC JS; survives broken static/script order) ---
 _PSGC_CATALOGUE_ROWS_CACHE = None
+_PSGC_CATALOGUE_INDEX_CACHE = None
 _MUN_MATCH_CITY_OF = re.compile(r'^City\s+of\s+', re.IGNORECASE)
 
 
@@ -1611,6 +1660,40 @@ def get_psgc_negros_catalogue_rows():
     return _PSGC_CATALOGUE_ROWS_CACHE
 
 
+def get_psgc_negros_catalogue_index():
+    """Pre-index catalogue by municipality/province for fast coverage route dropdowns."""
+    global _PSGC_CATALOGUE_INDEX_CACHE
+    if _PSGC_CATALOGUE_INDEX_CACHE is not None:
+        return _PSGC_CATALOGUE_INDEX_CACHE
+
+    municipalities = {}
+    barangays_by_key = {}
+    for row in get_psgc_negros_catalogue_rows():
+        if not isinstance(row, dict):
+            continue
+        mun = str(row.get('municipality') or '').strip()
+        prov = str(row.get('province') or '').strip()
+        brgy = str(row.get('barangay') or '').strip()
+        if not mun:
+            continue
+        key = (mun, prov)
+        municipalities[key] = {'municipality': mun, 'province': prov}
+        if brgy:
+            barangays_by_key.setdefault(key, set()).add(brgy)
+
+    _PSGC_CATALOGUE_INDEX_CACHE = {
+        'municipalities': sorted(
+            municipalities.values(),
+            key=lambda item: (item['municipality'].lower(), item['province'].lower()),
+        ),
+        'barangays_by_key': {
+            key: sorted(vals, key=lambda s: s.lower())
+            for key, vals in barangays_by_key.items()
+        },
+    }
+    return _PSGC_CATALOGUE_INDEX_CACHE
+
+
 def _coverage_municipality_matches(row_mun_lower, mun_trimmed, raw_q_lower):
     """Mirror static/addresses.js munMatches."""
     if raw_q_lower in row_mun_lower:
@@ -1631,23 +1714,12 @@ def coverage_find_municipalities_from_catalogue(rows, raw_query):
     q = (raw_query or '').lower().strip()
     if not q:
         return []
-    seen = set()
     out = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        mun = str(row.get('municipality') or '').strip()
-        prov = str(row.get('province') or '').strip()
-        if not mun:
-            continue
+    for item in get_psgc_negros_catalogue_index().get('municipalities', []):
+        mun = item.get('municipality') or ''
         if not _coverage_municipality_matches(mun.lower(), mun, q):
             continue
-        key = mun + '\n' + prov
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({'municipality': mun, 'province': prov})
-    out.sort(key=lambda item: item['municipality'].lower())
+        out.append(item)
     return out
 
 
@@ -1655,19 +1727,15 @@ def coverage_list_barangays_from_catalogue(rows, municipality, province):
     """Mirror addresses.js listCoverageBarangaysInMunicipality."""
     mun = (municipality or '').strip()
     prov = (province or '').strip()
-    bag = {}
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if str(row.get('municipality') or '').strip() != mun:
-            continue
-        if prov and str(row.get('province') or '').strip() != prov:
-            continue
-        brgy = str(row.get('barangay') or '').strip()
-        if brgy:
-            bag[brgy] = True
-    ordered = sorted(bag.keys(), key=lambda s: s.lower())
-    return ordered
+    idx = get_psgc_negros_catalogue_index().get('barangays_by_key', {})
+    if prov:
+        return list(idx.get((mun, prov), []))
+
+    bag = set()
+    for (row_mun, _row_prov), labels in idx.items():
+        if row_mun == mun:
+            bag.update(labels)
+    return sorted(bag, key=lambda s: s.lower())
 
 
 def init_db():
@@ -4053,17 +4121,23 @@ def loan_dashboard():
         flash('Unauthorized', 'danger')
         return redirect(url_for('index'))
     conn = get_db()
-    try:
-        _n_exact = dedupe_loan_applications_by_member_name_for_submitter(conn, current_user.id)
-        _n_fuzzy = _dedupe_fuzzy_member_clusters_for_submitter(conn, current_user.id)
-        if _n_exact or _n_fuzzy:
-            conn.commit()
-    except Exception as _dedupe_err:
+    # Dedupe is O(n²) over the LPS pipeline (SequenceMatcher per pair) and used to
+    # run on every dashboard refresh. We now run it at most once per
+    # LPS_DEDUPE_MIN_INTERVAL_SEC (default 5 min) and invalidate on submits/edits
+    # so behavior is preserved while click-to-render time drops dramatically.
+    if not _should_skip_lps_dedupe(current_user.id):
         try:
-            conn.rollback()
-        except Exception:
-            pass
-        app.logger.warning('loan_dashboard member dedupe skipped: %s', _dedupe_err)
+            _n_exact = dedupe_loan_applications_by_member_name_for_submitter(conn, current_user.id)
+            _n_fuzzy = _dedupe_fuzzy_member_clusters_for_submitter(conn, current_user.id)
+            if _n_exact or _n_fuzzy:
+                conn.commit()
+            _mark_lps_dedupe_ran(current_user.id)
+        except Exception as _dedupe_err:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            app.logger.warning('loan_dashboard member dedupe skipped: %s', _dedupe_err)
     # Only fetch the columns the template reads — avoids transferring ci_checklist_data,
     # admin_notes, loan_officer_notes, and other wide TEXT columns from PostgreSQL.
     # Oldest first so new submissions appear at the bottom (full list per LPS — no LIMIT).
@@ -4518,6 +4592,7 @@ def submit_application():
                     conn.close()
                     flash('Could not save the application. Please try again.', 'danger')
                     return redirect(url_for('submit_application'))
+                _invalidate_lps_dedupe(current_user.id)
                 # Handle file uploads
                 if 'documents' in request.files:
                     files = request.files.getlist('documents')
@@ -5039,18 +5114,7 @@ def ci_checklist_summary(id):
         # Convert to dict for easier access
         application = dict(app_data)
         
-        # Get unread notifications count safely
-        unread_count = 0
-        try:
-            result = conn.execute('''
-                SELECT COUNT(*) as count 
-                FROM notifications 
-                WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'
-            ''', (current_user.id,)).fetchone()
-            if result:
-                unread_count = result['count']
-        except Exception as e:
-            print(f"Error getting unread count: {e}")
+        unread_count = get_unread_notification_count(current_user.id)
         
         conn.close()
         
@@ -6266,9 +6330,7 @@ def loan_application(id):
     ci_staff_list = fetch_ci_staff_list(conn, include_pending=True)
     lps_ci_route_labels_by_id = lps_ci_route_labels_by_staff_id(ci_staff_list)
     
-    row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
-    unread_count = row['count'] if row else 0
+    unread_count = get_unread_notification_count(current_user.id)
     conn.close()
     
     # Check if application can be edited
@@ -8242,9 +8304,7 @@ def manage_users():
         ORDER BY name ASC
     ''').fetchall()
     
-    row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
-    unread_count = row['count'] if row else 0
+    unread_count = get_unread_notification_count(current_user.id)
 
     claims_by_uid = _ci_staff_route_claims_by_user(conn)
     conn.close()
@@ -10035,20 +10095,40 @@ def manage_loan_types():
     
     conn = get_db()
     loan_types = _fetch_loan_types_flexible(conn, active_only=False)
-    row = conn.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id=? AND is_read=0 AND message NOT LIKE 'New message from%'",
-                                (current_user.id,)).fetchone()
-    unread_count = row['count'] if row else 0
+    unread_count = get_unread_notification_count(current_user.id)
     conn.close()
     
     return render_template('manage_loan_types.html', loan_types=loan_types, unread_count=unread_count)
 
+_LOAN_TYPES_API_CACHE: dict = {'payload': None, 'ts': 0.0}
+_LOAN_TYPES_API_CACHE_TTL = 120  # seconds
+
+
+def _invalidate_loan_types_api_cache():
+    _LOAN_TYPES_API_CACHE['payload'] = None
+    _LOAN_TYPES_API_CACHE['ts'] = 0.0
+
+
 @app.route('/api/loan-types')
 def get_loan_types():
-    """Get all active loan types for dropdowns - Public API for submit form"""
+    """Get all active loan types for dropdowns - Public API for submit form.
+
+    Cached for 2 min to avoid hitting loan_types on every new-application page load.
+    Admin write endpoints below clear the cache so changes appear immediately.
+    """
+    now_ts = time.time()
+    if (
+        _LOAN_TYPES_API_CACHE.get('payload') is not None
+        and (now_ts - float(_LOAN_TYPES_API_CACHE.get('ts') or 0.0)) < _LOAN_TYPES_API_CACHE_TTL
+    ):
+        return jsonify(_LOAN_TYPES_API_CACHE['payload'])
     conn = get_db()
     loan_types = _fetch_loan_types_flexible(conn, active_only=True)
     conn.close()
-    return jsonify([{'id': lt.get('id'), 'name': lt.get('name')} for lt in loan_types])
+    payload = [{'id': lt.get('id'), 'name': lt.get('name')} for lt in loan_types]
+    _LOAN_TYPES_API_CACHE['payload'] = payload
+    _LOAN_TYPES_API_CACHE['ts'] = now_ts
+    return jsonify(payload)
 
 @app.route('/api/loan-types/add', methods=['POST'])
 @login_required
@@ -10075,6 +10155,7 @@ def add_loan_type():
             conn.execute(f'INSERT INTO loan_types ({name_key}) VALUES (?)', (name,))
         conn.commit()
         conn.close()
+        _invalidate_loan_types_api_cache()
         return jsonify({'success': True, 'message': 'Loan type added successfully'})
     except Exception as e:
         conn.close()
@@ -10114,6 +10195,7 @@ def update_loan_type(id):
         conn.execute(f"UPDATE loan_types SET {', '.join(set_parts)} WHERE id=?", tuple(values))
         conn.commit()
         conn.close()
+        _invalidate_loan_types_api_cache()
         return jsonify({'success': True, 'message': 'Loan type updated successfully'})
     except Exception as e:
         conn.close()
@@ -10139,7 +10221,7 @@ def toggle_loan_type(id):
     conn.execute('UPDATE loan_types SET is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?', (new_status, id))
     conn.commit()
     conn.close()
-    
+    _invalidate_loan_types_api_cache()
     return jsonify({'success': True, 'message': 'Loan type status updated', 'is_active': new_status})
 
 @app.route('/api/loan-types/delete/<int:id>', methods=['POST'])
@@ -10153,6 +10235,7 @@ def delete_loan_type(id):
         conn.execute('DELETE FROM loan_types WHERE id=?', (id,))
         conn.commit()
         conn.close()
+        _invalidate_loan_types_api_cache()
         return jsonify({'success': True, 'message': 'Loan type deleted successfully'})
     except Exception as e:
         conn.close()

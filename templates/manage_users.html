@@ -153,7 +153,6 @@ select.ci-route-select.route-assign-await-js[multiple] {
                                     <option value="{{ r.route_key }}" {% if r.route_key in _sel %}selected{% endif %}>{{ r.label }}</option>
                                     {% endfor %}
                                 </select>
-                                <label class="form-label form-label-sm mb-0 mt-2 text-muted" for="custom-route-pending-{{ user.id }}">Custom route (optional)</label>
                                 <input type="text"
                                        id="custom-route-pending-{{ user.id }}"
                                        class="form-control form-control-sm custom-route-extra"
@@ -162,7 +161,6 @@ select.ci-route-select.route-assign-await-js[multiple] {
                                        autocomplete="off"
                                        value="{{ user.assigned_route|custom_routes_prefill|e }}"
                                        {% if user.role != 'ci_staff' %}disabled{% endif %}>
-                                <div class="small text-muted mt-1 route-custom-explain">Use the route list above, or type custom coverage names here only.</div>
                                 <button type="button"
                                         class="btn btn-sm btn-primary mt-1 w-100 save-ci-routes"
                                         onclick="saveRoutesFromSelect({{ user.id }})"
@@ -273,7 +271,6 @@ select.ci-route-select.route-assign-await-js[multiple] {
                                     <option value="{{ r.route_key }}" {% if r.route_key in _sel %}selected{% endif %}>{{ r.label }}</option>
                                     {% endfor %}
                                 </select>
-                                <label class="form-label form-label-sm mb-0 mt-2 text-muted" for="custom-route-active-{{ user.id }}">Custom route (optional)</label>
                                 <input type="text"
                                        id="custom-route-active-{{ user.id }}"
                                        class="form-control form-control-sm custom-route-extra"
@@ -281,7 +278,6 @@ select.ci-route-select.route-assign-await-js[multiple] {
                                        placeholder="e.g. Bayawan → extra area — separate several with ;"
                                        autocomplete="off"
                                        value="{{ user.assigned_route|custom_routes_prefill|e }}">
-                                <div class="small text-muted mt-1 route-custom-explain">Use the route list above, or type custom coverage names here only.</div>
                                 <button type="button" class="btn btn-sm btn-primary mt-1 w-100 save-ci-routes" onclick="saveRoutesFromSelect({{ user.id }})">Save routes</button>
                             </div>
                             {% else %}
@@ -317,7 +313,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
 }
 </style>
 
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=6"></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=7" defer></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};

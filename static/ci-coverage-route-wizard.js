@@ -157,6 +157,8 @@
             labels: [],
             multi: [],
         };
+        var municipalitiesCache = Object.create(null);
+        var barangaysCache = Object.create(null);
 
         function setMsg(txt, isError) {
             if (!msgEl) {
@@ -224,6 +226,11 @@
             state.municipality = municipality || '';
             state.province = province || '';
             if (useCatalogueApi) {
+                var cacheKey = state.municipality + '\n' + (state.province || '');
+                if (barangaysCache[cacheKey]) {
+                    finishBarangayList(barangaysCache[cacheKey]);
+                    return;
+                }
                 setMsg('Loading barangays…', false);
                 var u =
                     coverageBarangaysUrl +
@@ -268,7 +275,8 @@
                             finishBarangayList([], { skipMsgs: true, fromHttpFail: true });
                             return;
                         }
-                        finishBarangayList(outData.barangays || []);
+                        barangaysCache[cacheKey] = outData.barangays || [];
+                        finishBarangayList(barangaysCache[cacheKey]);
                     })
                     .catch(function (err) {
                         var timedOut = err && err.name === 'AbortError';
@@ -376,6 +384,14 @@
                     loadBtn.disabled = true;
                 }
                 setMsg('Searching areas…', false);
+                var qKey = q.toLowerCase();
+                if (municipalitiesCache[qKey]) {
+                    if (loadBtn) {
+                        loadBtn.disabled = false;
+                    }
+                    populateMunicipalityPicker(municipalitiesCache[qKey]);
+                    return;
+                }
                 var u = coverageMunicipalitiesUrl + '?q=' + encodeURIComponent(q);
                 fetchCatalogueJson(u)
                     .then(function (res) {
@@ -408,6 +424,7 @@
                             return;
                         }
                         var matched = outData.municipalities || [];
+                        municipalitiesCache[qKey] = matched;
                         if (!matched.length) {
                             if (munRow) {
                                 munRow.hidden = true;

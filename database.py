@@ -262,17 +262,37 @@ def get_db():
             g._db_conn = db_conn
         return db_conn
 
+_DB_TYPE_CACHE: str | None = None
+
+
 def get_database_type():
     """
     Get current database type
-    
+
     Returns:
         'postgresql' or 'sqlite'
+
+    Cached after first call: DATABASE_URL never changes during a worker process,
+    and this function is called many times per request (every is_postgresql()
+    branch). Reading os.environ on every call adds measurable hot-path overhead.
+    Tests/tools that toggle DATABASE_URL at runtime can call
+    `reset_database_type_cache()` to re-detect.
     """
+    global _DB_TYPE_CACHE
+    if _DB_TYPE_CACHE is not None:
+        return _DB_TYPE_CACHE
     database_url = os.getenv('DATABASE_URL')
     if database_url and database_url.startswith('postgres'):
-        return 'postgresql'
-    return 'sqlite'
+        _DB_TYPE_CACHE = 'postgresql'
+    else:
+        _DB_TYPE_CACHE = 'sqlite'
+    return _DB_TYPE_CACHE
+
+
+def reset_database_type_cache():
+    global _DB_TYPE_CACHE
+    _DB_TYPE_CACHE = None
+
 
 def is_postgresql():
     """Check if using PostgreSQL"""
