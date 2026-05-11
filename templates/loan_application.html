@@ -52,9 +52,9 @@
                     </div>
                     <div class="mb-3 {% if can_edit %}position-relative{% endif %}">
                         <label class="form-label">Address (Purok/Barangay, Municipality, Province) *</label>
-                        <input type="text" name="member_address" id="member_address" class="form-control" value="{{ application.member_address or '' }}" required autocomplete="off" placeholder="e.g. Purok 4 San Jose Bayawan — or type barangay / city first" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
+                        <input type="text" name="member_address" id="member_address" class="form-control" value="{{ application.member_address or '' }}" required autocomplete="off" data-global-autocomplete="off" autocorrect="off" spellcheck="false" placeholder="e.g. Purok 4 San Jose Bayawan — or type barangay / city first" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
                         {% if can_edit %}
-                        <div id="address_suggestions" class="list-group position-absolute w-100" style="z-index: 1000; max-height: 320px; overflow-y: auto; display: none;"></div>
+                        <div id="address_suggestions" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" style="z-index: 1060; max-height: 320px; overflow-y: auto; display: none;"></div>
                         <small class="text-muted">All Negros Oriental &amp; Occidental barangays (PSGC). Bayawan City includes Purok 1–55 quick-picks per barangay; elsewhere typically 1–25 plus named puroks in <code>addresses.js</code>. Type freely if yours is missing.</small>
                         {% endif %}
                     </div>
@@ -187,9 +187,9 @@
 </div>
 
 {% if can_edit %}
-<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=3"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=10"></script>
 <script src="{{ url_for('static', filename='loan-amount-confirm.js') }}?v=1"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {

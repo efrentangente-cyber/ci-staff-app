@@ -1,8 +1,12 @@
 // Cross-tab heartbeat (localStorage) + logout when the last authenticated tab/window closes.
 //
-// We skip logout when the unload is likely an in-app navigation (same-origin link click,
-// form submit, or reload shortcut) using a short-lived sessionStorage flag, because
-// pagehide alone cannot distinguish "tab closed" from "navigate to another page".
+// We skip logout when the unload is likely an in-app navigation (same-origin link follow,
+// form submit, reload shortcut, or programmatic same-origin redirect) using a short
+// sessionStorage timestamp, because pagehide alone cannot distinguish "tab closed" from
+// "navigate to another page".
+//
+// A simple consume-on-read flag is fragile on touch devices and multi-handler ordering;
+// we keep a time window (EXPECT_NAV_MAX_MS) and clear the marker on pageshow.
 
 (function () {
     'use strict';
@@ -13,6 +17,7 @@
 
     var STORAGE_KEY = 'dccco_live_tabs_v1';
     var EXPECT_NAV_KEY = 'dccco_expect_nav';
+    var EXPECT_NAV_MAX_MS = 12000;
 
     var HEARTBEAT_MS = 12000;
     // Drop entries older than this so "dead" tabs don't block last-tab logout forever.
@@ -68,23 +73,34 @@
 
     function setExpectInAppNavigation() {
         try {
-            sessionStorage.setItem(EXPECT_NAV_KEY, '1');
+            sessionStorage.setItem(EXPECT_NAV_KEY, String(Date.now()));
         } catch (e) { /* */ }
     }
 
-    function consumeExpectInAppNavigation() {
+    function isRecentInAppNavigation() {
         try {
-            if (sessionStorage.getItem(EXPECT_NAV_KEY) === '1') {
-                sessionStorage.removeItem(EXPECT_NAV_KEY);
+            var raw = sessionStorage.getItem(EXPECT_NAV_KEY);
+            if (!raw) {
+                return false;
+            }
+            /* Legacy single-use flag from older builds — honor once then drop. */
+            if (raw === '1') {
+                try {
+                    sessionStorage.removeItem(EXPECT_NAV_KEY);
+                } catch (e) { /* */ }
                 return true;
             }
-        } catch (e) { /* */ }
-        return false;
+            var t = parseInt(raw, 10);
+            if (Number.isNaN(t)) {
+                return false;
+            }
+            return Date.now() - t < EXPECT_NAV_MAX_MS;
+        } catch (e) {
+            return false;
+        }
     }
 
-    /* In-app navigation: same-origin <a> / <form> (not new tab, not download). */
-    document.addEventListener('click', function (e) {
-        var t = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    function armNavigationFromAnchor(t) {
         if (!t) {
             return;
         }
@@ -109,6 +125,19 @@
             return;
         }
         setExpectInAppNavigation();
+    }
+
+    /* In-app navigation: same-origin <a> / <form> (not new tab, not download). */
+    document.addEventListener('click', function (e) {
+        armNavigationFromAnchor(e.target && e.target.closest ? e.target.closest('a[href]') : null);
+    }, true);
+
+    /* Touch / some browsers: arm before click so pagehide always sees a fresh timestamp. */
+    document.addEventListener('pointerdown', function (e) {
+        if (e.button != null && e.button !== 0) {
+            return;
+        }
+        armNavigationFromAnchor(e.target && e.target.closest ? e.target.closest('a[href]') : null);
     }, true);
 
     document.addEventListener('submit', function () {
@@ -124,6 +153,15 @@
             setExpectInAppNavigation();
         }
     }, true);
+
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) {
+            return;
+        }
+        try {
+            sessionStorage.removeItem(EXPECT_NAV_KEY);
+        } catch (e) { /* */ }
+    });
 
     /**
      * JS redirects (location.href / assign / replace / reload) do not fire link-click handlers.
@@ -203,7 +241,7 @@
                 return;
             }
 
-            var internalNav = consumeExpectInAppNavigation();
+            var internalNav = isRecentInAppNavigation();
 
             var map = purgeStale(readMap());
             var id = tabId();

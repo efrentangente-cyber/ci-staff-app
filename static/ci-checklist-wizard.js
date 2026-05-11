@@ -45,18 +45,42 @@ function syncCsrfIntoForm(form) {
 
 async function probeSessionAlive() {
     try {
-        const r = await fetch(window.location.pathname, {
-            method: 'HEAD',
+        /* Use the dedicated JSON endpoint — HEAD on the wizard URL is flaky behind some
+         * proxies / stacks (403, spurious redirects) and we were treating any 3xx as logout. */
+        const r = await fetch('/api/session_status', {
+            method: 'GET',
             credentials: 'same-origin',
             redirect: 'manual',
             cache: 'no-store',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
         });
-        // Redirect to login => session gone
-        if (r.status >= 300 && r.status < 400) return false;
-        if (r.status === 401 || r.status === 403) return false;
-        // Server errors: still attempt POST (server will respond); avoid blocking on flaky probes
-        if (r.status >= 500) return true;
-        return r.ok || r.status === 405 || r.status === 204;
+        if (r.status === 401) {
+            return false;
+        }
+        if (r.status >= 300 && r.status < 400) {
+            return false;
+        }
+        if (r.status === 403) {
+            return false;
+        }
+        if (r.status >= 200 && r.status < 300) {
+            try {
+                const data = await r.json();
+                return !!(data && data.ok);
+            } catch (e) {
+                return true;
+            }
+        }
+        if (r.status === 429) {
+            return true;
+        }
+        if (r.status >= 500) {
+            return true;
+        }
+        return false;
     } catch (e) {
         return true;
     }

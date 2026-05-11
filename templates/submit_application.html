@@ -55,8 +55,9 @@
             </div>
             <div class="mb-3 position-relative">
                 <label class="form-label">Address (Purok/Barangay, Municipality, Province) *</label>
-                <input type="text" name="member_address" id="member_address" class="form-control" required autocomplete="off" placeholder="e.g. Purok 4 San Jose Bayawan — or type barangay / city first">
-                <div id="address_suggestions" class="list-group position-absolute w-100" style="z-index: 1000; max-height: 320px; overflow-y: auto; display: none;"></div>
+                <input type="text" name="member_address" id="member_address" class="form-control" required autocomplete="off" data-global-autocomplete="off" autocorrect="off" spellcheck="false"
+                       placeholder="e.g. Purok 4 San Jose Bayawan — or type barangay / city first">
+                <div id="address_suggestions" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" style="z-index: 1060; max-height: 320px; overflow-y: auto; display: none;"></div>
             </div>
             <div class="mb-3">
                 <label class="form-label">Loan Amount *</label>
@@ -79,10 +80,6 @@
                 <input type="hidden" name="loan_type_hidden" id="loanTypeHidden">
                 <div id="loanTypeDropdown" class="list-group position-absolute" style="z-index: 1000; max-height: 300px; overflow-y: auto; display: none; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #dee2e6; border-radius: 0.25rem; margin-top: 2px;"></div>
                 <small class="text-muted">Start typing to filter loan types</small>
-                <div id="existingLoanTypeWrap" class="mt-2" style="display:none;">
-                    <label class="form-label small mb-1 text-muted">Existing loan records for this member (select to sync details)</label>
-                    <select id="existingLoanTypeSelect" class="form-select form-select-sm"></select>
-                </div>
             </div>
             <div class="mb-3">
                 <label class="form-label"><i class="bi bi-images"></i> Upload Documents/Photos (Requirements/Papers)</label>
@@ -134,9 +131,9 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=3"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=10"></script>
 <script src="{{ url_for('static', filename='loan-amount-confirm.js') }}?v=1"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -159,7 +156,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const SUGGEST_ID_DEBOUNCE_MS = 80;
     const LOOKUP_SPINNER_DELAY_MS = 0;
     let lastPrefillName = '';
-    let cachedApps = [];
     let lookupSeq = 0;
     let prefillAbort = null;
     let debounceTimer = null;
@@ -184,8 +180,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const memberUidLookupNotice = document.getElementById('memberUidLookupNotice');
     const banner = document.getElementById('memberPrefillBanner');
     const bannerDismiss = document.getElementById('memberPrefillBannerDismiss');
-    const existingLoanTypeWrap = document.getElementById('existingLoanTypeWrap');
-    const existingLoanTypeSelect = document.getElementById('existingLoanTypeSelect');
     const loanTypeIn = document.getElementById('loanTypeInput');
     const loanTypeH = document.getElementById('loanTypeHidden');
     const loanAmt = document.getElementById('loan_amount');
@@ -228,7 +222,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     function showNoRecordNotice() {
         hideMemberUidLookupNotice();
-        renderExistingLoanTypeDropdown([]);
         if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
         if (memberHistoryLink) {
             memberHistoryLink.textContent = MEMBER_HISTORY_LINK_DEFAULT;
@@ -296,60 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function hideLookupError() {
         if (lookupError) lookupError.style.display = 'none';
     }
-    function syncFromRecord(rec) {
-        if (!rec) return;
-        if (contact && (rec.member_contact || '').trim()) {
-            contact.value = (rec.member_contact || '').replace(/\D/g, '').slice(0, 11);
-        }
-        if (address && (rec.member_address || '').trim()) {
-            address.value = (rec.member_address || '').trim();
-        }
-        if (loanTypeIn && (rec.loan_type || '').trim()) {
-            const lt = (rec.loan_type || '').trim();
-            loanTypeIn.value = lt;
-            if (loanTypeH) loanTypeH.value = lt;
-        }
-        if (loanAmt && loanAmtRaw && rec.loan_amount != null && rec.loan_amount !== '') {
-            const n = Number(rec.loan_amount);
-            if (!Number.isNaN(n) && n > 0) {
-                const raw = n % 1 === 0 ? String(Math.round(n)) : String(n);
-                loanAmt.value = raw;
-                loanAmt.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-        }
-    }
-    function renderExistingLoanTypeDropdown(apps) {
-        cachedApps = Array.isArray(apps) ? apps : [];
-        if (!existingLoanTypeSelect || !existingLoanTypeWrap) return;
-        if (!cachedApps.length) {
-            existingLoanTypeWrap.style.display = 'none';
-            existingLoanTypeSelect.innerHTML = '';
-            return;
-        }
-        existingLoanTypeSelect.innerHTML = '<option value="">-- Select existing loan type to sync details --</option>';
-        cachedApps.forEach((rec, idx) => {
-            const lt = (rec.loan_type || 'Unknown Type').trim();
-            const status = (rec.status || 'unknown').trim();
-            const amt = rec.loan_amount != null && rec.loan_amount !== ''
-                ? `₱${Number(rec.loan_amount).toLocaleString()}`
-                : 'No amount';
-            const submitted = rec.submitted_at ? String(rec.submitted_at).slice(0, 10) : '';
-            const opt = document.createElement('option');
-            opt.value = String(idx);
-            opt.textContent = submitted
-                ? `${lt} | ${amt} | ${status} | ${submitted}`
-                : `${lt} | ${amt} | ${status}`;
-            existingLoanTypeSelect.appendChild(opt);
-        });
-        existingLoanTypeWrap.style.display = 'block';
-    }
     bannerDismiss?.addEventListener('click', hidePrefillBanner);
-    existingLoanTypeSelect?.addEventListener('change', function() {
-        const idx = Number(this.value);
-        if (Number.isNaN(idx) || idx < 0 || idx >= cachedApps.length) return;
-        syncFromRecord(cachedApps[idx]);
-        showPrefillBanner();
-    });
 
     function applyPrefillPayload(name, data, lookupKind) {
         lookupKind = lookupKind || 'name';
@@ -390,7 +330,6 @@ document.addEventListener('DOMContentLoaded', function() {
             hideMemberUidLookupNotice();
         }
         let any = false;
-        renderExistingLoanTypeDropdown(data.applications || []);
 
         const mn = (data.member_name || '').trim();
         if (memberNameInput && mn) {
@@ -885,7 +824,6 @@ document.addEventListener('DOMContentLoaded', function() {
             pickedSuggestionExact = '';
             hideMemberNameDropdown();
             hideMemberIdDropdown();
-            renderExistingLoanTypeDropdown([]);
             if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
             if (memberHistoryLink) {
                 memberHistoryLink.textContent = MEMBER_HISTORY_LINK_DEFAULT;

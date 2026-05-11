@@ -532,12 +532,16 @@
             };
         }
 
-        function doLoadPlaces() {
+        function doLoadPlaces(opts) {
+            opts = opts || {};
+            var silentEmpty = !!opts.silentEmpty;
             var q = placeIn && placeIn.value ? placeIn.value.trim() : '';
             if (!q) {
-                alert(
-                    'Type an area such as Bayawan, Dumaguete, Sipalay, or Santa Catalina.'
-                );
+                if (!silentEmpty) {
+                    alert(
+                        'Type an area such as Bayawan, Dumaguete, Sipalay, or Santa Catalina.'
+                    );
+                }
                 return;
             }
             clearCorridorSelection();
@@ -786,16 +790,82 @@
             });
         }
 
+        var placeInputDebounceTimer = null;
+        var PLACE_INPUT_DEBOUNCE_MS = 420;
+        var PLACE_INPUT_MIN_CHARS = 2;
+
+        function resetSingleMunicipalityPickersUi() {
+            if (munRow) {
+                munRow.hidden = true;
+            }
+            if (munSel) {
+                munSel.innerHTML = '';
+                munSel.disabled = true;
+            }
+            if (pickRow) {
+                pickRow.hidden = true;
+            }
+            fillSelect(fromSel, []);
+            fillSelect(toSel, []);
+            state.municipality = '';
+            state.province = '';
+            state.labels = [];
+            state.multi = [];
+            updatePreview();
+        }
+
+        function onPlaceSearchInputDebounced() {
+            var q = placeIn && placeIn.value ? placeIn.value.trim() : '';
+            if (!q) {
+                if (loadBtn) {
+                    loadBtn.disabled = false;
+                }
+                if (!state.corridorPresetKey) {
+                    resetSingleMunicipalityPickersUi();
+                    setMsg('', false);
+                } else {
+                    setMsg('', false);
+                }
+                return;
+            }
+            if (q.length < PLACE_INPUT_MIN_CHARS) {
+                return;
+            }
+            doLoadPlaces({ silentEmpty: true });
+        }
+
+        function schedulePlaceSearchDebounced() {
+            if (placeInputDebounceTimer) {
+                clearTimeout(placeInputDebounceTimer);
+            }
+            placeInputDebounceTimer = setTimeout(function () {
+                placeInputDebounceTimer = null;
+                onPlaceSearchInputDebounced();
+            }, PLACE_INPUT_DEBOUNCE_MS);
+        }
+
         if (placeIn) {
+            placeIn.addEventListener('input', function () {
+                schedulePlaceSearchDebounced();
+            });
             placeIn.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
+                    /* Enter: search immediately (also clears debounce timer). */
+                    if (placeInputDebounceTimer) {
+                        clearTimeout(placeInputDebounceTimer);
+                        placeInputDebounceTimer = null;
+                    }
                     e.preventDefault();
-                    doLoadPlaces();
+                    doLoadPlaces({ silentEmpty: true });
                 }
             });
         }
         if (loadBtn) {
             loadBtn.addEventListener('click', function () {
+                if (placeInputDebounceTimer) {
+                    clearTimeout(placeInputDebounceTimer);
+                    placeInputDebounceTimer = null;
+                }
                 doLoadPlaces();
             });
         }

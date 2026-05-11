@@ -3,7 +3,7 @@
  * - Strict AND: every query token appears somewhere in row (purok + barangay + mun + province).
  * - Fallback: token exactly equals a catalogue barangay name → show all rows under that barangay
  *   so every purok line is visible (rank rows where other tokens appear in `purok` first).
- * - Last resort lone token ≥5 chars: substring match inside `purok` field only (avoids province floods).
+ * - Last resort lone token ≥3 chars: substring match inside `purok` field only (avoids province floods).
  */
 (function () {
     'use strict';
@@ -206,7 +206,7 @@
             }
         }
 
-        if (tokens.length === 1 && tokens[0].length >= 5) {
+        if (tokens.length === 1 && tokens[0].length >= 3) {
             var needle = tokens[0];
             var weak = [];
             for (i = 0; i < db.length; i++) {
@@ -229,89 +229,118 @@
         var inputId = o.inputId || 'member_address';
         var listId = o.listId || 'address_suggestions';
         var maxResults = typeof o.maxResults === 'number' ? o.maxResults : 180;
+        var pollMs = typeof o.pollMs === 'number' ? o.pollMs : 100;
+        var maxAttempts = typeof o.maxAttempts === 'number' ? o.maxAttempts : 100;
 
-        var input = document.getElementById(inputId);
-        var list = document.getElementById(listId);
-        if (!input || !list) {
-            return;
-        }
-        if (input.readOnly || input.disabled) {
-            return;
-        }
-        if (typeof addressDatabase === 'undefined' || !addressDatabase.length) {
-            return;
-        }
-
-        input.addEventListener('input', function () {
-            var raw = input.value;
-            var trimmed = raw.trim();
-            if (trimmed.length < 2) {
-                list.style.display = 'none';
-                return;
+        function attachWhenReady() {
+            var input = document.getElementById(inputId);
+            var list = document.getElementById(listId);
+            if (!input || !list) {
+                return false;
             }
-            var tokens = tokenize(raw);
-            if (tokens.length === 0) {
-                list.style.display = 'none';
-                return;
+            if (input.readOnly || input.disabled) {
+                return true;
+            }
+            if (input.dataset.lpsAddressAcBound === '1') {
+                return true;
+            }
+            if (typeof addressDatabase === 'undefined' || !addressDatabase.length) {
+                return false;
             }
 
-            var out = collectMatches(tokens, addressDatabase);
-            var scored = out.rows;
-            var anchored = out.anchoredBrgyNorm;
+            input.dataset.lpsAddressAcBound = '1';
 
-            scored.sort(function (a, b) {
-                return compareRows(a, b, tokens, anchored);
-            });
-            var matches = scored.slice(0, maxResults);
-
-            if (matches.length === 0) {
-                list.style.display = 'none';
-                return;
-            }
-
-            list.innerHTML = '';
-            matches.forEach(function (addr) {
-                var fullAddress = addr.purok
-                    ? addr.purok + ', ' + addr.barangay + ', ' + addr.municipality + ', ' + addr.province
-                    : addr.barangay + ', ' + addr.municipality + ', ' + addr.province;
-
-                var item = document.createElement('a');
-                item.href = '#';
-                item.className = 'list-group-item list-group-item-action';
-                item.innerHTML =
-                    '<div class="d-flex w-100 justify-content-between">' +
-                    '<h6 class="mb-1">' +
-                    (addr.purok || addr.barangay) +
-                    '</h6>' +
-                    '<small class="text-muted">' +
-                    addr.municipality +
-                    '</small></div>' +
-                    '<small class="text-muted">' +
-                    fullAddress +
-                    '</small>';
-
-                item.addEventListener('click', function (ev) {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    input.value = fullAddress;
-                    input.focus();
+            input.addEventListener('input', function () {
+                var raw = input.value;
+                var trimmed = raw.trim();
+                if (trimmed.length < 2) {
                     list.style.display = 'none';
-                });
-                item.addEventListener('mousedown', function (ev) {
-                    ev.preventDefault();
-                    input.value = fullAddress;
-                });
-                list.appendChild(item);
-            });
-            list.style.display = 'block';
-        });
-
-        document.addEventListener('click', function (e) {
-            if (e.target !== input && !list.contains(e.target)) {
-                setTimeout(function () {
+                    return;
+                }
+                var tokens = tokenize(raw);
+                if (tokens.length === 0) {
                     list.style.display = 'none';
-                }, 150);
+                    return;
+                }
+
+                var out = collectMatches(tokens, addressDatabase);
+                var scored = out.rows;
+                var anchored = out.anchoredBrgyNorm;
+
+                scored.sort(function (a, b) {
+                    return compareRows(a, b, tokens, anchored);
+                });
+                var matches = scored.slice(0, maxResults);
+
+                if (matches.length === 0) {
+                    list.style.display = 'none';
+                    return;
+                }
+
+                list.innerHTML = '';
+                matches.forEach(function (addr) {
+                    var fullAddress = addr.purok
+                        ? addr.purok + ', ' + addr.barangay + ', ' + addr.municipality + ', ' + addr.province
+                        : addr.barangay + ', ' + addr.municipality + ', ' + addr.province;
+
+                    var item = document.createElement('a');
+                    item.href = '#';
+                    item.className = 'list-group-item list-group-item-action';
+                    item.innerHTML =
+                        '<div class="d-flex w-100 justify-content-between">' +
+                        '<h6 class="mb-1">' +
+                        (addr.purok || addr.barangay) +
+                        '</h6>' +
+                        '<small class="text-muted">' +
+                        addr.municipality +
+                        '</small></div>' +
+                        '<small class="text-muted">' +
+                        fullAddress +
+                        '</small>';
+
+                    item.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        input.value = fullAddress;
+                        input.focus();
+                        list.style.display = 'none';
+                    });
+                    item.addEventListener('mousedown', function (ev) {
+                        ev.preventDefault();
+                        input.value = fullAddress;
+                    });
+                    list.appendChild(item);
+                });
+                list.style.display = 'block';
+            });
+
+            document.addEventListener('click', function (e) {
+                if (e.target !== input && !list.contains(e.target)) {
+                    setTimeout(function () {
+                        list.style.display = 'none';
+                    }, 150);
+                }
+            });
+
+            return true;
+        }
+
+        var attempts = 0;
+        function schedule() {
+            if (attachWhenReady()) {
+                return;
             }
-        });
+            attempts += 1;
+            if (attempts >= maxAttempts) {
+                console.warn(
+                    'LPS address autocomplete: catalogue still empty after ' +
+                        maxAttempts +
+                        ' attempts. Ensure address_psgc_negros.generated.js loads before addresses.js.'
+                );
+                return;
+            }
+            setTimeout(schedule, pollMs);
+        }
+        schedule();
     };
 })();

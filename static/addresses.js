@@ -294,6 +294,7 @@ window.listPurokLabelsForBarangayCell = listPurokLabelsForBarangayCell;
             );
         }
         window.__ADDRESS_CATALOGUE_ROWS__ = addressDatabase.length;
+        window.addressDatabase = addressDatabase;
     } catch (err) {
         console.error('addresses.js: catalogue build failed', err);
         window.__ADDRESS_CATALOGUE_ROWS__ = 0;

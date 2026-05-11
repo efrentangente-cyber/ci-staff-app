@@ -170,7 +170,7 @@ app.config['WTF_CSRF_ENABLED'] = os.getenv('WTF_CSRF_ENABLED', 'True').lower() =
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
 app.config['WTF_CSRF_CHECK_DEFAULT'] = os.getenv('WTF_CSRF_CHECK_DEFAULT', 'True').lower() == 'true'
 app.config['REMEMBER_COOKIE_DURATION'] = __import__('datetime').timedelta(days=30)
-app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=2)  # Session expires after 2 hours of inactivity
+app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=24)  # Used only if session.permanent True; idle expiry is SESSION_IDLE_LOGOUT (default off)
 app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
 # HSTS / "production" UI — not the same as session cookie "Secure" (RENDER=1 is often only for DATABASE_URL on LAN).
 _is_production = (os.getenv('FLASK_ENV', '').lower() == 'production') or (os.getenv('RENDER', '').lower() == 'true')
@@ -1321,6 +1321,10 @@ except ValueError:
     _SESSION_STALE_HOURS = 8.0
 _SESSION_STALE_HOURS = max(1.0, min(72.0, _SESSION_STALE_HOURS))
 _SINGLE_LOGIN_STALE_SECONDS = int(_SESSION_STALE_HOURS * 3600)
+# When false (default), do not sign users out based on last_seen idle time — only explicit Log out
+# or the last-browser-tab handler (see static/tab-close-logout.js). Set SESSION_IDLE_LOGOUT=true
+# to restore idle timeout (uses SESSION_STALE_HOURS, max 72h).
+_SESSION_IDLE_LOGOUT = (os.getenv('SESSION_IDLE_LOGOUT', 'false').lower() in ('1', 'true', 'yes'))
 # How often to update last_seen in the DB (keeps long single-page work from going stale).
 try:
     _SESSION_TOUCH_MIN_SEC = int((os.getenv('SESSION_TOUCH_MIN_SEC') or '45').strip() or '45')
@@ -3658,17 +3662,18 @@ def add_security_headers(response):
         # Discourage shared caches from serving one user’s HTML to another (belt-and-suspenders with no-store).
         if 'Vary' not in response.headers:
             response.headers['Vary'] = 'Cookie'
-        # Touch active session heartbeat once per minute (skip on static-only responses to cut noise).
-        try:
-            now_ts = int(time.time())
-            last_touch = int(session.get('_session_touch_ts', 0) or 0)
-            if now_ts - last_touch >= _SESSION_TOUCH_MIN_SEC:
-                auth_token = session.get('auth_session_token')
-                if auth_token:
-                    _touch_user_session(current_user.id, auth_token)
-                session['_session_touch_ts'] = now_ts
-        except Exception:
-            pass
+        # Touch active session row on an interval (for optional idle logout + diagnostics).
+        if _SESSION_IDLE_LOGOUT:
+            try:
+                now_ts = int(time.time())
+                last_touch = int(session.get('_session_touch_ts', 0) or 0)
+                if now_ts - last_touch >= _SESSION_TOUCH_MIN_SEC:
+                    auth_token = session.get('auth_session_token')
+                    if auth_token:
+                        _touch_user_session(current_user.id, auth_token)
+                    session['_session_touch_ts'] = now_ts
+            except Exception:
+                pass
 
     # ── Global slow-request logger ──────────────────────────────────────────
     # Logs any HTML page that takes over 1 s so we can pinpoint bottlenecks.
@@ -3749,7 +3754,10 @@ def enforce_single_active_login():
 
     is_active = int(row['is_active']) if 'is_active' in row.keys() and row['is_active'] is not None else 0
     token_match = str(row['session_token']) == str(auth_token)
-    is_stale = _is_session_stale(row['last_seen'] if 'last_seen' in row.keys() else None)
+    is_stale = (
+        _SESSION_IDLE_LOGOUT
+        and _is_session_stale(row['last_seen'] if 'last_seen' in row.keys() else None)
+    )
     if not token_match or not is_active:
         try:
             logout_user()
@@ -4562,9 +4570,11 @@ def api_session_status():
 @login_required
 def session_heartbeat():
     """
-    Refresh server-side last_seen for long single-page work (checklists, long forms)
-    so the session is not treated as idle while the user is still active in the tab.
+    Refresh server-side last_seen when SESSION_IDLE_LOGOUT is enabled (long single-page work).
+    No-op for session validity when idle logout is off.
     """
+    if not _SESSION_IDLE_LOGOUT:
+        return jsonify({'ok': True})
     try:
         auth_token = session.get('auth_session_token')
         if auth_token and current_user.is_authenticated:
