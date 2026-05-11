@@ -1,8 +1,8 @@
-// Cross-tab heartbeat (localStorage) — tracks concurrent app tabs for diagnostics/UI only.
+// Cross-tab heartbeat (localStorage) + logout when the last authenticated tab/window closes.
 //
-// We do NOT POST /logout from pagehide: browsers fire pagehide for normal navigation AND for closing a
-// tab, so automatic logout looked like "I get signed out whenever I navigate". Session security uses
-// server-side idle expiry, enforce_single_active_login, and explicit Log out.
+// We skip logout when the unload is likely an in-app navigation (same-origin link click,
+// form submit, or reload shortcut) using a short-lived sessionStorage flag, because
+// pagehide alone cannot distinguish "tab closed" from "navigate to another page".
 
 (function () {
     'use strict';
@@ -12,6 +12,7 @@
     }
 
     var STORAGE_KEY = 'dccco_live_tabs_v1';
+    var EXPECT_NAV_KEY = 'dccco_expect_nav';
 
     var HEARTBEAT_MS = 12000;
     var STALE_MS = 36000;
@@ -63,19 +64,104 @@
         writeMap(map);
     }
 
+    function setExpectInAppNavigation() {
+        try {
+            sessionStorage.setItem(EXPECT_NAV_KEY, '1');
+        } catch (e) { /* */ }
+    }
+
+    function consumeExpectInAppNavigation() {
+        try {
+            if (sessionStorage.getItem(EXPECT_NAV_KEY) === '1') {
+                sessionStorage.removeItem(EXPECT_NAV_KEY);
+                return true;
+            }
+        } catch (e) { /* */ }
+        return false;
+    }
+
+    /* In-app navigation: same-origin <a> / <form> (not new tab, not download). */
+    document.addEventListener('click', function (e) {
+        var t = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+        if (!t) {
+            return;
+        }
+        if (t.hasAttribute('download')) {
+            return;
+        }
+        var tgt = (t.getAttribute('target') || '').toLowerCase().trim();
+        if (tgt === '_blank') {
+            return;
+        }
+        var href = t.getAttribute('href');
+        if (!href || href[0] === '#' || href.indexOf('mailto:') === 0 || href.indexOf('tel:') === 0) {
+            return;
+        }
+        var u;
+        try {
+            u = new URL(t.href, location.href);
+        } catch (x) {
+            return;
+        }
+        if (u.origin !== location.origin) {
+            return;
+        }
+        setExpectInAppNavigation();
+    }, true);
+
+    document.addEventListener('submit', function () {
+        setExpectInAppNavigation();
+    }, true);
+
+    /* Browser reload / hard refresh — would otherwise look like "tab gone". */
+    window.addEventListener('keydown', function (e) {
+        var isReload = e.key === 'F5' ||
+            (e.ctrlKey && (e.key === 'r' || e.key === 'R')) ||
+            (e.metaKey && (e.key === 'r' || e.key === 'R'));
+        if (isReload) {
+            setExpectInAppNavigation();
+        }
+    }, true);
+
     heartbeat();
     setInterval(heartbeat, HEARTBEAT_MS);
 
+    function endSessionIfLastTab() {
+        try {
+            fetch(new URL('/logout', location.origin).href, {
+                method: 'GET',
+                credentials: 'same-origin',
+                keepalive: true,
+                cache: 'no-store',
+            }).catch(function () {});
+        } catch (e2) { /* */ }
+    }
+
     window.addEventListener('pagehide', function (event) {
-        if (event.persisted) return;
+        if (event.persisted) {
+            return;
+        }
 
         try {
-            if (!document.body.classList.contains('authenticated')) return;
+            if (!document.body.classList.contains('authenticated')) {
+                return;
+            }
+
+            var internalNav = consumeExpectInAppNavigation();
 
             var map = purgeStale(readMap());
             var id = tabId();
             delete map[id];
             writeMap(map);
-        } catch (e2) { /* */ }
+
+            /* In-app navigation: map may be empty until the next page heartbeats; never logout. */
+            if (internalNav) {
+                return;
+            }
+
+            if (Object.keys(map).length === 0) {
+                endSessionIfLastTab();
+            }
+        } catch (e3) { /* */ }
     });
 }());

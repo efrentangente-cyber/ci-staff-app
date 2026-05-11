@@ -1834,6 +1834,14 @@ def ensure_performance_indexes():
                 if is_postgresql()
                 else "CREATE INDEX IF NOT EXISTS idx_loan_app_member_norm ON loan_applications (LOWER(TRIM(COALESCE(member_name, ''))))"
             ),
+            # LPS submit prefill: WHERE submitted_by = ? AND LOWER(TRIM(member_name)) = ?
+            (
+                "CREATE INDEX IF NOT EXISTS idx_loan_app_sb_member_norm ON loan_applications (submitted_by, (LOWER(TRIM(COALESCE(member_name, '')))))"
+                if is_postgresql()
+                else "CREATE INDEX IF NOT EXISTS idx_loan_app_sb_member_norm ON loan_applications (submitted_by, LOWER(TRIM(COALESCE(member_name, ''))))"
+            ),
+            # Cooperative member_uid prefill + history: WHERE member_uid = ? ORDER BY id DESC
+            "CREATE INDEX IF NOT EXISTS idx_loan_app_member_uid_id ON loan_applications (member_uid, id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, is_read, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_documents_loan_uploaded ON documents(loan_application_id, uploaded_at)",
             "CREATE INDEX IF NOT EXISTS idx_messages_app_sent ON messages(loan_application_id, sent_at)",
@@ -4177,13 +4185,21 @@ def logout():
         return redirect(url_for('login'))
 
 
-def _lps_member_group_key(member_name):
-    return (member_name or '').strip().lower()
+def _lps_member_bucket_key(row_dict):
+    """Stable group key: same numeric member_uid shares one row; else normalized name."""
+    d = row_dict
+    mu = d.get('member_uid')
+    if mu is not None and str(mu).strip() != '':
+        try:
+            return 'uid:' + str(int(mu))
+        except (TypeError, ValueError):
+            pass
+    return 'name:' + (d.get('member_name') or '').strip().lower()
 
 
 def group_lps_dashboard_by_member(application_rows):
     """
-    One LPS dashboard row per member name (case-insensitive).
+    One dashboard row per member (prefer member_uid when set; else case-insensitive name).
     ``application_rows``: iterable of dict-like rows in display order (oldest first).
     Returns [{'member_name': str, 'member_uid': optional int, 'apps': [dict, ...]}, ...].
     """
@@ -4191,7 +4207,7 @@ def group_lps_dashboard_by_member(application_rows):
     order = []
     for row in application_rows:
         d = dict(row)
-        key = _lps_member_group_key(d.get('member_name'))
+        key = _lps_member_bucket_key(d)
         if key not in buckets:
             buckets[key] = {
                 'member_name': (d.get('member_name') or '').strip(),
@@ -4199,8 +4215,12 @@ def group_lps_dashboard_by_member(application_rows):
                 'apps': [],
             }
             order.append(key)
-        elif buckets[key].get('member_uid') is None and d.get('member_uid') is not None:
-            buckets[key]['member_uid'] = d.get('member_uid')
+        else:
+            if buckets[key].get('member_uid') is None and d.get('member_uid') is not None:
+                buckets[key]['member_uid'] = d.get('member_uid')
+            nm = (d.get('member_name') or '').strip()
+            if nm:
+                buckets[key]['member_name'] = nm
         buckets[key]['apps'].append(d)
     return [buckets[k] for k in order]
 
@@ -4318,6 +4338,38 @@ def loan_member_history():
             return ref.split('#')[0]
         except Exception:
             return fallback_url
+
+    def _safe_next_page_url(req, raw_next):
+        """
+        Trusted return URL from ?next= or ?return= (path + optional query only).
+        Used when Referer is missing (e.g. target=_blank with rel=noreferrer).
+        """
+        from urllib.parse import urlparse, unquote
+
+        s0 = (raw_next or '').strip()
+        if not s0 or len(s0) > 2000:
+            return None
+        try:
+            s = unquote(s0).strip()
+        except Exception:
+            return None
+        if not s or any(c in s for c in '\n\r\x00'):
+            return None
+        if '://' in s or not s.startswith('/') or s.startswith('//'):
+            return None
+        path_part = s.split('#')[0]
+        if '..' in path_part:
+            return None
+        path_only = path_part.split('?')[0].lower().rstrip('/') or '/'
+        if path_only.startswith('/static'):
+            return None
+        if path_only in ('/login', '/logout', '/register'):
+            return None
+        try:
+            root = urlparse(req.url_root)
+            return root.scheme + '://' + root.netloc + path_part
+        except Exception:
+            return None
 
     mu_q = (request.args.get('member_uid') or '').strip()
     name_q = (request.args.get('name') or '').strip()
@@ -4447,7 +4499,9 @@ def loan_member_history():
     else:
         back_url = url_for('admin_dashboard')
 
-    return_url = _member_history_return_url(request, back_url)
+    next_raw = (request.args.get('next') or request.args.get('return') or '').strip()
+    return_from_param = _safe_next_page_url(request, next_raw)
+    return_url = return_from_param or _member_history_return_url(request, back_url)
 
     try:
         header_member_uid = latest.get('member_uid')
@@ -5177,7 +5231,7 @@ def ci_dashboard():
     conn = get_db()
     # Select only columns the CI dashboard template needs.
     # Oldest first so new assignments appear at the bottom of each section (no LIMIT).
-    applications = conn.execute('''
+    _rows = conn.execute('''
         SELECT la.id, la.status, la.member_name, la.member_uid, la.member_address, la.loan_amount,
                la.loan_type, la.submitted_at, la.needs_ci_interview, la.assigned_ci_staff,
                u.name as loan_staff_name
@@ -5187,6 +5241,18 @@ def ci_dashboard():
         ORDER BY la.submitted_at ASC, la.id ASC
     ''', (current_user.id,)).fetchall()
     _t_q1 = _time.monotonic()
+    applications = []
+    for row in _rows:
+        d = dict(row)
+        v = d.get('submitted_at')
+        if isinstance(v, datetime):
+            d['submitted_at'] = v.strftime('%Y-%m-%d %H:%M:%S')
+        applications.append(d)
+
+    ci_pending_apps = [r for r in applications if r['status'] == 'assigned_to_ci']
+    ci_completed_apps = [r for r in applications if r['status'] == 'ci_completed']
+    ci_pending_groups = group_lps_dashboard_by_member(ci_pending_apps)
+    ci_completed_groups = group_lps_dashboard_by_member(ci_completed_apps)
 
     unread_count = get_unread_notification_count(current_user.id)
 
@@ -5198,7 +5264,13 @@ def ci_dashboard():
             _total, (_t_q1 - _t0) * 1000,
         )
 
-    return render_template('ci_dashboard.html', applications=applications, unread_count=unread_count)
+    return render_template(
+        'ci_dashboard.html',
+        applications=applications,
+        ci_pending_groups=ci_pending_groups,
+        ci_completed_groups=ci_completed_groups,
+        unread_count=unread_count,
+    )
 
 @app.route('/ci/checklist/<int:id>', methods=['GET'])
 @login_required
@@ -6002,6 +6074,18 @@ def admin_dashboard():
 
         applications = _norm_dt(applications)
         in_process_applications = _norm_dt(in_process_applications)
+
+        admin_review_apps = [
+            r for r in applications
+            if r['status'] == 'ci_completed'
+            or (r['status'] == 'submitted' and _needs_ci_is_zero(r['needs_ci_interview']))
+        ]
+        admin_review_groups = group_lps_dashboard_by_member(admin_review_apps)
+        admin_processed_groups = group_lps_dashboard_by_member([
+            r for r in applications
+            if r['status'] in ('approved', 'disapproved', 'deferred')
+        ])
+        admin_in_process_groups = group_lps_dashboard_by_member(in_process_applications)
         _t_end = _time.monotonic()
 
         # Emit a WARNING whenever the full handler exceeds 500 ms so we can
@@ -6024,6 +6108,9 @@ def admin_dashboard():
             'admin_dashboard.html',
             applications=applications,
             in_process_applications=in_process_applications,
+            admin_review_groups=admin_review_groups,
+            admin_processed_groups=admin_processed_groups,
+            admin_in_process_groups=admin_in_process_groups,
             ci_staff=ci_staff,
             unread_count=unread_count,
         )
@@ -7001,6 +7088,32 @@ _MEMBER_NAME_DEDUPE_STATUS_RANK = {
     'rejected': 6,
 }
 
+# When True together for the same member (same LPS), do not auto-delete — user may have
+# a new application in CI pipeline while an older one is already ci_completed / approved / etc.
+_LPS_DEDUPE_OPEN_PIPE = frozenset({'submitted', 'assigned_to_ci'})
+_LPS_DEDUPE_POST_CI = frozenset(
+    {'ci_completed', 'approved', 'disapproved', 'rejected', 'deferred'}
+)
+
+
+def _lps_name_group_skip_dedupe(apps_rows):
+    """If both an open pipeline app and a post-CI / decision app exist, keep all rows."""
+    statuses = []
+    for r in apps_rows:
+        if isinstance(r, dict):
+            st = r.get('status')
+        else:
+            try:
+                st = r['status']
+            except (KeyError, TypeError, IndexError):
+                st = None
+        statuses.append((st or '').strip().lower())
+    if not statuses:
+        return False
+    has_open = any(s in _LPS_DEDUPE_OPEN_PIPE for s in statuses)
+    has_post = any(s in _LPS_DEDUPE_POST_CI for s in statuses)
+    return has_open and has_post
+
 
 def _member_name_dedupe_rank(status):
     st = (status or '').strip().lower()
@@ -7088,6 +7201,8 @@ def dedupe_loan_applications_by_member_name_for_submitter(conn, submitted_by_id)
         ).fetchall()
         if not apps or len(apps) < 2:
             continue
+        if _lps_name_group_skip_dedupe(apps):
+            continue
         apps_sorted = sorted(
             apps,
             key=lambda r: (
@@ -7150,6 +7265,10 @@ def _dedupe_fuzzy_member_clusters_for_submitter(conn, submitted_by_id):
         if len(idxs) < 2:
             continue
         cluster_apps = [apps[i] for i in idxs]
+        if len(cluster_apps) < 2:
+            continue
+        if _lps_name_group_skip_dedupe(cluster_apps):
+            continue
         cluster_apps.sort(
             key=lambda r: (_member_name_dedupe_rank(r.get('status')), -int(r['id']))
         )

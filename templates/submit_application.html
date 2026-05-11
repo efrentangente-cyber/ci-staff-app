@@ -41,7 +41,7 @@
                         No matching loan records for this name. Enter contact and address manually.
                     </div>
                     <div id="memberHistoryLinkWrap" class="mt-2" style="display:none;">
-                        <a href="#" id="memberHistoryLink" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener noreferrer"
+                        <a href="#" id="memberHistoryLink" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener"
                            title="Open full loan history for this member (new tab — keeps this form)">Loan history</a>
                     </div>
                 </div>
@@ -153,11 +153,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const memberHistoryBase = {{ url_for('loan_member_history') | tojson }};
     const MEMBER_HISTORY_LINK_DEFAULT = 'Loan history';
     const MEMBER_HISTORY_TITLE_DEFAULT = 'Open full loan history for this member (new tab — keeps this form)';
-    // Prefill hits the DB for an exact normalized name — debounce aggressively while typing.
-    const DEBOUNCE_PREFILL_MS = 400;
-    const SUGGEST_DEBOUNCE_MS = 100;
-    const SUGGEST_ID_DEBOUNCE_MS = 100;
-    const LOOKUP_SPINNER_DELAY_MS = 120;
+    // Prefill debounce: short enough to feel responsive; long enough to avoid a query per keystroke.
+    const DEBOUNCE_PREFILL_MS = 180;
+    const SUGGEST_DEBOUNCE_MS = 80;
+    const SUGGEST_ID_DEBOUNCE_MS = 80;
+    const LOOKUP_SPINNER_DELAY_MS = 0;
     let lastPrefillName = '';
     let cachedApps = [];
     let lookupSeq = 0;
@@ -263,12 +263,18 @@ document.addEventListener('DOMContentLoaded', function() {
         hideMemberUidLookupNotice();
         if (lookupSpinnerTimer) {
             clearTimeout(lookupSpinnerTimer);
+            lookupSpinnerTimer = null;
         }
-        lookupSpinnerTimer = setTimeout(function () {
+        const showSpin = function () {
             lookupSpinnerTimer = null;
             if (lookupStatus) lookupStatus.style.display = 'flex';
             setMemberNameBusy(true);
-        }, LOOKUP_SPINNER_DELAY_MS);
+        };
+        if (LOOKUP_SPINNER_DELAY_MS <= 0) {
+            showSpin();
+        } else {
+            lookupSpinnerTimer = setTimeout(showSpin, LOOKUP_SPINNER_DELAY_MS);
+        }
     }
     function hideLookupChecking() {
         if (lookupSpinnerTimer) {
@@ -401,9 +407,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.member_uid != null && data.member_uid !== '') {
                 href += '&member_uid=' + encodeURIComponent(String(data.member_uid));
             }
+            href += '&next=' + encodeURIComponent(window.location.pathname + window.location.search);
             memberHistoryLink.href = href;
             memberHistoryLink.target = '_blank';
-            memberHistoryLink.rel = 'noopener noreferrer';
+            memberHistoryLink.rel = 'noopener';
             const adc = Number(data.awaiting_decision_count || 0);
             const pcc = Number(data.pending_ci_pipeline_count || 0);
             if (adc > 0) {

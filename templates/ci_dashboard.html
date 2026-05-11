@@ -122,24 +122,36 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for app in applications %}
-                    {% if app.status == 'assigned_to_ci' %}
+                    {% for g in ci_pending_groups %}
                     <tr>
-                        <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
-                        <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
-                        <td>{{ app.member_address }}</td>
+                        <td class="text-nowrap">{% if g.member_uid is not none %}{{ g.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td><a href="{% if g.member_uid is not none %}{{ url_for('loan_member_history', member_uid=g.member_uid, next=request.full_path) }}{% else %}{{ url_for('loan_member_history', name=g.member_name, next=request.full_path) }}{% endif %}">{{ g.member_name }}</a></td>
+                        <td class="small">
+                            {% for app in g.apps %}
+                            <div class="mb-1">{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</div>
+                            {% endfor %}
+                        </td>
+                        <td class="small">
+                            {% for app in g.apps %}
+                            <div class="mb-1">{{ app.member_address }}</div>
+                            {% endfor %}
+                        </td>
                         <td>
-                            <a href="{{ url_for('ci_review_application', id=app.id) }}" class="btn btn-sm btn-warning">
-                                <i class="bi bi-eye"></i>
-                                <span class="btn-text">Start</span>
-                            </a>
-                            <button class="btn btn-sm btn-primary" onclick="syncManager.downloadApplication({{ app.id }})" title="Download for offline">
-                                <i class="bi bi-download"></i>
-                            </button>
+                            <div class="d-flex flex-column gap-1 align-items-start">
+                                {% for app in g.apps %}
+                                <div class="d-flex flex-wrap gap-1 align-items-center">
+                                    <a href="{{ url_for('ci_review_application', id=app.id) }}" class="btn btn-sm btn-warning">
+                                        <i class="bi bi-eye"></i>
+                                        <span class="btn-text">Start</span>
+                                    </a>
+                                    <button class="btn btn-sm btn-primary" onclick="syncManager.downloadApplication({{ app.id }})" title="Download for offline">
+                                        <i class="bi bi-download"></i>
+                                    </button>
+                                </div>
+                                {% endfor %}
+                            </div>
                         </td>
                     </tr>
-                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -181,21 +193,31 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for app in applications %}
-                    {% if app.status == 'ci_completed' %}
+                    {% for g in ci_completed_groups %}
                     <tr>
-                        <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
-                        <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
-                        <td>{{ app.member_address }}</td>
+                        <td class="text-nowrap">{% if g.member_uid is not none %}{{ g.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td><a href="{% if g.member_uid is not none %}{{ url_for('loan_member_history', member_uid=g.member_uid, next=request.full_path) }}{% else %}{{ url_for('loan_member_history', name=g.member_name, next=request.full_path) }}{% endif %}">{{ g.member_name }}</a></td>
+                        <td class="small">
+                            {% for app in g.apps %}
+                            <div class="mb-1">{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</div>
+                            {% endfor %}
+                        </td>
+                        <td class="small">
+                            {% for app in g.apps %}
+                            <div class="mb-1">{{ app.member_address }}</div>
+                            {% endfor %}
+                        </td>
                         <td>
-                            <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-primary">
-                                <i class="bi bi-eye"></i>
-                                <span class="btn-text">View</span>
-                            </a>
+                            <div class="d-flex flex-column gap-1 align-items-start">
+                                {% for app in g.apps %}
+                                <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-eye"></i>
+                                    <span class="btn-text">View</span>
+                                </a>
+                                {% endfor %}
+                            </div>
                         </td>
                     </tr>
-                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>

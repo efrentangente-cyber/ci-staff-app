@@ -16,36 +16,63 @@ function escapeHtml(s) {
 function memberHistoryHref(memberName, memberUid) {
     const base = typeof window.__MEMBER_HISTORY_URL === 'string' ? window.__MEMBER_HISTORY_URL : '/loan/member';
     const mu = memberUid != null && memberUid !== '' ? String(memberUid).trim() : '';
+    const next = typeof window.location !== 'undefined' && window.location.pathname
+        ? '&next=' + encodeURIComponent(window.location.pathname + window.location.search)
+        : '';
     if (mu !== '' && /^\d+$/.test(mu)) {
-        return base + '?member_uid=' + encodeURIComponent(mu);
+        return base + '?member_uid=' + encodeURIComponent(mu) + next;
     }
-    return base + '?name=' + encodeURIComponent(memberName || '');
+    return base + '?name=' + encodeURIComponent(memberName || '') + next;
 }
 
 function groupLpsDashboardByMember(appList) {
     const buckets = {};
     const order = [];
     appList.forEach(function (app) {
-        const key = String(app.member_name || '').trim().toLowerCase();
+        let key = null;
+        const rawUid = app.member_uid;
+        if (rawUid != null && String(rawUid).trim() !== '') {
+            const n = parseInt(String(rawUid).trim(), 10);
+            if (!Number.isNaN(n)) {
+                key = 'uid:' + n;
+            }
+        }
+        if (!key) {
+            key = 'name:' + String(app.member_name || '').trim().toLowerCase();
+        }
         if (!buckets[key]) {
             buckets[key] = {
                 member_name: String(app.member_name || '').trim(),
-                member_uid: app.member_uid != null && app.member_uid !== '' ? app.member_uid : null,
+                member_uid: rawUid != null && String(rawUid).trim() !== '' ? rawUid : null,
                 apps: [],
             };
             order.push(key);
-        } else if (
-            (buckets[key].member_uid == null || buckets[key].member_uid === '') &&
-            app.member_uid != null &&
-            app.member_uid !== ''
-        ) {
-            buckets[key].member_uid = app.member_uid;
+        } else {
+            if (
+                (buckets[key].member_uid == null || buckets[key].member_uid === '') &&
+                rawUid != null &&
+                String(rawUid).trim() !== ''
+            ) {
+                buckets[key].member_uid = rawUid;
+            }
+            const nm = String(app.member_name || '').trim();
+            if (nm) {
+                buckets[key].member_name = nm;
+            }
         }
         buckets[key].apps.push(app);
     });
     return order.map(function (k) {
         return buckets[k];
     });
+}
+
+function stackedDashboardDivs(apps, mapFn) {
+    return apps
+        .map(function (a) {
+            return '<div class="mb-1">' + mapFn(a) + '</div>';
+        })
+        .join('');
 }
 
 function formatMemberUidCell(mu) {
@@ -517,43 +544,91 @@ function renderCiDashboardTables(applications) {
 
     const pendingApps = applications.filter(function (a) { return a.status === 'assigned_to_ci'; });
     const completedApps = applications.filter(function (a) { return a.status === 'ci_completed'; });
+    const pendingGroups = groupLpsDashboardByMember(pendingApps);
+    const completedGroups = groupLpsDashboardByMember(completedApps);
 
     pendingTbody.innerHTML = '';
-    pendingApps.forEach(function (app) {
+    pendingGroups.forEach(function (g) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${formatMemberUidCell(app.member_uid)}</td>
-            <td><a href="${memberHistoryHref(app.member_name, app.member_uid)}">${escapeHtml(app.member_name || '')}</a></td>
-            <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
-            <td>${escapeHtml(app.member_address || '')}</td>
-            <td>
-                <a href="/ci/review/${app.id}" class="btn btn-sm btn-warning">
-                    <i class="bi bi-eye"></i>
-                    <span class="btn-text">Start</span>
-                </a>
-                <button class="btn btn-sm btn-primary" onclick="syncManager.downloadApplication(${app.id})" title="Download for offline">
-                    <i class="bi bi-download"></i>
-                </button>
-            </td>
-        `;
+        const actionsHtml = g.apps
+            .map(function (app) {
+                return (
+                    '<div class="d-flex flex-wrap gap-1 align-items-center">' +
+                    '<a href="/ci/review/' +
+                    app.id +
+                    '" class="btn btn-sm btn-warning">' +
+                    '<i class="bi bi-eye"></i>' +
+                    '<span class="btn-text">Start</span>' +
+                    '</a>' +
+                    '<button class="btn btn-sm btn-primary" onclick="syncManager.downloadApplication(' +
+                    app.id +
+                    ')" title="Download for offline">' +
+                    '<i class="bi bi-download"></i>' +
+                    '</button>' +
+                    '</div>'
+                );
+            })
+            .join('');
+        tr.innerHTML =
+            '<td>' +
+            formatMemberUidCell(g.member_uid) +
+            '</td><td><a href="' +
+            memberHistoryHref(g.member_name, g.member_uid) +
+            '">' +
+            escapeHtml(g.member_name || '') +
+            '</a></td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (app) {
+                return escapeHtml(formatSubmittedShort(app.submitted_at));
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (app) {
+                return escapeHtml(app.member_address || '');
+            }) +
+            '</td>' +
+            '<td><div class="d-flex flex-column gap-1 align-items-start">' +
+            actionsHtml +
+            '</div></td>';
         pendingTbody.appendChild(tr);
     });
 
     completedTbody.innerHTML = '';
-    completedApps.forEach(function (app) {
+    completedGroups.forEach(function (g) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${formatMemberUidCell(app.member_uid)}</td>
-            <td><a href="${memberHistoryHref(app.member_name, app.member_uid)}">${escapeHtml(app.member_name || '')}</a></td>
-            <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
-            <td>${escapeHtml(app.member_address || '')}</td>
-            <td>
-                <a href="/ci/application/${app.id}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-eye"></i>
-                    <span class="btn-text">View</span>
-                </a>
-            </td>
-        `;
+        const viewsHtml = g.apps
+            .map(function (app) {
+                return (
+                    '<a href="/ci/application/' +
+                    app.id +
+                    '" class="btn btn-sm btn-primary">' +
+                    '<i class="bi bi-eye"></i>' +
+                    '<span class="btn-text">View</span>' +
+                    '</a>'
+                );
+            })
+            .join('');
+        tr.innerHTML =
+            '<td>' +
+            formatMemberUidCell(g.member_uid) +
+            '</td><td><a href="' +
+            memberHistoryHref(g.member_name, g.member_uid) +
+            '">' +
+            escapeHtml(g.member_name || '') +
+            '</a></td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (app) {
+                return escapeHtml(formatSubmittedShort(app.submitted_at));
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (app) {
+                return escapeHtml(app.member_address || '');
+            }) +
+            '</td>' +
+            '<td><div class="d-flex flex-column gap-1 align-items-start">' +
+            viewsHtml +
+            '</div></td>';
         completedTbody.appendChild(tr);
     });
 
@@ -610,79 +685,200 @@ function renderAdminDashboardTables(applications, inProcess) {
             '</span>';
     }
 
+    function adminStackedAmountsHtml(apps) {
+        return stackedDashboardDivs(apps, function (a) {
+            const lt = a.loan_type
+                ? ' <span class="text-muted">' + escapeHtml(String(a.loan_type)) + '</span>'
+                : '';
+            return '<strong>' + formatMoneyPhp(a.loan_amount) + '</strong>' + lt;
+        });
+    }
+
+    const forReviewGroups = groupLpsDashboardByMember(forReview);
     pendingTbody.innerHTML = '';
-    forReview.forEach(function (app) {
+    forReviewGroups.forEach(function (g) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${formatMemberUidCell(app.member_uid)}</td>
-            <td><a href="${memberHistoryHref(app.member_name, app.member_uid)}">${escapeHtml(app.member_name || '')}</a></td>
-            <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
-            <td>${reviewStatusBadge(app)}</td>
-            <td>${escapeHtml(app.loan_staff_name || '')}</td>
-            <td>${escapeHtml(app.ci_staff_name || 'N/A')}</td>
-            <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
-            <td>
-                <a href="/admin/application/${app.id}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-eye"></i>
-                    <span class="btn-text">Review</span>
-                </a>
-            </td>
-        `;
+        const actions = g.apps
+            .map(function (a) {
+                return (
+                    '<a href="/admin/application/' +
+                    a.id +
+                    '" class="btn btn-sm btn-primary">' +
+                    '<i class="bi bi-eye"></i>' +
+                    '<span class="btn-text">Review</span>' +
+                    '</a>'
+                );
+            })
+            .join('');
+        tr.innerHTML =
+            '<td>' +
+            formatMemberUidCell(g.member_uid) +
+            '</td><td><a href="' +
+            memberHistoryHref(g.member_name, g.member_uid) +
+            '">' +
+            escapeHtml(g.member_name || '') +
+            '</a></td>' +
+            '<td class="small">' +
+            adminStackedAmountsHtml(g.apps) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, reviewStatusBadge) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(a.loan_staff_name || '');
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(a.ci_staff_name || 'N/A');
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(formatSubmittedShort(a.submitted_at));
+            }) +
+            '</td>' +
+            '<td><div class="d-flex flex-column gap-1 align-items-start">' +
+            actions +
+            '</div></td>';
         pendingTbody.appendChild(tr);
     });
 
+    const processedGroups = groupLpsDashboardByMember(processed);
     processedTbody.innerHTML = '';
-    processed.forEach(function (app) {
-        let badgeClass = 'danger';
-        if (app.status === 'approved') badgeClass = 'success';
-        else if (app.status === 'deferred') badgeClass = 'warning';
+    processedGroups.forEach(function (g) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${formatMemberUidCell(app.member_uid)}</td>
-            <td><a href="${memberHistoryHref(app.member_name, app.member_uid)}">${escapeHtml(app.member_name || '')}</a></td>
-            <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
-            <td>
-                <span class="badge bg-${badgeClass}">
-                    ${escapeHtml(String(app.status || '').replace(/_/g, ' ').replace(/\b\w/g, function (l) { return l.toUpperCase(); }))}
-                </span>
-            </td>
-            <td>${escapeHtml(app.loan_staff_name || '')}</td>
-            <td>${escapeHtml(app.ci_staff_name || 'N/A')}</td>
-            <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
-            <td>
-                <a href="/admin/application/${app.id}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-eye"></i>
-                    <span class="btn-text">View</span>
-                </a>
-            </td>
-        `;
+        const statuses = stackedDashboardDivs(g.apps, function (app) {
+            let badgeClass = 'danger';
+            if (app.status === 'approved') badgeClass = 'success';
+            else if (app.status === 'deferred') badgeClass = 'warning';
+            return (
+                '<span class="badge bg-' +
+                badgeClass +
+                '">' +
+                escapeHtml(
+                    String(app.status || '')
+                        .replace(/_/g, ' ')
+                        .replace(/\b\w/g, function (l) { return l.toUpperCase(); })
+                ) +
+                '</span>'
+            );
+        });
+        const actions = g.apps
+            .map(function (a) {
+                return (
+                    '<a href="/admin/application/' +
+                    a.id +
+                    '" class="btn btn-sm btn-primary">' +
+                    '<i class="bi bi-eye"></i>' +
+                    '<span class="btn-text">View</span>' +
+                    '</a>'
+                );
+            })
+            .join('');
+        tr.innerHTML =
+            '<td>' +
+            formatMemberUidCell(g.member_uid) +
+            '</td><td><a href="' +
+            memberHistoryHref(g.member_name, g.member_uid) +
+            '">' +
+            escapeHtml(g.member_name || '') +
+            '</a></td>' +
+            '<td class="small">' +
+            adminStackedAmountsHtml(g.apps) +
+            '</td>' +
+            '<td class="small">' +
+            statuses +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(a.loan_staff_name || '');
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(a.ci_staff_name || 'N/A');
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(formatSubmittedShort(a.submitted_at));
+            }) +
+            '</td>' +
+            '<td><div class="d-flex flex-column gap-1 align-items-start">' +
+            actions +
+            '</div></td>';
         processedTbody.appendChild(tr);
     });
 
+    const inProcessGroups = groupLpsDashboardByMember(inProcess);
     inProcessTbody.innerHTML = '';
-    inProcess.forEach(function (app) {
+    inProcessGroups.forEach(function (g) {
         const tr = document.createElement('tr');
-        const badgeClass = app.status === 'submitted' ? 'secondary' : 'info';
-        const ciArg = app.assigned_ci_staff != null ? app.assigned_ci_staff : null;
-        tr.innerHTML = `
-            <td>${formatMemberUidCell(app.member_uid)}</td>
-            <td><a href="${memberHistoryHref(app.member_name, app.member_uid)}">${escapeHtml(app.member_name || '')}</a></td>
-            <td><strong>${formatMoneyPhp(app.loan_amount)}</strong></td>
-            <td>
-                <span class="badge bg-${badgeClass}">
-                    ${escapeHtml(String(app.status || '').replace(/_/g, ' ').replace(/\b\w/g, function (l) { return l.toUpperCase(); }))}
-                </span>
-            </td>
-            <td>${escapeHtml(app.loan_staff_name || '')}</td>
-            <td>${escapeHtml(app.ci_staff_name || 'Not Assigned')}</td>
-            <td>${escapeHtml(formatSubmittedShort(app.submitted_at))}</td>
-            <td>
-                <button type="button" class="btn btn-sm btn-warning" onclick="openReassignModal(${app.id}, ${JSON.stringify(String(app.member_name || ''))}, ${ciArg})">
-                    <i class="bi bi-arrow-repeat"></i>
-                    <span class="btn-text">Reassign CI</span>
-                </button>
-            </td>
-        `;
+        const statuses = stackedDashboardDivs(g.apps, function (app) {
+            const badgeClass = app.status === 'submitted' ? 'secondary' : 'info';
+            return (
+                '<span class="badge bg-' +
+                badgeClass +
+                '">' +
+                escapeHtml(
+                    String(app.status || '')
+                        .replace(/_/g, ' ')
+                        .replace(/\b\w/g, function (l) { return l.toUpperCase(); })
+                ) +
+                '</span>'
+            );
+        });
+        const reassignBtns = g.apps
+            .map(function (app) {
+                const ciArg = app.assigned_ci_staff != null ? app.assigned_ci_staff : null;
+                return (
+                    '<button type="button" class="btn btn-sm btn-warning" onclick="openReassignModal(' +
+                    app.id +
+                    ', ' +
+                    JSON.stringify(String(app.member_name || '')) +
+                    ', ' +
+                    (ciArg == null ? 'null' : ciArg) +
+                    ')">' +
+                    '<i class="bi bi-arrow-repeat"></i>' +
+                    '<span class="btn-text">Reassign CI</span>' +
+                    '</button>'
+                );
+            })
+            .join('');
+        tr.innerHTML =
+            '<td>' +
+            formatMemberUidCell(g.member_uid) +
+            '</td><td><a href="' +
+            memberHistoryHref(g.member_name, g.member_uid) +
+            '">' +
+            escapeHtml(g.member_name || '') +
+            '</a></td>' +
+            '<td class="small">' +
+            adminStackedAmountsHtml(g.apps) +
+            '</td>' +
+            '<td class="small">' +
+            statuses +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(a.loan_staff_name || '');
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(a.ci_staff_name || 'Not Assigned');
+            }) +
+            '</td>' +
+            '<td class="small">' +
+            stackedDashboardDivs(g.apps, function (a) {
+                return escapeHtml(formatSubmittedShort(a.submitted_at));
+            }) +
+            '</td>' +
+            '<td><div class="d-flex flex-column gap-1 align-items-start">' +
+            reassignBtns +
+            '</div></td>';
         inProcessTbody.appendChild(tr);
     });
 

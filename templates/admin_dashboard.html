@@ -140,28 +140,53 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for app in applications %}
-                            {% if app.status == 'ci_completed' or (app.needs_ci_interview == 0 and app.status == 'submitted') %}
+                            {% for g in admin_review_groups %}
                             <tr>
-                                <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                                <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
-                                <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
-                                <td>
-                                    <span class="badge bg-warning">
-                                        {{ app.status.replace('_', ' ').title() }}
-                                    </span>
+                                <td class="text-nowrap">{% if g.member_uid is not none %}{{ g.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                <td><a href="{% if g.member_uid is not none %}{{ url_for('loan_member_history', member_uid=g.member_uid, next=request.full_path) }}{% else %}{{ url_for('loan_member_history', name=g.member_name, next=request.full_path) }}{% endif %}">{{ g.member_name }}</a></td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">
+                                        <strong>₱{{ "{:,.2f}".format((app.loan_amount or 0)|float) }}</strong>
+                                        {% if app.loan_type %}<span class="text-muted">{{ app.loan_type }}</span>{% endif %}
+                                    </div>
+                                    {% endfor %}
                                 </td>
-                                <td>{{ app.loan_staff_name }}</td>
-                                <td>{{ app.ci_staff_name or 'N/A' }}</td>
-                                <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">
+                                        <span class="badge bg-warning">
+                                            {{ app.status.replace('_', ' ').title() }}
+                                        </span>
+                                    </div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.loan_staff_name }}</div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.ci_staff_name or 'N/A' }}</div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</div>
+                                    {% endfor %}
+                                </td>
                                 <td>
-                                    <a href="{{ url_for('admin_application', id=app.id) }}" class="btn btn-sm btn-primary">
-                                        <i class="bi bi-eye"></i>
-                                        <span class="btn-text">Review</span>
-                                    </a>
+                                    <div class="d-flex flex-column gap-1 align-items-start">
+                                        {% for app in g.apps %}
+                                        <a href="{{ url_for('admin_application', id=app.id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-eye"></i>
+                                            <span class="btn-text">Review</span>
+                                        </a>
+                                        {% endfor %}
+                                    </div>
                                 </td>
                             </tr>
-                            {% endif %}
                             {% endfor %}
                         </tbody>
                     </table>
@@ -211,28 +236,53 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for app in applications %}
-                            {% if app.status in ['approved', 'disapproved', 'deferred'] %}
+                            {% for g in admin_processed_groups %}
                             <tr>
-                                <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                                <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
-                                <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
-                                <td>
-                                    <span class="badge bg-{% if app.status == 'approved' %}success{% elif app.status == 'deferred' %}warning{% else %}danger{% endif %}">
-                                        {{ app.status.replace('_', ' ').title() }}
-                                    </span>
+                                <td class="text-nowrap">{% if g.member_uid is not none %}{{ g.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                <td><a href="{% if g.member_uid is not none %}{{ url_for('loan_member_history', member_uid=g.member_uid, next=request.full_path) }}{% else %}{{ url_for('loan_member_history', name=g.member_name, next=request.full_path) }}{% endif %}">{{ g.member_name }}</a></td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">
+                                        <strong>₱{{ "{:,.2f}".format((app.loan_amount or 0)|float) }}</strong>
+                                        {% if app.loan_type %}<span class="text-muted">{{ app.loan_type }}</span>{% endif %}
+                                    </div>
+                                    {% endfor %}
                                 </td>
-                                <td>{{ app.loan_staff_name }}</td>
-                                <td>{{ app.ci_staff_name or 'N/A' }}</td>
-                                <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">
+                                        <span class="badge bg-{% if app.status == 'approved' %}success{% elif app.status == 'deferred' %}warning{% else %}danger{% endif %}">
+                                            {{ app.status.replace('_', ' ').title() }}
+                                        </span>
+                                    </div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.loan_staff_name }}</div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.ci_staff_name or 'N/A' }}</div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</div>
+                                    {% endfor %}
+                                </td>
                                 <td>
-                                    <a href="{{ url_for('admin_application', id=app.id) }}" class="btn btn-sm btn-primary">
-                                        <i class="bi bi-eye"></i>
-                                        <span class="btn-text">View</span>
-                                    </a>
+                                    <div class="d-flex flex-column gap-1 align-items-start">
+                                        {% for app in g.apps %}
+                                        <a href="{{ url_for('admin_application', id=app.id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-eye"></i>
+                                            <span class="btn-text">View</span>
+                                        </a>
+                                        {% endfor %}
+                                    </div>
                                 </td>
                             </tr>
-                            {% endif %}
                             {% endfor %}
                         </tbody>
                     </table>
@@ -279,24 +329,51 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for app in in_process_applications %}
+                            {% for g in admin_in_process_groups %}
                             <tr>
-                                <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                                <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
-                                <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
-                                <td>
-                                    <span class="badge bg-{% if app.status == 'submitted' %}secondary{% else %}info{% endif %}">
-                                        {{ app.status.replace('_', ' ').title() }}
-                                    </span>
+                                <td class="text-nowrap">{% if g.member_uid is not none %}{{ g.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                                <td><a href="{% if g.member_uid is not none %}{{ url_for('loan_member_history', member_uid=g.member_uid, next=request.full_path) }}{% else %}{{ url_for('loan_member_history', name=g.member_name, next=request.full_path) }}{% endif %}">{{ g.member_name }}</a></td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">
+                                        <strong>₱{{ "{:,.2f}".format((app.loan_amount or 0)|float) }}</strong>
+                                        {% if app.loan_type %}<span class="text-muted">{{ app.loan_type }}</span>{% endif %}
+                                    </div>
+                                    {% endfor %}
                                 </td>
-                                <td>{{ app.loan_staff_name }}</td>
-                                <td>{{ app.ci_staff_name or 'Not Assigned' }}</td>
-                                <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">
+                                        <span class="badge bg-{% if app.status == 'submitted' %}secondary{% else %}info{% endif %}">
+                                            {{ app.status.replace('_', ' ').title() }}
+                                        </span>
+                                    </div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.loan_staff_name }}</div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.ci_staff_name or 'Not Assigned' }}</div>
+                                    {% endfor %}
+                                </td>
+                                <td class="small">
+                                    {% for app in g.apps %}
+                                    <div class="mb-1">{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</div>
+                                    {% endfor %}
+                                </td>
                                 <td>
-                                    <button class="btn btn-sm btn-warning" onclick='openReassignModal({{ app.id }}, {{ app.member_name|tojson }}, {{ app.assigned_ci_staff or "null" }})'>
-                                        <i class="bi bi-arrow-repeat"></i>
-                                        <span class="btn-text">Reassign CI</span>
-                                    </button>
+                                    <div class="d-flex flex-column gap-1 align-items-start">
+                                        {% for app in g.apps %}
+                                        <button class="btn btn-sm btn-warning" onclick='openReassignModal({{ app.id }}, {{ app.member_name|tojson }}, {{ app.assigned_ci_staff or "null" }})'>
+                                            <i class="bi bi-arrow-repeat"></i>
+                                            <span class="btn-text">Reassign CI</span>
+                                        </button>
+                                        {% endfor %}
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -628,7 +705,7 @@ function clearSearch(tableType) {
     searchApplications(tableType);
 }
 
-// Filter processed applications by status
+// Filter processed applications by status (column index 3 = Status; stacked badges supported)
 function filterProcessed() {
     const filterValue = document.getElementById('statusFilter').value;
     const table = document.getElementById('processedTable');
@@ -636,18 +713,30 @@ function filterProcessed() {
     let visibleCount = 0;
     
     for (let i = 0; i < rows.length; i++) {
-        const statusCell = rows[i].getElementsByTagName('td')[2];
+        const statusCell = rows[i].getElementsByTagName('td')[3];
         if (statusCell) {
-            const statusBadge = statusCell.querySelector('.badge');
-            const statusText = statusBadge ? statusBadge.textContent.trim().toLowerCase() : '';
+            const badges = statusCell.querySelectorAll('.badge');
+            const statusTexts = [];
+            for (let b = 0; b < badges.length; b++) {
+                statusTexts.push(badges[b].textContent.trim().toLowerCase());
+            }
             
             if (filterValue === 'all') {
                 rows[i].style.display = '';
                 visibleCount++;
             } else {
-                const showRow = (filterValue === 'approved' && statusText === 'approved') || 
-                               (filterValue === 'disapproved' && statusText === 'disapproved') ||
-                               (filterValue === 'deferred' && statusText === 'deferred');
+                let showRow = false;
+                for (let t = 0; t < statusTexts.length; t++) {
+                    const statusText = statusTexts[t];
+                    if (
+                        (filterValue === 'approved' && statusText === 'approved') ||
+                        (filterValue === 'disapproved' && statusText === 'disapproved') ||
+                        (filterValue === 'deferred' && statusText === 'deferred')
+                    ) {
+                        showRow = true;
+                        break;
+                    }
+                }
                 rows[i].style.display = showRow ? '' : 'none';
                 if (showRow) visibleCount++;
             }

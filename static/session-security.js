@@ -1,6 +1,7 @@
 // Session security — server ties the cookie to one active login session (ends on Log out
-// or idle timeout). tab-close-logout.js only maintains a lightweight cross-tab heartbeat map;
-// it does not POST /logout on unload (that caused false logouts during normal navigation).
+// or idle timeout). tab-close-logout.js ends the session when the last app tab closes
+// (GET /logout with keepalive); in-app navigations set a short sessionStorage flag so we
+// do not sign the user out on every link click.
 (function() {
     'use strict';
 
