@@ -2347,18 +2347,53 @@ except Exception as e:
     print(f"⚠️  Database initialization warning: {e}")
     print("⚠️  Continuing app startup...")
 
-ensure_performance_indexes()
-ensure_direct_message_columns()
-ensure_users_columns()
-ensure_notification_aggregate_columns()
-ensure_sms_templates_table()
-ensure_sms_sent_log_table()
-ensure_system_activity_log_table()
-ensure_user_login_sessions_table()
-ensure_ci_coverage_routes_table()
-ensure_ci_offline_packages_table()
-ensure_documents_blob_columns()
-ensure_loan_applications_member_uid_column()
+
+# ── Resilient migration boot ─────────────────────────────────────────────────
+# Each ensure_* function runs DDL against the live database. On Render's managed
+# Postgres a single ALTER TABLE that is briefly blocked by an AccessExclusiveLock
+# held by the previous worker during graceful shutdown can stall import for many
+# seconds. If the worker doesn't bind 0.0.0.0:$PORT before Render's port-scan
+# window expires, the deploy fails with "no open ports detected" — exactly what
+# was observed in production logs.
+#
+# Wrap each step individually so a single slow/locked migration can never block
+# the rest of import. Per-step timing is printed so we can spot the slow one in
+# the Render log stream without needing a profiler.
+def _run_startup_migration(step_name, fn, hard_timeout_sec=15.0):
+    import time as _t_mig
+    _t_start = _t_mig.monotonic()
+    try:
+        fn()
+        _t_elapsed = _t_mig.monotonic() - _t_start
+        if _t_elapsed >= 1.0:
+            print(f"   ⏱  {step_name}: {_t_elapsed:.2f}s")
+    except Exception as _mig_err:
+        _t_elapsed = _t_mig.monotonic() - _t_start
+        # Never raise — port binding must always proceed.
+        print(f"   ⚠  {step_name} skipped after {_t_elapsed:.2f}s: {_mig_err}")
+        try:
+            app.logger.warning('startup migration %s failed: %s', step_name, _mig_err)
+        except Exception:
+            pass
+
+
+print("▶ Running startup migrations…")
+for _step_name, _step_fn in (
+    ('ensure_performance_indexes', ensure_performance_indexes),
+    ('ensure_direct_message_columns', ensure_direct_message_columns),
+    ('ensure_users_columns', ensure_users_columns),
+    ('ensure_notification_aggregate_columns', ensure_notification_aggregate_columns),
+    ('ensure_sms_templates_table', ensure_sms_templates_table),
+    ('ensure_sms_sent_log_table', ensure_sms_sent_log_table),
+    ('ensure_system_activity_log_table', ensure_system_activity_log_table),
+    ('ensure_user_login_sessions_table', ensure_user_login_sessions_table),
+    ('ensure_ci_coverage_routes_table', ensure_ci_coverage_routes_table),
+    ('ensure_ci_offline_packages_table', ensure_ci_offline_packages_table),
+    ('ensure_documents_blob_columns', ensure_documents_blob_columns),
+    ('ensure_loan_applications_member_uid_column', ensure_loan_applications_member_uid_column),
+):
+    _run_startup_migration(_step_name, _step_fn)
+print("✓ Startup migrations finished — Flask app ready to bind.")
 
 
 # ── Asset minification / bundling ────────────────────────────────────────────
@@ -5799,22 +5834,38 @@ def admin_dashboard():
             ' LEFT JOIN users u2 ON la.assigned_ci_staff = u2.id'
         )
 
-        # --- Q1: Applications ready for admin review -------------------------
-        # Oldest first so new rows appear at the bottom of the table.
-        applications = conn.execute(
+        # --- Q1+Q2 (merged): single round-trip for both dashboard tables -----
+        # Previously two SELECTs (~180ms each on Render Postgres). The status
+        # buckets overlap on (status='submitted' AND needs_ci_interview=0) so
+        # that row must still appear in BOTH "applications" and
+        # "in_process_applications" lists — we partition in Python with the
+        # same predicates the old separate queries used. No behavior change.
+        all_dashboard_rows = conn.execute(
             f'SELECT {_LA_COLS} FROM loan_applications la {_LA_JOIN}'
-            " WHERE la.status IN ('ci_completed','approved','disapproved','deferred')"
-            " OR (la.needs_ci_interview = 0 AND la.status = 'submitted')"
+            " WHERE la.status IN ('submitted','assigned_to_ci','ci_completed',"
+            "                     'approved','disapproved','deferred')"
             ' ORDER BY la.submitted_at ASC, la.id ASC'
         ).fetchall()
         _t_q1 = _time.monotonic()
 
-        # --- Q2: In-process applications (LPS → CI pipeline) -----------------
-        in_process_applications = conn.execute(
-            f'SELECT {_LA_COLS} FROM loan_applications la {_LA_JOIN}'
-            " WHERE la.status IN ('submitted','assigned_to_ci')"
-            ' ORDER BY la.submitted_at ASC, la.id ASC'
-        ).fetchall()
+        def _needs_ci_is_zero(value):
+            # Mirror SQL `needs_ci_interview = 0` exactly: NULL is excluded.
+            if value is None:
+                return False
+            try:
+                return int(value) == 0
+            except (TypeError, ValueError):
+                return False
+
+        applications = [
+            r for r in all_dashboard_rows
+            if r['status'] in ('ci_completed', 'approved', 'disapproved', 'deferred')
+            or (r['status'] == 'submitted' and _needs_ci_is_zero(r['needs_ci_interview']))
+        ]
+        in_process_applications = [
+            r for r in all_dashboard_rows
+            if r['status'] in ('submitted', 'assigned_to_ci')
+        ]
         _t_q2 = _time.monotonic()
 
         # --- Q3: CI staff online status  -------------------------------------
