@@ -15,6 +15,8 @@ from werkzeug.utils import secure_filename
 from database import get_db
 from document_helpers import insert_loan_document_row
 
+_ci_idempotent_schema_ready = False
+
 
 def _upload_root():
     rel = current_app.config.get("UPLOAD_FOLDER", "uploads")
@@ -25,6 +27,9 @@ def _upload_root():
 
 def ensure_ci_idempotent_migrations():
     """Create idempotency table (SQLite + PostgreSQL)."""
+    global _ci_idempotent_schema_ready
+    if _ci_idempotent_schema_ready:
+        return
     conn = get_db()
     try:
         conn.execute(
@@ -39,12 +44,15 @@ def ensure_ci_idempotent_migrations():
         conn.commit()
     finally:
         conn.close()
+    _ci_idempotent_schema_ready = True
 
 
 def init_offline_interview_api(app, csrf):
-    """Call once after app + csrf exist."""
+    """Call once after app + csrf exist.
 
-    ensure_ci_idempotent_migrations()
+    Schema creation is deferred (see app.py ``schema_indexes_seed``) so import does not
+    open the DB before Gunicorn binds ``$PORT`` on hosts like Render.
+    """
 
     @app.route("/api/ci/complete_interview", methods=["POST"])
     @csrf.exempt
@@ -62,6 +70,8 @@ def init_offline_interview_api(app, csrf):
             return jsonify({"error": "Missing application_id or checklist_data"}), 400
         if not client_request_id:
             return jsonify({"error": "Missing client_request_id"}), 400
+
+        ensure_ci_idempotent_migrations()
 
         try:
             app_id = int(application_id)

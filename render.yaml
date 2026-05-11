@@ -7,8 +7,10 @@ services:
     name: dccco-ci-system
     env: python
     buildCommand: pip install -r requirements.txt
-    # Use the script so Render dashboard "gunicorn app:app" overrides cannot drop --no-control-socket / --timeout 0.
+    # Start Command field in the dashboard: paste ONLY the line below after "bash " (no "startCommand:" prefix).
     startCommand: bash scripts/start_gunicorn.sh
+    # After the TCP port is open, Render uses this path to confirm HTTP works (plain “ok” — no DB).
+    healthCheckPath: /healthz
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"

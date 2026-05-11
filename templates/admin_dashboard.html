@@ -144,7 +144,7 @@
                             {% if app.status == 'ci_completed' or (app.needs_ci_interview == 0 and app.status == 'submitted') %}
                             <tr>
                                 <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                                <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
+                                <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                                 <td>
                                     <span class="badge bg-warning">
@@ -215,7 +215,7 @@
                             {% if app.status in ['approved', 'disapproved', 'deferred'] %}
                             <tr>
                                 <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                                <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
+                                <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                                 <td>
                                     <span class="badge bg-{% if app.status == 'approved' %}success{% elif app.status == 'deferred' %}warning{% else %}danger{% endif %}">
@@ -282,7 +282,7 @@
                             {% for app in in_process_applications %}
                             <tr>
                                 <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                                <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
+                                <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
                                 <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
                                 <td>
                                     <span class="badge bg-{% if app.status == 'submitted' %}secondary{% else %}info{% endif %}">
@@ -736,5 +736,5 @@ document.getElementById('reassignForm')?.addEventListener('submit', function(e) 
 {% endblock %}
 {% block scripts %}
 <script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=8" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=9" defer></script>
 {% endblock %}

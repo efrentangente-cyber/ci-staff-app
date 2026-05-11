@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{% if can_edit %}Edit{% else %}View{% endif %} Application #{{ application.id }}{% endblock %}
 {% block layout_feature_scripts %}{% include 'includes/assets_autocomplete.html' %}{% endblock %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='loan-amount-confirm.css') }}?v=1">
+{% endblock %}
 
 <style>
 .read-only-field {
@@ -61,10 +64,13 @@
                         <input type="hidden" name="loan_amount" id="loan_amount_raw" value="{{ application.loan_amount }}">
                         {% if can_edit %}
                         <small class="text-muted">Enter amount with or without commas</small>
-                        <div id="loanAmountConfirmNotice" class="alert alert-warning py-2 small mt-2 mb-0 d-none" role="status" hidden>
-                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                                <span class="mb-0">Please confirm this loan amount is correct: <strong data-loan-confirm-amount></strong></span>
-                                <button type="button" class="btn btn-sm btn-outline-dark flex-shrink-0" data-loan-confirm-dismiss>Yes, confirmed</button>
+                        <div id="loanAmountConfirmNotice" class="alert alert-warning loan-amount-confirm-bar py-3 px-3 small mb-0 d-none" role="status" hidden>
+                            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                                <span class="mb-0 d-flex align-items-start gap-2">
+                                    <i class="bi bi-currency-exchange flex-shrink-0 mt-1" aria-hidden="true"></i>
+                                    <span>Please confirm this loan amount is correct: <strong data-loan-confirm-amount></strong></span>
+                                </span>
+                                <button type="button" class="btn btn-success btn-sm flex-shrink-0" data-loan-confirm-dismiss>Yes, confirmed</button>
                             </div>
                         </div>
                         {% endif %}

@@ -126,7 +126,7 @@
                     {% if app.status == 'assigned_to_ci' %}
                     <tr>
                         <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
+                        <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
                         <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                         <td>{{ app.member_address }}</td>
                         <td>
@@ -185,7 +185,7 @@
                     {% if app.status == 'ci_completed' %}
                     <tr>
                         <td class="text-nowrap">{% if app.member_uid is not none %}{{ app.member_uid }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td><strong>#{{ app.id }}</strong> <a href="{{ url_for('loan_member_history', name=app.member_name) }}">{{ app.member_name }}</a></td>
+                        <td><a href="{% if app.member_uid is not none %}{{ url_for('loan_member_history', member_uid=app.member_uid) }}{% else %}{{ url_for('loan_member_history', name=app.member_name) }}{% endif %}">{{ app.member_name }}</a></td>
                         <td>{{ app.submitted_at|fmt_datetime('%d-%m-%y') }}</td>
                         <td>{{ app.member_address }}</td>
                         <td>
@@ -354,6 +354,6 @@ function clearSearch(tableType) {
 {% endblock %}
 {% block scripts %}
 <script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=8" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=9" defer></script>
 <script src="{{ url_for('static', filename='ci-dashboard-offline.js') }}?v=4-member-id-col" defer></script>
 {% endblock %}

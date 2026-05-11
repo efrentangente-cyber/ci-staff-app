@@ -7,6 +7,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 export PORT="${PORT:-5000}"
+# If Render logs show only `gunicorn app:app`, the dashboard Start Command overrides this script — fix that.
+echo "dccco: starting via start_gunicorn.sh — wsgi:application on 0.0.0.0:${PORT}" >&2
 export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 
 exec gunicorn \

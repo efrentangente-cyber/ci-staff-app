@@ -910,7 +910,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm',
 csrf = CSRFProtect(app)
 
 # Offline / WebView: idempotent CI interview POST (FormData + client_request_id)
-from offline_interview_complete import init_offline_interview_api
+from offline_interview_complete import init_offline_interview_api, ensure_ci_idempotent_migrations
 from ci_offline_saves import ensure_ci_offline_packages_table, init_ci_offline_saves, get_offline_package_for_wizard
 
 init_offline_interview_api(app, csrf)
@@ -2459,24 +2459,9 @@ def _run_startup_migration(step_name, fn, hard_timeout_sec=15.0):
             pass
 
 
-print("▶ Running startup migrations…", flush=True)
-for _step_name, _step_fn in (
-    ('ensure_direct_message_columns', ensure_direct_message_columns),
-    ('ensure_users_columns', ensure_users_columns),
-    ('ensure_notification_aggregate_columns', ensure_notification_aggregate_columns),
-    ('ensure_sms_templates_table', ensure_sms_templates_table),
-    ('ensure_sms_sent_log_table', ensure_sms_sent_log_table),
-    ('ensure_system_activity_log_table', ensure_system_activity_log_table),
-    ('ensure_user_login_sessions_table', ensure_user_login_sessions_table),
-    ('ensure_ci_coverage_routes_table', ensure_ci_coverage_routes_table),
-    ('ensure_ci_offline_packages_table', ensure_ci_offline_packages_table),
-    ('ensure_documents_blob_columns', ensure_documents_blob_columns),
-    ('ensure_loan_applications_member_uid_column', ensure_loan_applications_member_uid_column),
-):
-    _run_startup_migration(_step_name, _step_fn)
-print("✓ Startup migrations finished — Flask app ready to bind.", flush=True)
+print("▶ Schema migrations: deferred until after port bind (Render port-scan safe).", flush=True)
 print(
-    "ℹ  Performance indexes (CREATE INDEX) run in deferred:ensure_performance_indexes after bind — avoids Render port-scan timeout.",
+    "   Batch task: deferred:schema_indexes_seed (ensure_* DDL + indexes + production_users).",
     flush=True,
 )
 
@@ -2568,12 +2553,6 @@ def _build_minified_assets():
         print("✓ Minified assets active — base.html will use .min files")
 
 
-_start_deferred_startup('minified_assets', _build_minified_assets)
-_start_deferred_startup('psgc_coverage_catalogue', _warm_psgc_coverage_catalogue)
-_start_deferred_startup('ensure_performance_indexes', ensure_performance_indexes)
-
-
-# Setup production users (runs on every startup to ensure correct roles)
 def setup_production_users():
     """Create or update default users"""
     try:
@@ -2712,7 +2691,32 @@ def setup_production_users():
         traceback.print_exc()
         print("⚠️  Continuing app startup despite setup warnings...")
 
-_start_deferred_startup('production_users', setup_production_users)
+
+def _deferred_schema_indexes_seed():
+    """PostgreSQL DDL + CREATE INDEX + seeds — must not run during import (Render port scan)."""
+    for _step_name, _step_fn in (
+        ('ensure_ci_idempotent_complete', ensure_ci_idempotent_migrations),
+        ('ensure_direct_message_columns', ensure_direct_message_columns),
+        ('ensure_users_columns', ensure_users_columns),
+        ('ensure_notification_aggregate_columns', ensure_notification_aggregate_columns),
+        ('ensure_sms_templates_table', ensure_sms_templates_table),
+        ('ensure_sms_sent_log_table', ensure_sms_sent_log_table),
+        ('ensure_system_activity_log_table', ensure_system_activity_log_table),
+        ('ensure_user_login_sessions_table', ensure_user_login_sessions_table),
+        ('ensure_ci_coverage_routes_table', ensure_ci_coverage_routes_table),
+        ('ensure_ci_offline_packages_table', ensure_ci_offline_packages_table),
+        ('ensure_documents_blob_columns', ensure_documents_blob_columns),
+        ('ensure_loan_applications_member_uid_column', ensure_loan_applications_member_uid_column),
+    ):
+        _run_startup_migration(_step_name, _step_fn)
+    _run_startup_migration('ensure_performance_indexes', ensure_performance_indexes)
+    setup_production_users()
+
+
+_start_deferred_startup('schema_indexes_seed', _deferred_schema_indexes_seed)
+_start_deferred_startup('minified_assets', _build_minified_assets)
+_start_deferred_startup('psgc_coverage_catalogue', _warm_psgc_coverage_catalogue)
+
 
 def create_notification(user_id, message, link=None, group_key=None):
     """Insert a notification, or increment stack_count on an unread row when group_key is set."""
@@ -4641,26 +4645,15 @@ def submit_application():
                     return redirect(url_for('submit_application'))
 
                 conn = get_db()
-                if _blocking_ci_completed_duplicate_exists(conn, member_name, current_user.id):
+                if _blocking_open_pipeline_duplicate_exists(conn, member_name, current_user.id):
                     conn.close()
                     flash(
-                        'This member already has an application finished by CI/BI and awaiting a loan decision '
-                        '(same or very similar name). Resolve that record before submitting another.',
+                        'This member already has an application pending CI (assignment or field work) '
+                        'for the same or very similar name. Resolve that first. '
+                        'If they only have an application awaiting a final loan decision after CI, you may submit another.',
                         'danger',
                     )
                     return redirect(url_for('submit_application'))
-
-                removed = _purge_pipeline_duplicate_member_applications(
-                    conn, member_name, current_user.id
-                )
-                if removed:
-                    flash(
-                        'Removed '
-                        + str(removed)
-                        + ' duplicate open application(s) for this member (same name or very close spelling). '
-                        'Submitting this form replaces them with one new record.',
-                        'info',
-                    )
 
                 mu_parsed, mu_err = _parse_member_uid_for_new_application(
                     conn,
@@ -4828,7 +4821,7 @@ def submit_application():
                     'submitted_by': int(current_user.id),
                 })
 
-                return redirect(url_for('loan_dashboard'))
+                return redirect(url_for('loan_dashboard', submitted='1'))
             except Exception as e:
                 print(f"ERROR in database operations: {str(e)}")
                 import traceback
@@ -4889,6 +4882,7 @@ def api_member_application_prefill():
     conn = get_db()
     try:
         related_rows = None
+        prefill_scope_out = None
 
         if app_id_raw.isdigit():
             anchor = conn.execute(
@@ -4907,7 +4901,7 @@ def api_member_application_prefill():
                 if mu is not None:
                     related_rows = conn.execute(
                         '''
-                        SELECT id, loan_type, loan_amount, status, member_contact,
+                        SELECT id, loan_type, loan_amount, status, needs_ci_interview, member_contact,
                                member_address, submitted_at, member_uid
                         FROM loan_applications
                         WHERE submitted_by = ? AND member_uid = ?
@@ -4920,7 +4914,7 @@ def api_member_application_prefill():
                     nk = _normalized_member_name_key(ad.get('member_name'))
                     related_rows = conn.execute(
                         '''
-                        SELECT id, loan_type, loan_amount, status, member_contact,
+                        SELECT id, loan_type, loan_amount, status, needs_ci_interview, member_contact,
                                member_address, submitted_at, member_uid
                         FROM loan_applications
                         WHERE submitted_by = ?
@@ -4933,9 +4927,10 @@ def api_member_application_prefill():
 
         elif mu_raw.isdigit():
             mu_int = int(mu_raw)
+            prefill_scope_out = 'own'
             related_rows = conn.execute(
                 '''
-                SELECT id, loan_type, loan_amount, status, member_contact,
+                SELECT id, loan_type, loan_amount, status, needs_ci_interview, member_contact,
                        member_address, submitted_at, member_uid
                 FROM loan_applications
                 WHERE submitted_by = ? AND member_uid = ?
@@ -4944,12 +4939,25 @@ def api_member_application_prefill():
                 ''',
                 (sb, mu_int),
             ).fetchall()
+            if not related_rows:
+                prefill_scope_out = 'cooperative'
+                related_rows = conn.execute(
+                    '''
+                    SELECT id, loan_type, loan_amount, status, needs_ci_interview, member_contact,
+                           member_address, submitted_at, member_uid
+                    FROM loan_applications
+                    WHERE member_uid = ?
+                    ORDER BY id DESC
+                    LIMIT 30
+                    ''',
+                    (mu_int,),
+                ).fetchall()
 
         elif len(name) >= 2:
             nk = _normalized_member_name_key(name)
             related_rows = conn.execute(
                 '''
-                SELECT id, loan_type, loan_amount, status, member_contact,
+                SELECT id, loan_type, loan_amount, status, needs_ci_interview, member_contact,
                        member_address, submitted_at, member_uid
                 FROM loan_applications
                 WHERE submitted_by = ?
@@ -4980,6 +4988,8 @@ def api_member_application_prefill():
             la_out = None
         applications = []
         active_count = 0
+        awaiting_decision_count = 0
+        pending_ci_pipeline_count = 0
         for rr in related_rows or []:
             r = dict(rr)
             raw_amt = r.get('loan_amount')
@@ -4990,6 +5000,10 @@ def api_member_application_prefill():
             status = (r.get('status') or '').strip()
             if status in ('submitted', 'assigned_to_ci', 'ci_completed', 'deferred'):
                 active_count += 1
+            if status == 'ci_completed':
+                awaiting_decision_count += 1
+            elif _application_is_pending_ci_pipeline(status, r.get('needs_ci_interview')):
+                pending_ci_pipeline_count += 1
             sub_at = r.get('submitted_at')
             if sub_at is not None and hasattr(sub_at, 'isoformat'):
                 sub_at = sub_at.isoformat()
@@ -5024,6 +5038,9 @@ def api_member_application_prefill():
                 'loan_amount': la_out,
                 'applications': applications,
                 'active_application_count': active_count,
+                'awaiting_decision_count': awaiting_decision_count,
+                'pending_ci_pipeline_count': pending_ci_pipeline_count,
+                'prefill_scope': prefill_scope_out,
             }
         )
     except Exception as e:
@@ -7144,8 +7161,23 @@ def _dedupe_fuzzy_member_clusters_for_submitter(conn, submitted_by_id):
     return deleted
 
 
-def _blocking_ci_completed_duplicate_exists(conn, member_name, submitted_by_id):
-    """True if this LPS already has a CI-completed row awaiting decision for the same member (or typo variant)."""
+def _application_is_pending_ci_pipeline(status, needs_ci_interview):
+    """True if this status means CI work is still expected (blocks a second LPS submit for same member)."""
+    st = (status or '').strip()
+    if st == 'assigned_to_ci':
+        return True
+    if st == 'submitted':
+        if needs_ci_interview is None:
+            return True
+        try:
+            return int(needs_ci_interview) != 0
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
+def _blocking_open_pipeline_duplicate_exists(conn, member_name, submitted_by_id):
+    """True if this LPS has a CI-pending row for the same member (fuzzy name match)."""
     key = (member_name or '').strip()
     if len(key) < 2:
         return False
@@ -7153,7 +7185,10 @@ def _blocking_ci_completed_duplicate_exists(conn, member_name, submitted_by_id):
         '''
         SELECT member_name FROM loan_applications
         WHERE submitted_by = ?
-          AND status = 'ci_completed'
+          AND (
+            status = 'assigned_to_ci'
+            OR (status = 'submitted' AND COALESCE(needs_ci_interview, 1) <> 0)
+          )
         ''',
         (submitted_by_id,),
     ).fetchall()
@@ -7230,30 +7265,6 @@ def _resolve_member_uid_for_insert(conn, member_name):
         'SELECT COALESCE(MAX(member_uid), 0) + 1 AS n FROM loan_applications'
     ).fetchone()
     return int(dict(row).get('n') or 1)
-
-
-def _purge_pipeline_duplicate_member_applications(conn, member_name, submitted_by_id):
-    """
-    Before a new submission: delete open pipeline rows from this LPS that match this member
-    (exact normalized match OR minor typo vs submitted name). Avoids duplicate applicants.
-    """
-    key = (member_name or '').strip()
-    if len(key) < 2:
-        return 0
-    rows = conn.execute(
-        '''
-        SELECT id, member_name, assigned_ci_staff, status FROM loan_applications
-        WHERE submitted_by = ?
-          AND status IN ('submitted', 'assigned_to_ci', 'deferred')
-        ''',
-        (submitted_by_id,),
-    ).fetchall()
-    deleted = 0
-    for r in rows or []:
-        if _member_names_likely_duplicate(key, r['member_name']):
-            if _delete_loan_application_cascade(conn, r['id'], r.get('status'), r.get('assigned_ci_staff')):
-                deleted += 1
-    return deleted
 
 
 def _insert_loan_application(
@@ -11165,6 +11176,12 @@ def toggle_sms_template(template_id):
     conn.close()
     
     return jsonify({'success': True, 'is_active': new_status})
+
+# Last line of module import: if this appears in logs before Gunicorn "Listening at", import finished.
+print(
+    '✓ app.py fully imported — deferred schema/tasks queued; Gunicorn should bind $PORT next.',
+    flush=True,
+)
 
 if __name__ == '__main__':
     import os

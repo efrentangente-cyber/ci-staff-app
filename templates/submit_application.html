@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Submit Application{% endblock %}
 {% block layout_feature_scripts %}{% include 'includes/assets_autocomplete.html' %}{% endblock %}
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='loan-amount-confirm.css') }}?v=1">
+{% endblock %}
 
 {% block content %}
 <h2>Submit New Loan Application</h2>
 <div class="card position-relative">
     <div class="card-body">
-        <form method="POST" enctype="multipart/form-data">
+        <form method="POST" enctype="multipart/form-data" id="lpsSubmitApplicationForm">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div id="memberPrefillBanner" class="alert alert-info py-2 small mb-3" style="display: none;" role="status">
                 <span id="memberPrefillBannerText">Details from a previous application were filled in below. You can change any field before submitting.</span>
@@ -20,7 +23,7 @@
                            aria-autocomplete="list" aria-controls="member_id_dropdown" aria-expanded="false">
                     <div id="member_id_dropdown" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" role="listbox"
                          style="z-index: 1050; max-height: 260px; overflow-y: auto; display: none;"></div>
-                    <small class="text-muted">Leave blank for a new member; an ID is saved automatically after the first application.</small>
+                    <div id="memberUidLookupNotice" class="alert py-2 mt-2 mb-0 small" style="display: none;" role="status"></div>
                 </div>
                 <div class="col-md-4 mb-3 position-relative">
                     <label class="form-label">Member Name *</label>
@@ -29,18 +32,17 @@
                            aria-autocomplete="list" aria-controls="member_name_dropdown" aria-expanded="false">
                     <div id="member_name_dropdown" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" role="listbox"
                          style="z-index: 1050; max-height: 260px; overflow-y: auto; display: none;"></div>
-                    <div id="memberNameLookupStatus" class="d-flex align-items-center gap-2 small text-muted mt-2" style="display: none;" aria-live="polite">
+                    <div id="memberNameLookupStatus" class="align-items-center gap-2 small text-muted mt-2" style="display: none;" aria-live="polite">
                         <span class="spinner-border spinner-border-sm text-secondary flex-shrink-0" role="status" aria-hidden="true"></span>
-                        <span>Checking member records…</span>
+                        <span id="memberLookupStatusText">Checking member records…</span>
                     </div>
                     <div id="memberNameLookupError" class="alert alert-danger py-2 mt-2 mb-0 small" style="display: none;" role="alert"></div>
                     <div id="memberNameNoRecordNotice" class="alert alert-secondary py-2 mt-2 mb-0 small" style="display: none;" role="status">
                         No matching loan records for this name. Enter contact and address manually.
                     </div>
-                    <div id="existingLoanNotice" class="alert alert-warning py-2 mt-2 mb-0 small" style="display:none;"></div>
                     <div id="memberHistoryLinkWrap" class="mt-2" style="display:none;">
-                        <a href="#" id="memberHistoryLink" class="btn btn-sm btn-outline-primary"
-                           title="Open full loan history for this member">Loan history</a>
+                        <a href="#" id="memberHistoryLink" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener noreferrer"
+                           title="Open full loan history for this member (new tab — keeps this form)">Loan history</a>
                     </div>
                 </div>
                 <div class="col-md-4 mb-3">
@@ -61,10 +63,13 @@
                 <input type="text" name="loan_amount_display" id="loan_amount" class="form-control" required placeholder="e.g., 14,000">
                 <input type="hidden" name="loan_amount" id="loan_amount_raw">
                 <small class="text-muted">Enter amount with or without commas</small>
-                <div id="loanAmountConfirmNotice" class="alert alert-warning py-2 small mt-2 mb-0 d-none" role="status" hidden>
-                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                        <span class="mb-0">Please confirm this loan amount is correct: <strong data-loan-confirm-amount></strong></span>
-                        <button type="button" class="btn btn-sm btn-outline-dark flex-shrink-0" data-loan-confirm-dismiss>Yes, confirmed</button>
+                <div id="loanAmountConfirmNotice" class="alert alert-warning loan-amount-confirm-bar py-3 px-3 small mb-0 d-none" role="status" hidden>
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                        <span class="mb-0 d-flex align-items-start gap-2">
+                            <i class="bi bi-currency-exchange flex-shrink-0 mt-1" aria-hidden="true"></i>
+                            <span>Please confirm this loan amount is correct: <strong data-loan-confirm-amount></strong></span>
+                        </span>
+                        <button type="button" class="btn btn-success btn-sm flex-shrink-0" data-loan-confirm-dismiss>Yes, confirmed</button>
                     </div>
                 </div>
             </div>
@@ -146,6 +151,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const prefillUrl = {{ url_for('api_member_application_prefill') | tojson }};
     const suggestionsUrl = {{ url_for('api_member_name_suggestions') | tojson }};
     const memberHistoryBase = {{ url_for('loan_member_history') | tojson }};
+    const MEMBER_HISTORY_LINK_DEFAULT = 'Loan history';
+    const MEMBER_HISTORY_TITLE_DEFAULT = 'Open full loan history for this member (new tab — keeps this form)';
     // Prefill hits the DB for an exact normalized name — debounce aggressively while typing.
     const DEBOUNCE_PREFILL_MS = 400;
     const SUGGEST_DEBOUNCE_MS = 100;
@@ -171,11 +178,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const memberUidInput = document.getElementById('member_uid_lookup');
     const memberIdDropdown = document.getElementById('member_id_dropdown');
     const lookupStatus = document.getElementById('memberNameLookupStatus');
+    const lookupStatusText = document.getElementById('memberLookupStatusText');
     const lookupError = document.getElementById('memberNameLookupError');
     const noRecordNotice = document.getElementById('memberNameNoRecordNotice');
+    const memberUidLookupNotice = document.getElementById('memberUidLookupNotice');
     const banner = document.getElementById('memberPrefillBanner');
     const bannerDismiss = document.getElementById('memberPrefillBannerDismiss');
-    const existingNotice = document.getElementById('existingLoanNotice');
     const existingLoanTypeWrap = document.getElementById('existingLoanTypeWrap');
     const existingLoanTypeSelect = document.getElementById('existingLoanTypeSelect');
     const loanTypeIn = document.getElementById('loanTypeInput');
@@ -202,29 +210,57 @@ document.addEventListener('DOMContentLoaded', function() {
     function hidePrefillBanner() {
         if (banner) banner.style.display = 'none';
     }
-    function hideExistingNotice() {
-        if (existingNotice) existingNotice.style.display = 'none';
+    function hideMemberUidLookupNotice() {
+        if (!memberUidLookupNotice) return;
+        memberUidLookupNotice.style.display = 'none';
+        memberUidLookupNotice.textContent = '';
+        memberUidLookupNotice.className = 'alert py-2 mt-2 mb-0 small';
+    }
+    function showMemberUidLookupNotice(message, variant) {
+        if (!memberUidLookupNotice || !message) return;
+        var v = variant || 'info';
+        memberUidLookupNotice.className = 'alert py-2 mt-2 mb-0 small alert-' + v;
+        memberUidLookupNotice.textContent = message;
+        memberUidLookupNotice.style.display = 'block';
     }
     function hideNoRecordNotice() {
         if (noRecordNotice) noRecordNotice.style.display = 'none';
     }
     function showNoRecordNotice() {
-        hideExistingNotice();
+        hideMemberUidLookupNotice();
         renderExistingLoanTypeDropdown([]);
         if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
+        if (memberHistoryLink) {
+            memberHistoryLink.textContent = MEMBER_HISTORY_LINK_DEFAULT;
+            memberHistoryLink.title = MEMBER_HISTORY_TITLE_DEFAULT;
+        }
         if (noRecordNotice) noRecordNotice.style.display = 'block';
     }
     function setMemberNameBusy(busy) {
         if (!memberNameInput) return;
         memberNameInput.setAttribute('aria-busy', busy ? 'true' : 'false');
     }
-    function showLookupChecking() {
-        const t = (memberNameInput && memberNameInput.value ? memberNameInput.value : '').trim();
-        if (t.length < 2) {
-            return;
+    function showLookupChecking(kind) {
+        kind = kind || 'name';
+        if (kind === 'member_uid') {
+            const idt = (memberUidInput && memberUidInput.value ? memberUidInput.value : '').replace(/\D/g, '');
+            if (!idt.length) {
+                return;
+            }
+        } else {
+            const t = (memberNameInput && memberNameInput.value ? memberNameInput.value : '').trim();
+            if (t.length < 2) {
+                return;
+            }
+        }
+        if (lookupStatusText) {
+            lookupStatusText.textContent = kind === 'member_uid'
+                ? 'Looking up Member ID…'
+                : 'Checking member records…';
         }
         if (lookupError) lookupError.style.display = 'none';
         hideNoRecordNotice();
+        hideMemberUidLookupNotice();
         if (lookupSpinnerTimer) {
             clearTimeout(lookupSpinnerTimer);
         }
@@ -245,6 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function showLookupError(message) {
         hideLookupChecking();
         hideNoRecordNotice();
+        hideMemberUidLookupNotice();
         if (lookupError) {
             lookupError.textContent = message || 'Could not check this name right now. Try again in a moment.';
             lookupError.style.display = 'block';
@@ -309,33 +346,86 @@ document.addEventListener('DOMContentLoaded', function() {
         showPrefillBanner();
     });
 
-    function applyPrefillPayload(name, data) {
+    function applyPrefillPayload(name, data, lookupKind) {
+        lookupKind = lookupKind || 'name';
+        if (lookupKind !== 'member_uid') {
+            hideMemberUidLookupNotice();
+        }
         lastPrefillName = name;
         if (!data.found) {
-            showNoRecordNotice();
+            hideLookupError();
+            if (lookupKind === 'member_uid') {
+                hideNoRecordNotice();
+                showMemberUidLookupNotice(
+                    'No application uses this Member ID yet. It will be saved with this submission if it is new. Enter name, contact, and address below.',
+                    'secondary'
+                );
+            } else {
+                hideMemberUidLookupNotice();
+                showNoRecordNotice();
+            }
             return;
         }
         hideNoRecordNotice();
-        let any = false;
-        const activeCount = Number(data.active_application_count || 0);
-        if (existingNotice) {
-            existingNotice.textContent = activeCount > 0
-                ? `Existing active loan application(s) for this member: ${activeCount}. You may still submit another application. Contact and address are synced from the latest record; enter the new loan type and amount, or choose a past record below to copy its loan fields.`
-                : 'Past loan records found for this member. Contact and address are synced from the latest record; enter the new loan type and amount, or choose a past record below to copy its loan fields.';
-            existingNotice.style.display = 'block';
+        if (lookupKind === 'member_uid') {
+            if (data.prefill_scope === 'cooperative') {
+                showMemberUidLookupNotice(
+                    'This Member ID is already on file (cooperative records). Name, contact, and address were auto-filled — verify before submitting.',
+                    'warning'
+                );
+            } else if (data.prefill_scope === 'own') {
+                showMemberUidLookupNotice(
+                    'This Member ID matches your previous applications. Details were filled in below.',
+                    'info'
+                );
+            } else {
+                hideMemberUidLookupNotice();
+            }
+        } else {
+            hideMemberUidLookupNotice();
         }
+        let any = false;
         renderExistingLoanTypeDropdown(data.applications || []);
 
-        if (memberHistoryWrap && memberHistoryLink && memberHistoryBase) {
-            const histName = (name || '').trim();
-            if (histName.length >= 2) {
-                let href = memberHistoryBase + '?name=' + encodeURIComponent(histName);
-                if (data.member_uid != null && data.member_uid !== '') {
-                    href += '&member_uid=' + encodeURIComponent(String(data.member_uid));
-                }
-                memberHistoryLink.href = href;
-                memberHistoryWrap.style.display = 'block';
+        const mn = (data.member_name || '').trim();
+        if (memberNameInput && mn) {
+            memberNameInput.value = mn;
+            pickedSuggestionExact = mn;
+            lastPrefillName = mn;
+            any = true;
+        }
+
+        const histName = ((memberNameInput && memberNameInput.value) ? memberNameInput.value : name || '').trim();
+        if (memberHistoryWrap && memberHistoryLink && memberHistoryBase && histName.length >= 2) {
+            let href = memberHistoryBase + '?name=' + encodeURIComponent(histName);
+            if (data.member_uid != null && data.member_uid !== '') {
+                href += '&member_uid=' + encodeURIComponent(String(data.member_uid));
             }
+            memberHistoryLink.href = href;
+            memberHistoryLink.target = '_blank';
+            memberHistoryLink.rel = 'noopener noreferrer';
+            const adc = Number(data.awaiting_decision_count || 0);
+            const pcc = Number(data.pending_ci_pipeline_count || 0);
+            if (adc > 0) {
+                memberHistoryLink.textContent = adc === 1
+                    ? 'Loan history — 1 awaiting loan decision'
+                    : 'Loan history — ' + adc + ' awaiting loan decision';
+            } else {
+                memberHistoryLink.textContent = MEMBER_HISTORY_LINK_DEFAULT;
+            }
+            const titleBits = [MEMBER_HISTORY_TITLE_DEFAULT];
+            if (pcc > 0) {
+                titleBits.push(
+                    'Submit is blocked while ' + pcc + ' record(s) are still pending CI for this member.'
+                );
+            }
+            if (adc > 0) {
+                titleBits.push(
+                    'This member has ' + adc + ' application(s) finished by CI and awaiting a final loan decision; you may still submit a new one.'
+                );
+            }
+            memberHistoryLink.title = titleBits.join(' ');
+            memberHistoryWrap.style.display = 'block';
         }
 
         if (memberUidInput && data.member_uid != null && data.member_uid !== '') {
@@ -374,7 +464,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         prefillAbort = new AbortController();
         const seq = ++lookupSeq;
-        showLookupChecking();
+        const lookupKind = lookupOpts._lookupKind || (byMu ? 'member_uid' : byApp ? 'application_id' : 'name');
+        showLookupChecking(lookupKind);
 
         let u;
         try {
@@ -413,7 +504,7 @@ document.addEventListener('DOMContentLoaded', function() {
             hideLookupError();
             hideLookupChecking();
             const labelName = (byMu || byApp) ? ((data.member_name || name || '').trim()) : name;
-            applyPrefillPayload(labelName || name, data);
+            applyPrefillPayload(labelName || name, data, lookupKind);
         } catch (err) {
             if (err && (err.name === 'AbortError' || err.code === 20)) {
                 return;
@@ -540,7 +631,7 @@ document.addEventListener('DOMContentLoaded', function() {
         lastPrefillName = '';
         hideLookupError();
         hideNoRecordNotice();
-        performPrefill(nm, { member_uid: String(entry.member_uid) });
+        performPrefill(nm, { member_uid: String(entry.member_uid), _lookupKind: 'member_uid' });
     }
 
     async function fetchMemberNameSuggestions(rawQ) {
@@ -717,6 +808,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         hideLookupError();
         hideNoRecordNotice();
+        hideMemberUidLookupNotice();
         if (!v.length) {
             clearTimeout(suggestionIdDebounceTimer);
             suggestionIdDebounceTimer = null;
@@ -725,6 +817,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         scheduleMemberIdSuggestions(v);
+        schedulePrefill('', { member_uid: v, _lookupKind: 'member_uid' });
     });
 
     memberUidInput?.addEventListener('blur', function () {
@@ -732,6 +825,10 @@ document.addEventListener('DOMContentLoaded', function() {
             blurHideIdDropdownTimer = null;
             hideMemberIdDropdown();
         }, 200);
+        var digits = String(memberUidInput ? memberUidInput.value || '' : '').replace(/\D/g, '');
+        if (digits.length >= 1) {
+            schedulePrefill('', { member_uid: digits, _lookupKind: 'member_uid' });
+        }
     });
 
     memberNameInput?.addEventListener('focus', function () {
@@ -780,15 +877,17 @@ document.addEventListener('DOMContentLoaded', function() {
             lookupSeq += 1;
             hideLookupChecking();
             hideNoRecordNotice();
+            hideMemberUidLookupNotice();
             lastPrefillName = '';
             pickedSuggestionExact = '';
             hideMemberNameDropdown();
             hideMemberIdDropdown();
-            if (memberUidInput) memberUidInput.value = '';
-            hideExistingNotice();
             renderExistingLoanTypeDropdown([]);
             if (memberHistoryWrap) memberHistoryWrap.style.display = 'none';
-            if (contact) contact.value = '';
+            if (memberHistoryLink) {
+                memberHistoryLink.textContent = MEMBER_HISTORY_LINK_DEFAULT;
+                memberHistoryLink.title = MEMBER_HISTORY_TITLE_DEFAULT;
+            }
             return;
         }
         if (t !== lastPrefillName) {
@@ -822,6 +921,140 @@ document.addEventListener('DOMContentLoaded', function() {
             performPrefill(name, {});
         }
     });
+
+    // Persist draft in sessionStorage — authenticated pages use no-cache, so Back often reloads and clears the form.
+    const DRAFT_KEY = 'dccco_lps_submit_draft_v1';
+    const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+    let draftSaveTimer = null;
+    let restoringDraft = false;
+
+    function gatherDraftState() {
+        const needsCi = document.querySelector('select[name="needs_ci"]');
+        const remarks = document.getElementById('lps_remarks');
+        return {
+            ts: Date.now(),
+            member_uid: memberUidInput ? memberUidInput.value : '',
+            member_name: memberNameInput ? memberNameInput.value : '',
+            member_contact: contact ? contact.value : '',
+            member_address: address ? address.value : '',
+            loan_amount_display: loanAmt ? loanAmt.value : '',
+            loan_amount_raw: loanAmtRaw ? loanAmtRaw.value : '',
+            loan_type: loanTypeIn ? loanTypeIn.value : '',
+            loan_type_hidden: loanTypeH ? loanTypeH.value : '',
+            needs_ci: needsCi ? needsCi.value : '',
+            lps_remarks: remarks ? remarks.value : '',
+        };
+    }
+
+    function saveDraftSoon() {
+        if (restoringDraft) {
+            return;
+        }
+        if (draftSaveTimer) {
+            clearTimeout(draftSaveTimer);
+        }
+        draftSaveTimer = setTimeout(function () {
+            draftSaveTimer = null;
+            try {
+                const st = gatherDraftState();
+                const hasAny = [
+                    st.member_uid,
+                    st.member_name,
+                    st.member_contact,
+                    st.member_address,
+                    st.loan_amount_raw,
+                    st.loan_type,
+                    st.lps_remarks,
+                ].some(function (x) {
+                    return String(x || '').trim() !== '';
+                });
+                if (!hasAny) {
+                    sessionStorage.removeItem(DRAFT_KEY);
+                    return;
+                }
+                sessionStorage.setItem(DRAFT_KEY, JSON.stringify(st));
+            } catch (e) { /* quota / private mode */ }
+        }, 400);
+    }
+
+    function restoreDraftIfAny() {
+        try {
+            var raw = sessionStorage.getItem(DRAFT_KEY);
+            if (!raw) {
+                return;
+            }
+            var st = JSON.parse(raw);
+            if (!st || typeof st !== 'object') {
+                sessionStorage.removeItem(DRAFT_KEY);
+                return;
+            }
+            if (st.ts && Date.now() - Number(st.ts) > DRAFT_MAX_AGE_MS) {
+                sessionStorage.removeItem(DRAFT_KEY);
+                return;
+            }
+            restoringDraft = true;
+            if (memberUidInput && st.member_uid != null) {
+                memberUidInput.value = String(st.member_uid);
+            }
+            if (memberNameInput && st.member_name != null) {
+                memberNameInput.value = String(st.member_name);
+            }
+            if (contact && st.member_contact != null) {
+                contact.value = String(st.member_contact);
+            }
+            if (address && st.member_address != null) {
+                address.value = String(st.member_address);
+            }
+            if (loanAmt && st.loan_amount_display != null && String(st.loan_amount_display).trim() !== '') {
+                loanAmt.value = String(st.loan_amount_display);
+                loanAmt.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (loanTypeIn && st.loan_type != null) {
+                loanTypeIn.value = String(st.loan_type);
+            }
+            if (loanTypeH && st.loan_type_hidden != null) {
+                loanTypeH.value = String(st.loan_type_hidden);
+            }
+            var needsCi = document.querySelector('select[name="needs_ci"]');
+            if (needsCi && st.needs_ci != null && String(st.needs_ci) !== '') {
+                needsCi.value = String(st.needs_ci);
+            }
+            var remarks = document.getElementById('lps_remarks');
+            if (remarks && st.lps_remarks != null) {
+                remarks.value = String(st.lps_remarks);
+            }
+            restoringDraft = false;
+
+            var mu = memberUidInput ? String(memberUidInput.value || '').trim() : '';
+            var nm = memberNameInput ? String(memberNameInput.value || '').trim() : '';
+            lastPrefillName = '';
+            if (/^\d+$/.test(mu)) {
+                performPrefill(nm, { member_uid: mu, _lookupKind: 'member_uid' });
+            } else if (nm.length >= 2) {
+                performPrefill(nm, {});
+            }
+        } catch (e) {
+            restoringDraft = false;
+            try {
+                sessionStorage.removeItem(DRAFT_KEY);
+            } catch (e2) { /* */ }
+        }
+    }
+
+    var formEl = document.getElementById('lpsSubmitApplicationForm');
+    if (formEl) {
+        ['input', 'change'].forEach(function (ev) {
+            formEl.addEventListener(ev, saveDraftSoon, true);
+        });
+    }
+
+    window.addEventListener('pageshow', function (ev) {
+        if (ev.persisted) {
+            saveDraftSoon();
+        }
+    });
+
+    restoreDraftIfAny();
 })(); 
 
 // Loan amount formatting with commas
