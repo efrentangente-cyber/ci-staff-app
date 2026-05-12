@@ -8,9 +8,54 @@
     }
 
     var MIRROR_DB = 'CIStaffOfflineDB';
-    var MIRROR_VER = 1;
+    /** Bumped: v1 DBs opened without onupgradeneeded could exist with no object store → transaction errors. */
+    var MIRROR_VER = 2;
     var MIRROR_STORE = 'serverApplications';
     var _hydrateScheduled = null;
+
+    /**
+     * Single IndexedDB open for read + write paths.
+     * Previously readMirrorApplications used open() with no onupgradeneeded — first visit could create
+     * version 1 with zero object stores; later saves then threw "object store not found".
+     */
+    function openMirrorDatabase() {
+        return new Promise(function (resolve, reject) {
+            if (!window.indexedDB) {
+                reject(new Error('IndexedDB unavailable'));
+                return;
+            }
+            var req = indexedDB.open(MIRROR_DB, MIRROR_VER);
+            req.onerror = function () {
+                reject(req.error);
+            };
+            req.onblocked = function () {
+                reject(new Error('IndexedDB upgrade blocked (close other tabs using this site)'));
+            };
+            req.onupgradeneeded = function (ev) {
+                var db = ev.target.result;
+                if (!db.objectStoreNames.contains(MIRROR_STORE)) {
+                    db.createObjectStore(MIRROR_STORE, { keyPath: 'serverId' });
+                }
+            };
+            req.onsuccess = function () {
+                var db = req.result;
+                if (!db.objectStoreNames.contains(MIRROR_STORE)) {
+                    try {
+                        db.close();
+                    } catch (eClose) {
+                        void 0;
+                    }
+                    reject(new Error('mirror_store_missing'));
+                    return;
+                }
+                resolve(db);
+            };
+        });
+    }
+
+    function openMirrorDbWritable() {
+        return openMirrorDatabase();
+    }
 
     function escapeHtml(s) {
         if (s == null) {
@@ -91,29 +136,6 @@
             .sort(appSort);
     }
 
-    /** Writable mirror DB — same DB name/version as readMirrorApplications; creates store if missing. */
-    function openMirrorDbWritable() {
-        return new Promise(function (resolve, reject) {
-            if (!window.indexedDB) {
-                reject(new Error('IndexedDB unavailable'));
-                return;
-            }
-            var req = indexedDB.open(MIRROR_DB, MIRROR_VER);
-            req.onerror = function () {
-                reject(req.error);
-            };
-            req.onupgradeneeded = function (ev) {
-                var db = ev.target.result;
-                if (!db.objectStoreNames.contains(MIRROR_STORE)) {
-                    db.createObjectStore(MIRROR_STORE, { keyPath: 'serverId' });
-                }
-            };
-            req.onsuccess = function () {
-                resolve(req.result);
-            };
-        });
-    }
-
     function dictToMirrorRow(app) {
         if (!app || app.id == null) {
             return null;
@@ -153,7 +175,7 @@
         if (!rows.length) {
             return Promise.resolve(0);
         }
-        return openMirrorDbWritable().then(function (db) {
+        function doPut(db) {
             return new Promise(function (resolve, reject) {
                 try {
                     var tx = db.transaction([MIRROR_STORE], 'readwrite');
@@ -187,7 +209,34 @@
                     reject(e);
                 }
             });
-        });
+        }
+        return openMirrorDatabase()
+            .then(function (db) {
+                return doPut(db);
+            })
+            .catch(function (err) {
+                var msg = err && err.message ? String(err.message) : '';
+                if (
+                    msg.indexOf('mirror_store_missing') !== -1 ||
+                    (err && err.name === 'NotFoundError')
+                ) {
+                    return new Promise(function (resolve, reject) {
+                        var del = indexedDB.deleteDatabase(MIRROR_DB);
+                        del.onerror = function () {
+                            reject(err);
+                        };
+                        del.onsuccess = function () {
+                            openMirrorDatabase()
+                                .then(function (db2) {
+                                    return doPut(db2);
+                                })
+                                .then(resolve)
+                                .catch(reject);
+                        };
+                    });
+                }
+                return Promise.reject(err);
+            });
     }
 
     /**
@@ -219,62 +268,63 @@
     }
 
     function readMirrorApplications() {
-        return new Promise(function (resolve) {
-            if (!window.indexedDB) {
-                resolve([]);
-                return;
-            }
-            var req = indexedDB.open(MIRROR_DB, MIRROR_VER);
-            req.onerror = function () {
-                resolve([]);
-            };
-            req.onsuccess = function () {
-                var db = req.result;
-                if (!db.objectStoreNames.contains(MIRROR_STORE)) {
-                    db.close();
-                    resolve([]);
-                    return;
-                }
-                try {
-                    var tx = db.transaction([MIRROR_STORE], 'readonly');
-                    var st = tx.objectStore(MIRROR_STORE);
-                    var g = st.getAll();
-                    g.onsuccess = function () {
-                        var rows = g.result || [];
-                        var apps = rows.map(function (r) {
-                            if (r.fullRecord && typeof r.fullRecord === 'object') {
-                                var o = Object.assign({}, r.fullRecord);
-                                if (o.id == null && r.serverId != null) {
-                                    o.id = r.serverId;
-                                }
-                                return o;
-                            }
-                            return {
-                                id: r.serverId,
-                                member_name: r.memberName,
-                                member_address: r.memberAddress,
-                                status: r.status,
-                                submitted_at: r.submittedAt,
-                                member_uid: r.memberUid != null ? r.memberUid : undefined
-                            };
-                        });
-                        db.close();
-                        resolve(apps);
-                    };
-                    g.onerror = function () {
-                        db.close();
-                        resolve([]);
-                    };
-                } catch (e) {
+        if (!window.indexedDB) {
+            return Promise.resolve([]);
+        }
+        return openMirrorDatabase()
+            .then(function (db) {
+                return new Promise(function (resolve) {
                     try {
-                        db.close();
-                    } catch (e2) {
-                        void 0;
+                        var tx = db.transaction([MIRROR_STORE], 'readonly');
+                        var st = tx.objectStore(MIRROR_STORE);
+                        var g = st.getAll();
+                        g.onsuccess = function () {
+                            var rows = g.result || [];
+                            var apps = rows.map(function (r) {
+                                if (r.fullRecord && typeof r.fullRecord === 'object') {
+                                    var o = Object.assign({}, r.fullRecord);
+                                    if (o.id == null && r.serverId != null) {
+                                        o.id = r.serverId;
+                                    }
+                                    return o;
+                                }
+                                return {
+                                    id: r.serverId,
+                                    member_name: r.memberName,
+                                    member_address: r.memberAddress,
+                                    status: r.status,
+                                    submitted_at: r.submittedAt,
+                                    member_uid: r.memberUid != null ? r.memberUid : undefined
+                                };
+                            });
+                            try {
+                                db.close();
+                            } catch (eClose) {
+                                void 0;
+                            }
+                            resolve(apps);
+                        };
+                        g.onerror = function () {
+                            try {
+                                db.close();
+                            } catch (eClose2) {
+                                void 0;
+                            }
+                            resolve([]);
+                        };
+                    } catch (e) {
+                        try {
+                            db.close();
+                        } catch (e2) {
+                            void 0;
+                        }
+                        resolve([]);
                     }
-                    resolve([]);
-                }
-            };
-        });
+                });
+            })
+            .catch(function () {
+                return [];
+            });
     }
 
     function fetchServerApplications() {
