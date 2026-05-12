@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>Offline - CI Staff</title>
     <meta charset="utf-8">
@@ -18,7 +18,7 @@
             padding: 20px;
         }
         .offline-container {
-            max-width: 400px;
+            max-width: 420px;
         }
         .offline-icon {
             font-size: 80px;
@@ -30,8 +30,33 @@
         }
         p {
             font-size: 16px;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
             opacity: 0.9;
+        }
+        .hint {
+            font-size: 14px;
+            opacity: 0.85;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+        .nav-links {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .nav-links a {
+            display: block;
+            background: rgba(255, 255, 255, 0.12);
+            color: white;
+            text-decoration: none;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-weight: bold;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+        }
+        .nav-links a:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
         .retry-btn {
             background: #fbbf24;
@@ -42,6 +67,7 @@
             border-radius: 5px;
             cursor: pointer;
             font-weight: bold;
+            width: 100%;
         }
         .retry-btn:hover {
             background: #f59e0b;
@@ -55,30 +81,34 @@
 </head>
 <body>
     <div class="offline-container">
-        <div class="offline-icon">📡</div>
+        <div class="offline-icon" aria-hidden="true">📡</div>
         <h1>You're Offline</h1>
-        <p>No internet connection detected. Forms and actions you submit while signed in are saved on this device and sent automatically when you are online again.</p>
-        <button class="retry-btn" onclick="location.reload()">Try Again</button>
-        <div class="status" id="status"></div>
+        <p>No internet connection. Forms you submit while signed in can be saved on this device and sent when you reconnect.</p>
+        <p class="hint">Open routes below only work if you visited them at least once while online (the app caches them). Start from your dashboard to continue CI work offline.</p>
+        <nav class="nav-links" aria-label="Offline shortcuts">
+            <a href="/ci/dashboard">CI / BI Dashboard</a>
+            <a href="/notifications">Notifications</a>
+            <a href="/messages">Messages</a>
+            <a href="/ci/offline_saves">Offline saves</a>
+            <a href="/change_password">Account / change password</a>
+        </nav>
+        <button type="button" class="retry-btn" onclick="location.reload()">Try Again</button>
+        <div class="status" id="status" role="status"></div>
     </div>
 
     <script>
-        // Check connection status
         function updateStatus() {
-            const status = document.getElementById('status');
+            var status = document.getElementById('status');
             if (navigator.onLine) {
-                status.textContent = '✓ Connection restored! Reloading...';
-                setTimeout(() => location.reload(), 1000);
+                status.textContent = 'Connection restored. Reloading…';
+                setTimeout(function () { location.reload(); }, 800);
             } else {
-                status.textContent = '✗ Still offline';
+                status.textContent = 'Still offline';
             }
         }
 
-        // Listen for online event
         window.addEventListener('online', updateStatus);
         window.addEventListener('offline', updateStatus);
-
-        // Check every 5 seconds
         setInterval(updateStatus, 5000);
     </script>
 </body>

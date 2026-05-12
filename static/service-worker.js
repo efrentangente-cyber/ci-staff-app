@@ -1,5 +1,5 @@
 // DCCCO CI Staff App - cache pages for offline (must register at /service-worker.js so scope is /)
-const CACHE_NAME = 'dccco-staff-v13';
+const CACHE_NAME = 'dccco-staff-v14';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install
@@ -12,66 +12,121 @@ const STATIC_ASSETS = [
   'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css',
 ];
 
-// Pages to cache after first visit (dynamic cache) — prefix match (do not use '/' alone).
+// Pages to cache after first successful online visit — prefix match (do not use '/' alone).
 const CACHE_PAGES = [
   '/login',
   '/ci/dashboard',
+  '/ci/offline_saves',
   '/loan/dashboard',
   '/admin/dashboard',
   '/loan/submit',
   '/notifications',
+  '/messages',
   '/ci/application',
   '/ci/review',
-  '/ci/checklist', // wizard / summary / same flows as online when cached + outbox
+  '/ci/checklist',
   '/admin/application',
   '/loan/application',
   '/change_password',
-  '/ci/tracking',
+  '/ci-tracking',
   '/manage_users',
 ];
 
+/**
+ * When a navigation is not in Cache Storage, serve the first available cached app page
+ * so staff can keep working (dashboard, assignments, checklists opened while online).
+ */
+const OFFLINE_NAV_FALLBACKS = [
+  '/ci/dashboard',
+  '/loan/dashboard',
+  '/admin/dashboard',
+  '/notifications',
+  '/messages',
+  '/ci/offline_saves',
+  '/change_password',
+  '/login',
+];
+
 // ── Install: pre-cache static assets + request persistent storage ──────────
-self.addEventListener('install', event => {
+self.addEventListener('install', (event) => {
   event.waitUntil(
     Promise.all([
-      caches.open(CACHE_NAME)
-        .then(cache => cache.addAll(STATIC_ASSETS).catch(() => {})),
-      // Request persistent storage
-      navigator.storage && navigator.storage.persist 
-        ? navigator.storage.persist() 
-        : Promise.resolve(false)
+      caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS).catch(() => {})),
+      navigator.storage && navigator.storage.persist ? navigator.storage.persist() : Promise.resolve(false)
     ]).then(() => self.skipWaiting())
   );
 });
 
 // ── Activate: remove old caches ─────────────────────────────────────────────
-self.addEventListener('activate', event => {
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
-      ))
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
+/**
+ * @param {Request} request
+ * @param {URL} url
+ */
+async function cachedNavigationFallback(request, url) {
+  const origin = url.origin;
+
+  /** @param {Request|string} reqLike */
+  const tryMatch = async (reqLike) => {
+    let r = await caches.match(reqLike);
+    if (r) return r;
+    r = await caches.match(reqLike, { ignoreSearch: true });
+    if (r) return r;
+    if (typeof reqLike === 'string') {
+      const r2 = await caches.match(new Request(reqLike, { credentials: 'include' }));
+      if (r2) return r2;
+      return caches.match(new Request(reqLike, { credentials: 'include' }), { ignoreSearch: true });
+    }
+    return null;
+  };
+
+  let cached = await tryMatch(request);
+  if (cached) return cached;
+
+  const pathOnlyReq = new Request(origin + url.pathname, { credentials: 'include' });
+  cached = await tryMatch(pathOnlyReq);
+  if (cached) return cached;
+
+  if (request.mode === 'navigate' && url.pathname === '/login') {
+    const dashboards = ['/ci/dashboard', '/loan/dashboard', '/admin/dashboard'];
+    for (let i = 0; i < dashboards.length; i++) {
+      const c = await tryMatch(origin + dashboards[i]);
+      if (c) return c;
+    }
+  }
+
+  if (request.mode === 'navigate') {
+    for (let j = 0; j < OFFLINE_NAV_FALLBACKS.length; j++) {
+      const c = await tryMatch(origin + OFFLINE_NAV_FALLBACKS[j]);
+      if (c) return c;
+    }
+  }
+
+  if (request.mode === 'navigate') {
+    const off = await tryMatch(origin + OFFLINE_URL);
+    if (off) return off;
+  }
+  return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+}
+
 // ── Fetch ────────────────────────────────────────────────────────────────────
-self.addEventListener('fetch', event => {
+self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip chrome-extension and non-http requests
   if (!url.protocol.startsWith('http')) return;
 
-  // Mutating requests: handled by offline-request-queue.js (fetch wrapper) in the page.
-  // Do not intercept POST/PUT here — breaks JSON, multipart, and CSRF replay.
-
-  // ── GET: network first, fallback to cache ────────────────────────────────
   event.respondWith(
     fetch(request, { credentials: 'include' })
-      .then(response => {
-        // Cache successful page responses including authenticated ones
-        // Never cache generated/heavy catalogue JS — a bad offline 503 or stale copy breaks coverage wizard.
+      .then((response) => {
         const isGeneratedOrAddressCatalogue =
           url.pathname.includes('/static/generated/') ||
           url.pathname.endsWith('/addresses.js') ||
@@ -85,41 +140,16 @@ self.addEventListener('fetch', event => {
           (request.mode === 'navigate' ||
             path === '/' ||
             cacheByPrefix ||
-            (path.startsWith('/static/') &&
-              !isGeneratedOrAddressCatalogue))
+            (path.startsWith('/static/') && !isGeneratedOrAddressCatalogue))
         ) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
         return response;
       })
-      .catch(async () => {
-        // Network failed - try exact cache match first
-        const cached = await caches.match(request);
-        if (cached) return cached;
-
-        // Try without query string
-        const urlWithoutQuery = new Request(url.origin + url.pathname);
-        const cached2 = await caches.match(urlWithoutQuery);
-        if (cached2) return cached2;
-
-        // If navigating to login while offline, try to serve cached dashboard
-        if (request.mode === 'navigate' && url.pathname === '/login') {
-          const dashboards = ['/ci/dashboard', '/loan/dashboard', '/admin/dashboard'];
-          for (const dash of dashboards) {
-            const cachedDash = await caches.match(url.origin + dash);
-            if (cachedDash) return cachedDash;
-          }
-        }
-
-        // Last resort - offline page
-        if (request.mode === 'navigate') return caches.match(OFFLINE_URL);
-        return new Response('Offline', { status: 503 });
-      })
+      .catch(() => cachedNavigationFallback(request, url))
   );
 });
 
-// Background sync tags may still be registered from the page; no SW-side queue.
 self.addEventListener('sync', () => {});
-
 self.addEventListener('periodicsync', () => {});
