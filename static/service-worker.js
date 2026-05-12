@@ -1,5 +1,5 @@
 // DCCCO CI Staff App - cache pages for offline (must register at /service-worker.js so scope is /)
-const CACHE_NAME = 'dccco-staff-v15';
+const CACHE_NAME = 'dccco-staff-v18';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install (Bootstrap Icons are self-hosted so fonts load with CSS — no CDN font delay).
@@ -12,6 +12,12 @@ const STATIC_ASSETS = [
   '/static/vendor/bootstrap-icons/bootstrap-icons.css',
   '/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff2',
   '/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff',
+  '/static/ci-checklist-wizard.js',
+  '/static/ci-checklist-wizard.css',
+  '/static/excel-spreadsheet.js',
+  '/static/excel-spreadsheet.css',
+  '/static/signature-pad.js',
+  '/static/ci-location-tracker.js',
 ];
 
 // Pages to cache after first successful online visit — prefix match (do not use '/' alone).
@@ -97,6 +103,22 @@ async function cachedNavigationFallback(request, url) {
   cached = await tryMatch(pathOnlyReq);
   if (cached) return cached;
 
+  if (request.mode === 'navigate') {
+    const p = url.pathname;
+    if (p.startsWith('/ci/review/') || p.startsWith('/ci/checklist/')) {
+      const cache = await caches.open(CACHE_NAME);
+      const keys = await cache.keys();
+      for (let i = 0; i < keys.length; i++) {
+        const req = keys[i];
+        const ru = new URL(req.url);
+        if (ru.origin === origin && ru.pathname === p) {
+          const m = await cache.match(req);
+          if (m && m.ok) return m;
+        }
+      }
+    }
+  }
+
   if (request.mode === 'navigate' && url.pathname === '/login') {
     const dashboards = ['/ci/dashboard', '/loan/dashboard', '/admin/dashboard'];
     for (let i = 0; i < dashboards.length; i++) {
@@ -149,7 +171,17 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => cachedNavigationFallback(request, url))
+      .catch(async () => {
+        let fromCache = await caches.match(request, { ignoreSearch: true });
+        if (fromCache) return fromCache;
+        if (url.pathname.startsWith('/static/')) {
+          fromCache = await caches.match(new Request(url.origin + url.pathname, { credentials: 'include' }), {
+            ignoreSearch: true
+          });
+          if (fromCache) return fromCache;
+        }
+        return cachedNavigationFallback(request, url);
+      })
   );
 });
 

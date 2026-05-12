@@ -663,6 +663,12 @@ function renderCiDashboardTables(applications) {
             searchApplications('completed');
         }
     } catch (e) { /* ignore */ }
+
+    try {
+        if (typeof window.prefetchCiInterviewShellsForApps === 'function') {
+            window.prefetchCiInterviewShellsForApps(applications);
+        }
+    } catch (e) { /* ignore */ }
 }
 
 function adminForReview(app) {

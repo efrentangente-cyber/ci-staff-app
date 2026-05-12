@@ -535,6 +535,50 @@
         }
     }
 
+    /**
+     * While online, warm the service worker cache for interview flows so "Start" works offline.
+     * One scheduled pass per application id per tab session (avoids duplicate storms on re-render).
+     */
+    var MAX_SHELL_PREFETCH = 30;
+    var _shellPrefetchScheduled = Object.create(null);
+
+    function prefetchCiInterviewShellsForApps(apps) {
+        if (!apps || !apps.length) {
+            return;
+        }
+        if (typeof navigator === 'undefined' || !navigator.onLine) {
+            return;
+        }
+        var pending = apps.filter(function (a) {
+            return a && a.status === 'assigned_to_ci' && a.id != null;
+        });
+        if (pending.length > MAX_SHELL_PREFETCH) {
+            pending = pending.slice(0, MAX_SHELL_PREFETCH);
+        }
+        pending.forEach(function (app, idx) {
+            var id = app.id;
+            if (_shellPrefetchScheduled[id]) {
+                return;
+            }
+            _shellPrefetchScheduled[id] = true;
+            var baseDelay = idx * 250;
+            var paths = [
+                '/ci/review/' + id,
+                '/ci/checklist/summary/' + id,
+                '/ci/checklist/wizard/' + id
+            ];
+            paths.forEach(function (path, j) {
+                setTimeout(function () {
+                    fetch(path, { credentials: 'include', cache: 'default' }).catch(function () {
+                        void 0;
+                    });
+                }, baseDelay + j * 80);
+            });
+        });
+    }
+
+    window.prefetchCiInterviewShellsForApps = prefetchCiInterviewShellsForApps;
+
     function applyFromApps(apps) {
         if (!apps || !apps.length) {
             return;
@@ -548,6 +592,11 @@
         });
         renderRows(pending, completed);
         updateStats(list, pending, completed);
+        try {
+            prefetchCiInterviewShellsForApps(list);
+        } catch (ePf) {
+            void 0;
+        }
     }
 
     function runCiDashboardHydration() {
@@ -644,6 +693,13 @@
                             detail: { applications: [app] }
                         })
                     );
+                    try {
+                        if (typeof window.prefetchCiInterviewShellsForApps === 'function') {
+                            window.prefetchCiInterviewShellsForApps([app]);
+                        }
+                    } catch (ePre) {
+                        void 0;
+                    }
                     scheduleHydration();
                 })
                 .catch(function (err) {
