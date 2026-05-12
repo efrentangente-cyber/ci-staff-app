@@ -17,7 +17,7 @@ import sqlite3
 import time
 import uuid
 from functools import wraps
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from flask import Blueprint, current_app, g, jsonify, request
 from werkzeug.security import check_password_hash
@@ -26,11 +26,57 @@ from werkzeug.utils import secure_filename
 
 mobile_api_bp = Blueprint("mobile_api", __name__, url_prefix="/api")
 
+# Align native login tokens with web role normalization (see root app.py ROLE_ALIASES).
+_ROLE_ALIASES = {
+    "superadmin": "admin",
+    "super_admin": "admin",
+    "loan officer": "loan_officer",
+    "loan_officer": "loan_officer",
+    "ci/bi": "ci_staff",
+    "ci-bi": "ci_staff",
+    "ci_bi": "ci_staff",
+    "ci staff": "ci_staff",
+    "lps": "loan_staff",
+    "loan staff": "loan_staff",
+}
+_VALID_ROLES = {"admin", "loan_officer", "loan_staff", "ci_staff"}
+
+
+def _normalize_role(role):
+    if role is None:
+        return None
+    role_key = str(role).strip().lower()
+    mapped = _ROLE_ALIASES.get(role_key, role_key)
+    return mapped if mapped in _VALID_ROLES else None
+
+
+def _token_role_for_native(db_role: Any) -> str:
+    """JWT role claim must match Android checks (loan_staff, ci_staff, admin)."""
+    normalized = _normalize_role(db_role)
+    effective = normalized if normalized else (db_role or "")
+    effective = str(effective).strip()
+    if effective == "loan_officer":
+        return "loan_staff"
+    return effective
+
+
+def _is_pg_adapter(conn: Any) -> bool:
+    try:
+        from database import DatabaseConnection, is_postgresql
+
+        return isinstance(conn, DatabaseConnection) and is_postgresql()
+    except ImportError:
+        return False
+
 
 # ---------------------------------------------------------------------------
-# DB helper (mirrors get_db() in app.py to stay decoupled).
+# DB helper — standalone MyCi app uses SQLite path config; root ci-staff-app passes get_db.
 # ---------------------------------------------------------------------------
-def _db() -> sqlite3.Connection:
+def _db():
+    getter = current_app.config.get("MOBILE_API_GET_DB")
+    if callable(getter):
+        return getter()
+
     db_path = current_app.config["DATABASE"]
     conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
@@ -42,7 +88,7 @@ def _db() -> sqlite3.Connection:
     return conn
 
 
-def _ensure_idempotency_table(conn: sqlite3.Connection) -> None:
+def _ensure_idempotency_table(conn: Any) -> None:
     """Stores Idempotency-Key -> response so duplicate POSTs return the same result."""
     conn.execute(
         """
@@ -132,19 +178,36 @@ def json_login_handler():
 
     conn = _db()
     row = conn.execute(
-        "SELECT id, email, name, role, password_hash FROM users WHERE LOWER(email) = ?",
+        "SELECT id, email, name, role, password_hash, is_approved FROM users WHERE LOWER(email) = ?",
         (email,),
     ).fetchone()
-    conn.close()
     if not row or not check_password_hash(row["password_hash"], password):
+        conn.close()
         return jsonify({"error": "invalid_credentials"}), 401
 
-    token = _sign({"sub": row["id"], "role": row["role"], "iat": int(time.time())})
+    keys = row.keys()
+    is_approved = row["is_approved"] if "is_approved" in keys else 1
+    if is_approved == 0:
+        conn.close()
+        return jsonify({"error": "pending_approval"}), 403
+
+    normalized_role = _normalize_role(row["role"])
+    token_role = _token_role_for_native(row["role"])
+    if normalized_role and normalized_role != row["role"]:
+        try:
+            conn.execute("UPDATE users SET role=? WHERE id=?", (normalized_role, row["id"]))
+            conn.commit()
+        except Exception:
+            pass
+
+    conn.close()
+
+    token = _sign({"sub": row["id"], "role": token_role, "iat": int(time.time())})
     return jsonify({
         "token": token,
         "userId": row["id"],
         "name": row["name"],
-        "role": row["role"],
+        "role": token_role,
     })
 
 
@@ -164,7 +227,7 @@ def me():
 # ---------------------------------------------------------------------------
 # Loan applications
 # ---------------------------------------------------------------------------
-def _idem_lookup(conn: sqlite3.Connection, key: str, user_id: int, route: str) -> Optional[Dict[str, Any]]:
+def _idem_lookup(conn: Any, key: str, user_id: int, route: str) -> Optional[Dict[str, Any]]:
     _ensure_idempotency_table(conn)
     r = conn.execute(
         "SELECT response_json FROM api_idempotency_keys WHERE key = ? AND user_id = ? AND route = ?",
@@ -173,12 +236,28 @@ def _idem_lookup(conn: sqlite3.Connection, key: str, user_id: int, route: str) -
     return json.loads(r["response_json"]) if r else None
 
 
-def _idem_save(conn: sqlite3.Connection, key: str, user_id: int, route: str, payload: Dict[str, Any]) -> None:
+def _idem_save(conn: Any, key: str, user_id: int, route: str, payload: Dict[str, Any]) -> None:
     _ensure_idempotency_table(conn)
-    conn.execute(
-        "INSERT OR REPLACE INTO api_idempotency_keys (key, user_id, route, response_json, created_at) VALUES (?, ?, ?, ?, ?)",
-        (key, user_id, route, json.dumps(payload), int(time.time())),
-    )
+    ts = int(time.time())
+    payload_json = json.dumps(payload)
+    if _is_pg_adapter(conn):
+        conn.execute(
+            """
+            INSERT INTO api_idempotency_keys (key, user_id, route, response_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (key) DO UPDATE SET
+              user_id = EXCLUDED.user_id,
+              route = EXCLUDED.route,
+              response_json = EXCLUDED.response_json,
+              created_at = EXCLUDED.created_at
+            """,
+            (key, user_id, route, payload_json, ts),
+        )
+    else:
+        conn.execute(
+            "INSERT OR REPLACE INTO api_idempotency_keys (key, user_id, route, response_json, created_at) VALUES (?, ?, ?, ?, ?)",
+            (key, user_id, route, payload_json, ts),
+        )
 
 
 @mobile_api_bp.post("/loan_applications")
@@ -225,15 +304,27 @@ def create_loan_application():
             409,
         )
 
-    cursor = conn.execute(
-        """
-        INSERT INTO loan_applications
-          (member_name, member_contact, member_address, loan_amount, needs_ci_interview, submitted_by)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (name, contact, address, amount, needs_ci, g.user_id),
-    )
-    new_id = cursor.lastrowid
+    if _is_pg_adapter(conn):
+        cur = conn.execute(
+            """
+            INSERT INTO loan_applications
+              (member_name, member_contact, member_address, loan_amount, needs_ci_interview, submitted_by)
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (name, contact, address, amount, needs_ci, g.user_id),
+        )
+        new_id = cur.fetchone()["id"]
+    else:
+        cursor = conn.execute(
+            """
+            INSERT INTO loan_applications
+              (member_name, member_contact, member_address, loan_amount, needs_ci_interview, submitted_by)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (name, contact, address, amount, needs_ci, g.user_id),
+        )
+        new_id = cursor.lastrowid
     response = {"id": new_id, "updatedAt": _iso_now()}
     _idem_save(conn, idem, g.user_id, "create_loan", response)
     conn.commit()
@@ -271,11 +362,23 @@ def upload_document():
     path = os.path.join(upload_folder, unique)
     file.save(path)
 
-    cursor = conn.execute(
-        "INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)",
-        (loan_app_id, safe, path, g.user_id),
-    )
-    response = {"fileId": cursor.lastrowid, "loanApplicationId": int(loan_app_id)}
+    if _is_pg_adapter(conn):
+        cur = conn.execute(
+            """
+            INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by)
+            VALUES (?, ?, ?, ?)
+            RETURNING id
+            """,
+            (loan_app_id, safe, path, g.user_id),
+        )
+        fid = cur.fetchone()["id"]
+    else:
+        cursor = conn.execute(
+            "INSERT INTO documents (loan_application_id, file_name, file_path, uploaded_by) VALUES (?, ?, ?, ?)",
+            (loan_app_id, safe, path, g.user_id),
+        )
+        fid = cursor.lastrowid
+    response = {"fileId": fid, "loanApplicationId": int(loan_app_id)}
     _idem_save(conn, idem, g.user_id, "upload", response)
     conn.commit()
     conn.close()
@@ -410,7 +513,7 @@ def ci_complete():
     return jsonify(response)
 
 
-def _loan_dto(r: sqlite3.Row) -> Dict[str, Any]:
+def _loan_dto(r: Any) -> Dict[str, Any]:
     keys = r.keys()
     def _opt(name: str):
         return r[name] if name in keys else None
