@@ -1,5 +1,5 @@
-// DCCCO CI Staff App - cache CI checklist/review for same UI offline
-const CACHE_NAME = 'dccco-staff-v12';
+// DCCCO CI Staff App - cache pages for offline (must register at /service-worker.js so scope is /)
+const CACHE_NAME = 'dccco-staff-v13';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install
@@ -12,7 +12,7 @@ const STATIC_ASSETS = [
   'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css',
 ];
 
-// Pages to cache after first visit (dynamic cache)
+// Pages to cache after first visit (dynamic cache) — prefix match (do not use '/' alone).
 const CACHE_PAGES = [
   '/login',
   '/ci/dashboard',
@@ -77,11 +77,15 @@ self.addEventListener('fetch', event => {
           url.pathname.endsWith('/addresses.js') ||
           url.pathname.endsWith('/ci-coverage-route-wizard.js');
 
+        const path = url.pathname;
+        const cacheByPrefix = CACHE_PAGES.some((p) => path.startsWith(p));
+
         if (
           response.status === 200 &&
           (request.mode === 'navigate' ||
-            CACHE_PAGES.some((p) => url.pathname.startsWith(p)) ||
-            (url.pathname.startsWith('/static/') &&
+            path === '/' ||
+            cacheByPrefix ||
+            (path.startsWith('/static/') &&
               !isGeneratedOrAddressCatalogue))
         ) {
           const clone = response.clone();

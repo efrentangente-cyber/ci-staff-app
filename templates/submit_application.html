@@ -153,7 +153,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Prefill debounce: short enough to feel responsive; long enough to avoid a query per keystroke.
     const DEBOUNCE_PREFILL_MS = 180;
     const SUGGEST_DEBOUNCE_MS = 80;
-    const SUGGEST_ID_DEBOUNCE_MS = 80;
+    /** Longer debounce for ID digits — pairs with cheaper server query; avoids stampedes while typing. */
+    const SUGGEST_ID_DEBOUNCE_MS = 160;
     const LOOKUP_SPINNER_DELAY_MS = 0;
     let lastPrefillName = '';
     let lookupSeq = 0;
@@ -631,6 +632,11 @@ document.addEventListener('DOMContentLoaded', function() {
             hideMemberIdDropdown();
             return;
         }
+        /** Full cooperative IDs are usually 9+ digits — dropdown adds extra API load; prefill fills the name. */
+        if (qt.length > 8) {
+            hideMemberIdDropdown();
+            return;
+        }
         if (suggestionIdAbort) {
             try { suggestionIdAbort.abort(); } catch (e) { /* ignore */ }
         }
@@ -669,6 +675,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!qt.length) {
             clearTimeout(suggestionIdDebounceTimer);
             suggestionIdDebounceTimer = null;
+            hideMemberIdDropdown();
+            return;
+        }
+        if (qt.length > 8) {
+            clearTimeout(suggestionIdDebounceTimer);
+            suggestionIdDebounceTimer = null;
+            suggestionIdSeq += 1;
             hideMemberIdDropdown();
             return;
         }

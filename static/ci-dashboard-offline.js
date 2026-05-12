@@ -118,12 +118,24 @@
         if (!app || app.id == null) {
             return null;
         }
+        var snap = app;
+        try {
+            snap = JSON.parse(JSON.stringify(app));
+        } catch (eSnap) {
+            snap = app;
+        }
+        var mu = app.member_uid;
+        if (mu == null && snap && snap.member_uid != null) {
+            mu = snap.member_uid;
+        }
         return {
             serverId: app.id,
             memberName: app.member_name || '',
             memberAddress: app.member_address || '',
             status: app.status || '',
-            submittedAt: app.submitted_at || ''
+            submittedAt: app.submitted_at || '',
+            memberUid: mu,
+            fullRecord: snap
         };
     }
 
@@ -230,12 +242,20 @@
                     g.onsuccess = function () {
                         var rows = g.result || [];
                         var apps = rows.map(function (r) {
+                            if (r.fullRecord && typeof r.fullRecord === 'object') {
+                                var o = Object.assign({}, r.fullRecord);
+                                if (o.id == null && r.serverId != null) {
+                                    o.id = r.serverId;
+                                }
+                                return o;
+                            }
                             return {
                                 id: r.serverId,
                                 member_name: r.memberName,
                                 member_address: r.memberAddress,
                                 status: r.status,
-                                submitted_at: r.submittedAt
+                                submitted_at: r.submittedAt,
+                                member_uid: r.memberUid != null ? r.memberUid : undefined
                             };
                         });
                         db.close();
@@ -315,7 +335,7 @@
 
         if (pending.length === 0) {
             pendingTbody.innerHTML =
-                '<tr><td colspan="5" class="text-muted text-center py-3">No pending interviews. Download from the list above when online, or use the cloud download button.</td></tr>';
+                '<tr><td colspan="5" class="text-muted text-center py-3">No pending interviews. When online, assignments appear here and are kept on this device for offline use.</td></tr>';
         } else {
             pendingTbody.innerHTML = pending
                 .sort(appSort)
@@ -435,11 +455,6 @@
     }
 
     function applyFromApps(apps) {
-        /* While online, realtime-dashboard.js + server HTML own the grouped table layout.
-           Applying flat per-app rows here caused visible flicker/size jumps. Offline only. */
-        if (typeof navigator !== 'undefined' && navigator.onLine) {
-            return;
-        }
         if (!apps || !apps.length) {
             return;
         }
@@ -471,6 +486,7 @@
                     if (typeof navigator !== 'undefined' && navigator.onLine) {
                         return fetchServerApplications().then(function (api) {
                             if (api && Array.isArray(api) && api.length > 0) {
+                                saveMirrorApplicationsFromDicts(api).catch(function () {});
                                 return mergeById(api, localMerged);
                             }
                             if (api && Array.isArray(api) && api.length === 0) {
@@ -492,11 +508,11 @@
                         var ct = document.querySelector('#completedTable tbody');
                         if (pt) {
                             pt.innerHTML =
-                                '<tr><td colspan="4" class="text-muted text-center py-3">No applications in offline storage. Connect to the internet and use Download on each row, or the cloud download button.</td></tr>';
+                                '<tr><td colspan="5" class="text-muted text-center py-3">No assignments saved on this device yet. Connect once with internet — your dashboard saves automatically — or use the cloud download button.</td></tr>';
                         }
                         if (ct) {
                             ct.innerHTML =
-                                '<tr><td colspan="4" class="text-muted text-center py-3">—</td></tr>';
+                                '<tr><td colspan="5" class="text-muted text-center py-3">—</td></tr>';
                         }
                         updateStats([], [], []);
                     }
@@ -505,9 +521,6 @@
     }
 
     function scheduleHydration() {
-        if (typeof navigator !== 'undefined' && navigator.onLine) {
-            return;
-        }
         if (_hydrateScheduled) {
             clearTimeout(_hydrateScheduled);
         }

@@ -951,35 +951,6 @@ init_offline_interview_api(app, csrf)
 init_ci_offline_saves(app, csrf)
 
 
-def _register_mobile_staff_api():
-    """
-    Native Android (Retrofit) expects POST /api/login and Bearer-auth routes under /api/*.
-    That blueprint ships alongside MyCi; wire it to this app's DB pool via MOBILE_API_GET_DB.
-    """
-    import sys
-
-    _mini_root = Path(__file__).resolve().parent / 'MyCi' / 'flask_app'
-    _p = str(_mini_root)
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-    from mobile_api import json_login_handler, mobile_api_bp
-
-    app.config['MOBILE_API_GET_DB'] = get_db
-    app.register_blueprint(mobile_api_bp)
-    app.add_url_rule(
-        '/api/login',
-        'api_json_login',
-        json_login_handler,
-        methods=['GET', 'POST'],
-    )
-    for _ep in list(app.view_functions.keys()):
-        if _ep.startswith('mobile_api.') or _ep == 'api_json_login':
-            csrf.exempt(app.view_functions[_ep])
-
-
-_register_mobile_staff_api()
-
-
 def _csrf_safe_redirect_target():
     """
     After a CSRF validation failure, still-authenticated users should stay in the app
@@ -1450,6 +1421,18 @@ def serve_static(filename):
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory('static/images', 'logo.jpg', mimetype='image/jpeg')
+
+
+@app.route('/service-worker.js')
+def service_worker_js():
+    """Root URL so the worker's default scope is ``/`` (whole app), not ``/static/`` only."""
+    resp = send_from_directory(
+        'static',
+        'service-worker.js',
+        mimetype='application/javascript; charset=utf-8',
+    )
+    resp.headers['Cache-Control'] = 'no-cache, max-age=0'
+    return resp
 
 
 @app.route('/healthz')
@@ -5126,38 +5109,38 @@ def api_member_application_prefill():
 
         elif mu_raw.isdigit():
             mu_int = int(mu_raw)
-            prefill_scope_out = 'own'
             related_rows = conn.execute(
                 '''
                 SELECT id, loan_type, loan_amount, status, needs_ci_interview, member_contact,
-                       member_address, submitted_at, member_uid
+                       member_address, submitted_at, member_uid, member_name, submitted_by
                 FROM loan_applications
-                WHERE submitted_by = ? AND member_uid = ?
+                WHERE member_uid = ?
+                  AND (
+                        submitted_by = ?
+                     OR NOT EXISTS (
+                          SELECT 1 FROM loan_applications t
+                          WHERE t.member_uid = loan_applications.member_uid
+                            AND t.submitted_by = ?
+                        )
+                      )
                 ORDER BY id DESC
                 LIMIT 30
                 ''',
-                (sb, mu_int),
+                (mu_int, sb, sb),
             ).fetchall()
-            if not related_rows:
-                prefill_scope_out = 'cooperative'
-                related_rows = conn.execute(
-                    '''
-                    SELECT id, loan_type, loan_amount, status, needs_ci_interview, member_contact,
-                           member_address, submitted_at, member_uid
-                    FROM loan_applications
-                    WHERE member_uid = ?
-                    ORDER BY id DESC
-                    LIMIT 30
-                    ''',
-                    (mu_int,),
-                ).fetchall()
+            if related_rows:
+                first_sb = dict(related_rows[0]).get('submitted_by')
+                try:
+                    prefill_scope_out = 'own' if int(first_sb) == sb else 'cooperative'
+                except (TypeError, ValueError):
+                    prefill_scope_out = 'cooperative'
 
         elif len(name) >= 2:
             nk = _normalized_member_name_key(name)
             related_rows = conn.execute(
                 '''
                 SELECT id, loan_type, loan_amount, status, needs_ci_interview, member_contact,
-                       member_address, submitted_at, member_uid
+                       member_address, submitted_at, member_uid, member_name
                 FROM loan_applications
                 WHERE submitted_by = ?
                   AND LOWER(TRIM(COALESCE(member_name, ''))) = ?
@@ -5266,7 +5249,10 @@ def api_member_name_suggestions():
     conn = get_db()
     try:
         if q_raw.isdigit():
-            like_pat = q_raw + '%'
+            bounds = _digit_prefix_integer_bounds(q_raw, max_digits=15)
+            if not bounds:
+                return jsonify({'ok': True, 'names': [], 'id_matches': []})
+            low, high = bounds
             rows = conn.execute(
                 '''
                 SELECT member_uid, id, TRIM(member_name) AS mn
@@ -5274,13 +5260,13 @@ def api_member_name_suggestions():
                 WHERE submitted_by = ?
                   AND TRIM(COALESCE(member_name, '')) <> ''
                   AND (
-                    CAST(id AS TEXT) LIKE ?
-                    OR (member_uid IS NOT NULL AND CAST(member_uid AS TEXT) LIKE ?)
+                    id BETWEEN ? AND ?
+                    OR (member_uid IS NOT NULL AND member_uid BETWEEN ? AND ?)
                   )
                 ORDER BY COALESCE(member_uid, id) ASC, id DESC
                 LIMIT 60
                 ''',
-                (sb, like_pat, like_pat),
+                (sb, low, high, low, high),
             ).fetchall()
             id_matches = []
             seen_keys = set()
@@ -7469,6 +7455,25 @@ def _blocking_open_pipeline_duplicate_exists(conn, member_name, submitted_by_id)
 
 def _normalized_member_name_key(member_name):
     return (member_name or '').strip().lower()
+
+
+def _digit_prefix_integer_bounds(q_digits: str, max_digits: int = 15):
+    """
+    Bounds for DECIMAL STRINGS starting with q_digits (no wildcards): member_uid / id prefix search.
+    Uses numeric BETWEEN so btree indexes apply (avoids CAST(... AS TEXT) LIKE scans).
+    """
+    if not q_digits or not q_digits.isdigit():
+        return None
+    if len(q_digits) > max_digits:
+        try:
+            v = int(q_digits)
+            return (v, v)
+        except (TypeError, ValueError):
+            return None
+    pad = max_digits - len(q_digits)
+    low = int(q_digits + ('0' * pad))
+    high = int(q_digits + ('9' * pad))
+    return (low, high)
 
 
 def _parse_member_uid_for_new_application(conn, raw_uid, member_name):

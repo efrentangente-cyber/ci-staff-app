@@ -421,6 +421,13 @@
             } else {
                 msgEl.classList.remove('text-danger');
             }
+            if (typeof msgEl.scrollIntoView === 'function') {
+                try {
+                    msgEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } catch (eScr) {
+                    void eScr;
+                }
+            }
         }
 
         function updatePreview() {
@@ -711,8 +718,9 @@
             if (useCatalogueApi) {
                 setMsg('Searching areas…', false);
                 var qKey = q.toLowerCase();
-                if (municipalitiesCache[qKey]) {
-                    populateMunicipalityPicker(municipalitiesCache[qKey]);
+                var cachedMun = municipalitiesCache[qKey];
+                if (Array.isArray(cachedMun) && cachedMun.length > 0) {
+                    populateMunicipalityPicker(cachedMun);
                     return;
                 }
                 beginCatalogueLoading('search');
@@ -758,7 +766,6 @@
                                 outData.barangays || []
                             );
                         }
-                        municipalitiesCache[qKey] = matched;
                         if (!matched.length) {
                             if (munRow) {
                                 munRow.hidden = true;
@@ -787,6 +794,7 @@
                             );
                             return;
                         }
+                        municipalitiesCache[qKey] = matched;
                         populateMunicipalityPicker(matched);
                     })
                     .catch(function (err) {

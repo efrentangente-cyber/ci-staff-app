@@ -299,7 +299,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             const registerServiceWorker = () => {
-                navigator.serviceWorker.register('/static/service-worker.js?v=12')
+                navigator.serviceWorker.register('/service-worker.js?v=13')
                     .catch(function () {});
             };
             if ('requestIdleCallback' in window) {
