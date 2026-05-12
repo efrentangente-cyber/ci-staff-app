@@ -558,7 +558,7 @@ class OfflineSyncManager {
             online: 'ONLINE - All data synced',
             offline: 'OFFLINE MODE',
             syncing: message || 'SYNCING...',
-            downloading: 'Downloading applications...'
+            downloading: message || 'Downloading applications...'
         };
 
         banner.className = `offline-status-banner status-${status}`;

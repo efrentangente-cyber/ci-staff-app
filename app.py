@@ -2897,6 +2897,61 @@ def enqueue_notification(user_id, message, link=None, group_key=None):
     run_background_task(create_notification, user_id, message, link, group_key)
 
 
+def _assigned_ci_staff_from_row(row):
+    """Safe int or None for SQLite Row / dict-like application rows."""
+    if row is None:
+        return None
+    try:
+        keys = row.keys() if hasattr(row, 'keys') else []
+        if keys and 'assigned_ci_staff' not in keys:
+            return None
+        v = row['assigned_ci_staff']
+        return int(v) if v is not None else None
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def _application_realtime_watchers(conn, submitted_by, assigned_ci_staff_id):
+    """LPS submitter + assigned CI/BI + admins/loan officers (not a global broadcast)."""
+    watchers = set()
+    if submitted_by is not None:
+        try:
+            watchers.add(int(submitted_by))
+        except (TypeError, ValueError):
+            pass
+    if assigned_ci_staff_id is not None:
+        try:
+            watchers.add(int(assigned_ci_staff_id))
+        except (TypeError, ValueError):
+            pass
+    try:
+        for row in conn.execute(
+            "SELECT id FROM users WHERE COALESCE(is_approved, 1) = 1 AND role IN ('admin', 'loan_officer')"
+        ):
+            watchers.add(int(row['id']))
+    except Exception:
+        pass
+    return watchers
+
+
+def emit_loan_application_realtime(event, payload, submitted_by=None, assigned_ci_staff_id=None, conn=None):
+    """Push socket events only to users who care — faster and avoids leaking updates to wrong sessions."""
+    own_conn = False
+    try:
+        if conn is None:
+            conn = get_db()
+            own_conn = True
+        watchers = _application_realtime_watchers(conn, submitted_by, assigned_ci_staff_id)
+    finally:
+        if own_conn:
+            conn.close()
+    for uid in watchers:
+        try:
+            socketio.emit(event, payload, room=str(uid))
+        except Exception:
+            pass
+
+
 def _request_client_ip():
     """Best-effort client IP extraction behind proxies/CDN."""
     forwarded = (request.headers.get('X-Forwarded-For') or '').strip()
@@ -4719,16 +4774,22 @@ def update_application_status(app_id):
             _st_sb = int(_r) if _r is not None else None
     except (KeyError, TypeError, ValueError):
         _st_sb = None
-    # Emit real-time update to all connected dashboards
-    socketio.emit('application_updated', {
-        'id': app_id,
-        'status': new_status,
-        'member_name': app_data['member_name'] if app_data else '',
-        'loan_amount': float(app_data['loan_amount']) if app_data else 0,
-        'submitted_by': _st_sb,
-        'timestamp': now_ph().isoformat()
-    })
-    
+    _aci = _assigned_ci_staff_from_row(app_data)
+    emit_loan_application_realtime(
+        'application_updated',
+        {
+            'id': app_id,
+            'status': new_status,
+            'member_name': app_data['member_name'] if app_data else '',
+            'loan_amount': float(app_data['loan_amount']) if app_data else 0,
+            'submitted_by': _st_sb,
+            'assigned_ci_staff': _aci,
+            'timestamp': now_ph().isoformat(),
+        },
+        submitted_by=_st_sb,
+        assigned_ci_staff_id=_aci,
+    )
+
     return jsonify({'success': True})
 
 @app.route('/loan/update_ci_staff/<int:app_id>', methods=['POST'])
@@ -4774,17 +4835,26 @@ def update_ci_staff_assignment(app_id):
             _ci2_sb = int(_r2) if _r2 is not None else None
     except (KeyError, TypeError, ValueError):
         _ci2_sb = None
-    # Emit real-time update to all connected dashboards
-    socketio.emit('application_updated', {
-        'id': app_id,
-        'status': 'assigned_to_ci' if ci_staff_id else app_data['status'],
-        'member_name': app_data['member_name'] if app_data else '',
-        'loan_amount': float(app_data['loan_amount']) if app_data else 0,
-        'ci_staff_id': ci_staff_id,
-        'submitted_by': _ci2_sb,
-        'timestamp': now_ph().isoformat()
-    })
-    
+    try:
+        _aci2 = int(ci_staff_id) if ci_staff_id else _assigned_ci_staff_from_row(app_data)
+    except (TypeError, ValueError):
+        _aci2 = _assigned_ci_staff_from_row(app_data)
+    emit_loan_application_realtime(
+        'application_updated',
+        {
+            'id': app_id,
+            'status': 'assigned_to_ci' if ci_staff_id else app_data['status'],
+            'member_name': app_data['member_name'] if app_data else '',
+            'loan_amount': float(app_data['loan_amount']) if app_data else 0,
+            'ci_staff_id': ci_staff_id,
+            'submitted_by': _ci2_sb,
+            'assigned_ci_staff': _aci2,
+            'timestamp': now_ph().isoformat(),
+        },
+        submitted_by=_ci2_sb,
+        assigned_ci_staff_id=_aci2,
+    )
+
     return jsonify({'success': True})
 
 @app.route('/loan/submit', methods=['GET','POST'])
@@ -4995,13 +5065,25 @@ def submit_application():
                     'warning' if needs_ci and not ci_staff_id else 'success',
                 )
 
-                # Emit WebSocket event for instant dashboard update
-                socketio.emit('new_application', {
-                    'id': app_id,
-                    'member_name': member_name,
-                    'status': 'assigned_to_ci' if (needs_ci and ci_staff_id) else 'submitted',
-                    'submitted_by': int(current_user.id),
-                })
+                _new_aci = None
+                if needs_ci and ci_staff_id:
+                    try:
+                        _new_aci = int(ci_staff_id)
+                    except (TypeError, ValueError):
+                        pass
+                emit_loan_application_realtime(
+                    'new_application',
+                    {
+                        'id': app_id,
+                        'member_name': member_name,
+                        'status': 'assigned_to_ci' if _new_aci else 'submitted',
+                        'submitted_by': int(current_user.id),
+                        'assigned_ci_staff': _new_aci,
+                        'timestamp': now_ph().isoformat(),
+                    },
+                    submitted_by=int(current_user.id),
+                    assigned_ci_staff_id=_new_aci,
+                )
 
                 return redirect(url_for('loan_dashboard', submitted='1'))
             except Exception as e:
@@ -6066,14 +6148,22 @@ def submit_ci_checklist(id):
                 _ci_sb = int(_ci_sb) if _ci_sb is not None else None
             except (KeyError, TypeError, ValueError):
                 _ci_sb = None
-            socketio.emit('application_updated', {
-                'id': id,
-                'status': 'ci_completed',
-                'member_name': app_data_dict.get('member_name') or '',
-                'loan_amount': la,
-                'submitted_by': _ci_sb,
-                'timestamp': now_ph().isoformat()
-            })
+            _aci_ci = _assigned_ci_staff_from_row(app_data_dict)
+            emit_loan_application_realtime(
+                'application_updated',
+                {
+                    'id': id,
+                    'status': 'ci_completed',
+                    'member_name': app_data_dict.get('member_name') or '',
+                    'loan_amount': la,
+                    'submitted_by': _ci_sb,
+                    'assigned_ci_staff': _aci_ci,
+                    'timestamp': now_ph().isoformat(),
+                },
+                submitted_by=_ci_sb,
+                assigned_ci_staff_id=_aci_ci,
+                conn=conn,
+            )
         except Exception as sock_err:
             app.logger.debug('socket emit after ci submit: %s', sock_err)
 
@@ -6308,14 +6398,21 @@ def admin_application(id):
                         _admin_sb = int(_admin_sb) if _admin_sb is not None else None
                     except (KeyError, TypeError, ValueError):
                         _admin_sb = None
-                    socketio.emit('application_updated', {
-                        'id': id,
-                        'status': decision,
-                        'member_name': app_data['member_name'],
-                        'loan_amount': la,
-                        'submitted_by': _admin_sb,
-                        'timestamp': now_ph().isoformat()
-                    })
+                    _admin_aci = _assigned_ci_staff_from_row(app_data)
+                    emit_loan_application_realtime(
+                        'application_updated',
+                        {
+                            'id': id,
+                            'status': decision,
+                            'member_name': app_data['member_name'],
+                            'loan_amount': la,
+                            'submitted_by': _admin_sb,
+                            'assigned_ci_staff': _admin_aci,
+                            'timestamp': now_ph().isoformat(),
+                        },
+                        submitted_by=_admin_sb,
+                        assigned_ci_staff_id=_admin_aci,
+                    )
                 except Exception as ex:
                     app.logger.debug('background emit application_updated: %s', ex)
 
@@ -6676,17 +6773,36 @@ def loan_application(id):
                 flash(unassign_reason_flash, 'warning')
             else:
                 flash('Application updated successfully!', 'success')
+            _conn_e = get_db()
+            _row_e = _conn_e.execute(
+                'SELECT submitted_by, assigned_ci_staff, status, member_name, loan_amount FROM loan_applications WHERE id=?',
+                (id,),
+            ).fetchone()
+            _conn_e.close()
             try:
-                _lps = app_data['submitted_by'] if app_data else None
-                _lps = int(_lps) if _lps is not None else None
+                _lps = int(_row_e['submitted_by']) if _row_e and _row_e['submitted_by'] is not None else None
             except (KeyError, TypeError, ValueError):
                 _lps = None
-            socketio.emit('application_updated', {
-                'id': id,
-                'member_name': member_name,
-                'submitted_by': _lps,
-            })
-            
+            _e_aci = _assigned_ci_staff_from_row(_row_e)
+            try:
+                _la_e = float(_row_e['loan_amount'] or 0) if _row_e else 0.0
+            except (TypeError, ValueError):
+                _la_e = 0.0
+            emit_loan_application_realtime(
+                'application_updated',
+                {
+                    'id': id,
+                    'member_name': (_row_e['member_name'] if _row_e else member_name) or '',
+                    'status': _row_e['status'] if _row_e else None,
+                    'loan_amount': _la_e,
+                    'submitted_by': _lps,
+                    'assigned_ci_staff': _e_aci,
+                    'timestamp': now_ph().isoformat(),
+                },
+                submitted_by=_lps,
+                assigned_ci_staff_id=_e_aci,
+            )
+
             return redirect(url_for('loan_application', id=id))
             
         except Exception as e:
@@ -7999,7 +8115,7 @@ def delete_lps_document(app_id, doc_id):
     conn = get_db()
     try:
         app_data = conn.execute(
-            'SELECT id, submitted_by, status FROM loan_applications WHERE id=? AND submitted_by=?',
+            'SELECT id, submitted_by, status, assigned_ci_staff FROM loan_applications WHERE id=? AND submitted_by=?',
             (app_id, current_user.id),
         ).fetchone()
         if not app_data:
@@ -8052,11 +8168,23 @@ def delete_lps_document(app_id, doc_id):
         except Exception as remove_err:
             app.logger.debug('LPS document file delete skipped: %s', remove_err)
 
-        socketio.emit('application_updated', {
-            'id': app_id,
-            'submitted_by': int(current_user.id),
-            'documents_updated': True,
-        })
+        try:
+            _del_sb = int(app_data['submitted_by']) if app_data['submitted_by'] is not None else None
+        except (TypeError, ValueError):
+            _del_sb = None
+        _del_aci = _assigned_ci_staff_from_row(app_data)
+        emit_loan_application_realtime(
+            'application_updated',
+            {
+                'id': app_id,
+                'submitted_by': _del_sb,
+                'assigned_ci_staff': _del_aci,
+                'documents_updated': True,
+                'timestamp': now_ph().isoformat(),
+            },
+            submitted_by=_del_sb,
+            assigned_ci_staff_id=_del_aci,
+        )
         flash('Photo/document removed successfully.', 'success')
         return redirect(url_for('loan_application', id=app_id))
     except Exception as e:
@@ -8427,6 +8555,12 @@ def handle_join(data):
         return
     if room == str(current_user.id):
         join_room(room)
+        return
+    # Legacy/mobile clients joined "user_<id>" while notifications use room=str(user_id)
+    if room.startswith('user_'):
+        suffix = room[5:]
+        if suffix.isdigit() and suffix == str(current_user.id):
+            join_room(str(current_user.id))
         return
     if room == 'admin_tracking' and current_user.role in ['admin', 'loan_officer']:
         join_room(room)
@@ -11320,6 +11454,7 @@ def send_sms_and_update_status(app_id):
             _sub_by = int(_raw_sb) if _raw_sb is not None else None
         except (TypeError, ValueError, KeyError):
             _sub_by = None
+        _sms_aci = _assigned_ci_staff_from_row(app_data)
 
         # SMS in-process so the client gets real success/fail from Semaphore (not background)
         sms_sent = None
@@ -11348,14 +11483,20 @@ def send_sms_and_update_status(app_id):
         def _emit_update():
             try:
                 la = float(_lamount) if _lamount is not None else 0.0
-                socketio.emit('application_updated', {
-                    'id': app_id,
-                    'status': action,
-                    'member_name': _name,
-                    'loan_amount': la,
-                    'submitted_by': _sub_by,
-                    'timestamp': now_ph().isoformat()
-                })
+                emit_loan_application_realtime(
+                    'application_updated',
+                    {
+                        'id': app_id,
+                        'status': action,
+                        'member_name': _name,
+                        'loan_amount': la,
+                        'submitted_by': _sub_by,
+                        'assigned_ci_staff': _sms_aci,
+                        'timestamp': now_ph().isoformat(),
+                    },
+                    submitted_by=_sub_by,
+                    assigned_ci_staff_id=_sms_aci,
+                )
             except Exception as ex:
                 app.logger.debug('background emit application_updated: %s', ex)
 

@@ -6,6 +6,10 @@ const lpsUserId = typeof window.__LPS_USER_ID === 'number' || typeof window.__LP
     ? parseInt(String(window.__LPS_USER_ID), 10)
     : null;
 
+const ciUserId = typeof window.__CI_USER_ID === 'number' || typeof window.__CI_USER_ID === 'string'
+    ? parseInt(String(window.__CI_USER_ID), 10)
+    : null;
+
 function escapeHtml(s) {
     if (s == null || s === '') return '';
     const div = document.createElement('div');
@@ -130,6 +134,23 @@ function lpsWantsThisSocketPayload(data) {
     return parseInt(String(data.submitted_by), 10) === lpsUserId;
 }
 
+function ciWantsThisSocketPayload(data) {
+    if (currentDashboard !== 'ci' || ciUserId == null || Number.isNaN(ciUserId)) {
+        return true;
+    }
+    if (!data) {
+        return false;
+    }
+    if (data.assigned_ci_staff == null || data.assigned_ci_staff === '') {
+        return true;
+    }
+    return parseInt(String(data.assigned_ci_staff), 10) === ciUserId;
+}
+
+function realtimePayloadForDashboard(data) {
+    return lpsWantsThisSocketPayload(data) && ciWantsThisSocketPayload(data);
+}
+
 if (window.location.pathname.includes('/admin/dashboard')) {
     currentDashboard = 'admin';
 } else if (window.location.pathname.includes('/loan/dashboard')) {
@@ -211,7 +232,7 @@ function initDcccoDashboardRealtime() {
     });
 
     socket.on('new_application', function (data) {
-        if (!lpsWantsThisSocketPayload(data)) {
+        if (!realtimePayloadForDashboard(data)) {
             return;
         }
         const name = (data && data.member_name) ? String(data.member_name) : 'Member';
@@ -220,7 +241,7 @@ function initDcccoDashboardRealtime() {
     });
 
     socket.on('application_updated', function (data) {
-        if (!lpsWantsThisSocketPayload(data)) {
+        if (!realtimePayloadForDashboard(data)) {
             return;
         }
         const rawStatus = (data && data.status) ? data.status : 'Updated';
@@ -255,6 +276,9 @@ function showToast(title, message, type) {
         toast.remove();
     }, 5000);
 }
+
+/** Used by CI offline dashboard for download start / success toasts (ci-dashboard-offline.js). */
+window.__dcccoShowToast = showToast;
 
 function refreshApplications() {
     if (!currentDashboard) {
@@ -665,11 +689,18 @@ function renderCiDashboardTables(applications) {
     } catch (e) { /* ignore */ }
 
     try {
-        if (typeof window.prefetchCiInterviewShellsForApps === 'function') {
-            window.prefetchCiInterviewShellsForApps(applications);
-        }
-        if (typeof window.prefetchLpsDocumentBytesForApplications === 'function') {
-            window.prefetchLpsDocumentBytesForApplications(applications);
+        var runPrefetch = function () {
+            if (typeof window.prefetchCiInterviewShellsForApps === 'function') {
+                window.prefetchCiInterviewShellsForApps(applications);
+            }
+            if (typeof window.prefetchLpsDocumentBytesForApplications === 'function') {
+                window.prefetchLpsDocumentBytesForApplications(applications);
+            }
+        };
+        if (typeof window.scheduleCiIdlePrefetch === 'function') {
+            window.scheduleCiIdlePrefetch(runPrefetch);
+        } else {
+            runPrefetch();
         }
     } catch (e) { /* ignore */ }
 }

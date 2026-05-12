@@ -172,7 +172,7 @@ const socket = io();
 const receiverId = {{ other_user.id }};
 
 // Join user room for direct messages
-socket.emit('join', {room: 'user_{{ current_user.id }}'});
+socket.emit('join', {room: '{{ current_user.id }}'});
 
 // Listen for new messages
 socket.on('new_direct_message', function(data) {

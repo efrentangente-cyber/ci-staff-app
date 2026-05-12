@@ -761,7 +761,7 @@ const socket = io();
 let currentChatUserId = null;
 let onlineUsers = new Set();
 
-socket.emit('join', {room: 'user_{{ current_user.id }}'});
+socket.emit('join', {room: '{{ current_user.id }}'});
 
 // Listen for online/offline events
 socket.on('user_online', function(data) {

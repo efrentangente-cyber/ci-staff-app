@@ -919,7 +919,7 @@ let onlineUsers = new Set();
 // Connection status logging
 socket.on('connect', function() {
     console.log('âœ… Messages Socket.IO connected');
-    socket.emit('join', {room: 'user_{{ current_user.id }}'});
+    socket.emit('join', {room: '{{ current_user.id }}'});
 });
 
 socket.on('disconnect', function(reason) {

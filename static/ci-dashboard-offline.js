@@ -539,7 +539,7 @@
      * While online, warm the service worker cache for interview flows so "Start" works offline.
      * One scheduled pass per application id per tab session (avoids duplicate storms on re-render).
      */
-    var MAX_SHELL_PREFETCH = 30;
+    var MAX_SHELL_PREFETCH = 12;
     var _shellPrefetchScheduled = Object.create(null);
 
     function prefetchCiInterviewShellsForApps(apps) {
@@ -561,7 +561,7 @@
                 return;
             }
             _shellPrefetchScheduled[id] = true;
-            var baseDelay = idx * 250;
+            var baseDelay = idx * 400;
             var paths = [
                 '/ci/review/' + id,
                 '/ci/checklist/summary/' + id,
@@ -572,14 +572,14 @@
                     fetch(path, { credentials: 'include', cache: 'default' }).catch(function () {
                         void 0;
                     });
-                }, baseDelay + j * 80);
+                }, baseDelay + j * 150);
             });
         });
     }
 
     window.prefetchCiInterviewShellsForApps = prefetchCiInterviewShellsForApps;
 
-    var MAX_LPS_DOC_PREFETCH_APPS = 30;
+    var MAX_LPS_DOC_PREFETCH_APPS = 10;
     var _lpsDocPrefetchScheduled = Object.create(null);
 
     /**
@@ -604,24 +604,11 @@
                 return;
             }
             _lpsDocPrefetchScheduled[appId] = true;
-            var startAfter = idx * 200 + 500;
+            var startAfter = idx * 120 + 80;
             setTimeout(function () {
                 fetchCiApiJson('/api/ci_application/' + appId)
                     .then(function (data) {
-                        var docs = (data && data.documents) || [];
-                        if (!docs.length) {
-                            return;
-                        }
-                        docs.forEach(function (doc, di) {
-                            if (!doc || doc.id == null) {
-                                return;
-                            }
-                            setTimeout(function () {
-                                fetch('/view_document/' + doc.id, { credentials: 'include' }).catch(function () {
-                                    void 0;
-                                });
-                            }, di * 50);
-                        });
+                        prefetchLpsViewDocumentsFromList((data && data.documents) || []);
                     })
                     .catch(function () {
                         void 0;
@@ -631,6 +618,140 @@
     }
 
     window.prefetchLpsDocumentBytesForApplications = prefetchLpsDocumentBytesForApplications;
+
+    function notifyDownloadStarted(appId) {
+        var summary =
+            'Caching application #' +
+            appId +
+            ' for offline (interview pages + LPS photos). This usually takes a few seconds.';
+        try {
+            if (typeof window.__dcccoShowToast === 'function') {
+                window.__dcccoShowToast('Downloading…', summary, 'info');
+            }
+            var sm = window.syncManager;
+            if (sm && typeof sm.updateStatusBanner === 'function') {
+                sm.updateStatusBanner('downloading', '📥 Caching #' + appId + ' for offline…');
+            }
+        } catch (eN) {
+            void 0;
+        }
+    }
+
+    function notifyDownloadFinished(appId, isError, errMsg) {
+        try {
+            var sm = window.syncManager;
+            if (sm && typeof sm.updateStatusBanner === 'function') {
+                sm.updateStatusBanner(typeof navigator !== 'undefined' && navigator.onLine ? 'online' : 'offline');
+            }
+        } catch (eB) {
+            void 0;
+        }
+        if (typeof window.__dcccoShowToast !== 'function') {
+            if (isError) {
+                alert('Download failed: ' + (errMsg || 'Unknown error'));
+            } else {
+                alert('Application #' + appId + ' saved for offline review.');
+            }
+            return;
+        }
+        if (isError) {
+            window.__dcccoShowToast('Download failed', errMsg || 'Unknown error', 'warning');
+        } else {
+            window.__dcccoShowToast(
+                'Saved for offline',
+                'Application #' +
+                    appId +
+                    ' is cached on this device (pages and reference photos when available).',
+                'success'
+            );
+        }
+    }
+
+    /** Immediate parallel fetches for explicit “Download” (no stagger; warms service worker fast). */
+    function prefetchInterviewShellsParallel(appId) {
+        if (!appId || typeof navigator === 'undefined' || !navigator.onLine) {
+            return;
+        }
+        var paths = [
+            '/ci/review/' + appId,
+            '/ci/checklist/summary/' + appId,
+            '/ci/checklist/wizard/' + appId
+        ];
+        for (var i = 0; i < paths.length; i++) {
+            (function (path) {
+                fetch(path, { credentials: 'include', cache: 'default' }).catch(function () {
+                    void 0;
+                });
+            })(paths[i]);
+        }
+    }
+
+    /**
+     * Same as background prefetch but uses the documents array we already have — no second API round-trip.
+     * Batched so we don’t saturate HTTP/1.1 connections and stall real clicks.
+     */
+    function prefetchLpsViewDocumentsFromList(docs) {
+        if (!docs || !docs.length || typeof navigator === 'undefined' || !navigator.onLine) {
+            return;
+        }
+        var ids = [];
+        var di;
+        for (di = 0; di < docs.length; di++) {
+            var d = docs[di];
+            if (d && d.id != null) {
+                ids.push(d.id);
+            }
+        }
+        if (!ids.length) {
+            return;
+        }
+        var concurrency = 5;
+        var pos = 0;
+        function runBatch() {
+            var n = Math.min(concurrency, ids.length - pos);
+            var end = pos + n;
+            for (; pos < end; pos++) {
+                (function (docId) {
+                    fetch('/view_document/' + docId, {
+                        credentials: 'include',
+                        cache: 'default'
+                    }).catch(function () {
+                        void 0;
+                    });
+                })(ids[pos]);
+            }
+            if (pos < ids.length) {
+                setTimeout(runBatch, 100);
+            }
+        }
+        runBatch();
+    }
+
+    /** Runs heavy prefetch after first paint / idle so navigation stays responsive. */
+    function scheduleIdlePrefetch(cb) {
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(
+                function () {
+                    try {
+                        cb();
+                    } catch (eIdle) {
+                        void 0;
+                    }
+                },
+                { timeout: 3500 }
+            );
+            return;
+        }
+        setTimeout(function () {
+            try {
+                cb();
+            } catch (eTo) {
+                void 0;
+            }
+        }, 1800);
+    }
+
+    window.scheduleCiIdlePrefetch = scheduleIdlePrefetch;
 
     function applyFromApps(apps) {
         if (!apps || !apps.length) {
@@ -646,8 +767,10 @@
         renderRows(pending, completed);
         updateStats(list, pending, completed);
         try {
-            prefetchCiInterviewShellsForApps(list);
-            prefetchLpsDocumentBytesForApplications(list);
+            scheduleIdlePrefetch(function () {
+                prefetchCiInterviewShellsForApps(list);
+                prefetchLpsDocumentBytesForApplications(list);
+            });
         } catch (ePf) {
             void 0;
         }
@@ -710,7 +833,7 @@
         }
         _hydrateScheduled = setTimeout(function () {
             _hydrateScheduled = null;
-            waitForDbManager(400).then(function () {
+            waitForDbManager(200).then(function () {
                 return runCiDashboardHydration();
             });
         }, 0);
@@ -728,10 +851,18 @@
             if (!id) {
                 return;
             }
+            notifyDownloadStarted(id);
             fetchCiApiJson('/api/ci_application/' + id)
                 .then(function (data) {
                     if (!data || !data.application) {
                         return null;
+                    }
+                    var docs = Array.isArray(data.documents) ? data.documents : [];
+                    try {
+                        prefetchInterviewShellsParallel(id);
+                        prefetchLpsViewDocumentsFromList(docs);
+                    } catch (eWarm) {
+                        void 0;
                     }
                     return saveMirrorApplicationsFromDicts([data.application]).then(function () {
                         return data.application;
@@ -739,28 +870,24 @@
                 })
                 .then(function (app) {
                     if (!app) {
+                        notifyDownloadFinished(
+                            id,
+                            true,
+                            'No application data returned for #' + id + '.'
+                        );
                         return;
                     }
-                    alert('Application #' + id + ' saved for offline review.');
+                    notifyDownloadFinished(id, false);
                     window.dispatchEvent(
                         new CustomEvent('offline-data-updated', {
                             detail: { applications: [app] }
                         })
                     );
-                    try {
-                        if (typeof window.prefetchCiInterviewShellsForApps === 'function') {
-                            window.prefetchCiInterviewShellsForApps([app]);
-                        }
-                        if (typeof window.prefetchLpsDocumentBytesForApplications === 'function') {
-                            window.prefetchLpsDocumentBytesForApplications([app]);
-                        }
-                    } catch (ePre) {
-                        void 0;
-                    }
                     scheduleHydration();
                 })
                 .catch(function (err) {
-                    alert('Download failed: ' + (err && err.message ? err.message : err));
+                    var msg = err && err.message ? err.message : String(err);
+                    notifyDownloadFinished(id, true, msg);
                 });
         };
         sm.downloadAllPending = function () {
@@ -811,12 +938,11 @@
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             scheduleHydration();
-            setTimeout(scheduleHydration, 400);
-            setTimeout(scheduleHydration, 2000);
+            /** One deferred merge only — avoids triple /api hits competing with navigations */
+            setTimeout(scheduleHydration, 850);
         });
     } else {
         scheduleHydration();
-        setTimeout(scheduleHydration, 400);
-        setTimeout(scheduleHydration, 2000);
+        setTimeout(scheduleHydration, 850);
     }
 })();
