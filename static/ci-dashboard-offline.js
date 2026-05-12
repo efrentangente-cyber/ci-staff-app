@@ -8,10 +8,54 @@
     }
 
     var MIRROR_DB = 'CIStaffOfflineDB';
-    /** Bumped: v1 DBs opened without onupgradeneeded could exist with no object store → transaction errors. */
-    var MIRROR_VER = 2;
+    /** Bumped when schema repair is needed; onupgradeneeded ensures serverApplications exists. */
+    var MIRROR_VER = 3;
     var MIRROR_STORE = 'serverApplications';
     var _hydrateScheduled = null;
+
+    /** Chromium often throws with message "...object stores was not found" without name === NotFoundError. */
+    function isMissingMirrorStoreError(err) {
+        if (!err) {
+            return false;
+        }
+        if (err.name === 'NotFoundError' || err.name === 'InvalidAccessError') {
+            return true;
+        }
+        var msg = String(err.message || '');
+        if (msg.indexOf('mirror_store_missing') !== -1) {
+            return true;
+        }
+        if (msg.indexOf('object stores was not found') !== -1) {
+            return true;
+        }
+        if (msg.indexOf('object store was not found') !== -1) {
+            return true;
+        }
+        return false;
+    }
+
+    function deleteMirrorDatabase() {
+        return new Promise(function (resolve, reject) {
+            var del = indexedDB.deleteDatabase(MIRROR_DB);
+            del.onerror = function () {
+                reject(del.error || new Error('deleteDatabase'));
+            };
+            del.onsuccess = function () {
+                resolve();
+            };
+            del.onblocked = function () {
+                setTimeout(function () {
+                    var del2 = indexedDB.deleteDatabase(MIRROR_DB);
+                    del2.onerror = function () {
+                        reject(del2.error || new Error('deleteDatabase blocked'));
+                    };
+                    del2.onsuccess = function () {
+                        resolve();
+                    };
+                }, 400);
+            };
+        });
+    }
 
     /**
      * Single IndexedDB open for read + write paths.
@@ -210,33 +254,20 @@
                 }
             });
         }
-        return openMirrorDatabase()
-            .then(function (db) {
+        function runPut() {
+            return openMirrorDatabase().then(function (db) {
                 return doPut(db);
-            })
-            .catch(function (err) {
-                var msg = err && err.message ? String(err.message) : '';
-                if (
-                    msg.indexOf('mirror_store_missing') !== -1 ||
-                    (err && err.name === 'NotFoundError')
-                ) {
-                    return new Promise(function (resolve, reject) {
-                        var del = indexedDB.deleteDatabase(MIRROR_DB);
-                        del.onerror = function () {
-                            reject(err);
-                        };
-                        del.onsuccess = function () {
-                            openMirrorDatabase()
-                                .then(function (db2) {
-                                    return doPut(db2);
-                                })
-                                .then(resolve)
-                                .catch(reject);
-                        };
-                    });
-                }
-                return Promise.reject(err);
             });
+        }
+
+        return runPut().catch(function (err) {
+            if (!isMissingMirrorStoreError(err)) {
+                return Promise.reject(err);
+            }
+            return deleteMirrorDatabase().then(function () {
+                return runPut();
+            });
+        });
     }
 
     /**
