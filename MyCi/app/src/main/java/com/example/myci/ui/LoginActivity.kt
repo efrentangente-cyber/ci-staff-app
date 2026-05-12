@@ -57,7 +57,7 @@ class LoginActivity : AppCompatActivity() {
                 val resp = withContext(Dispatchers.IO) {
                     app.api.login(LoginRequest(email, pass))
                 }
-                app.tokenStore.save(resp.token, resp.role, resp.name)
+                app.tokenStore.save(resp.token, resp.role, resp.name, resp.userId)
                 openNativeHomeForRole(resp.role)
             } catch (e: HttpException) {
                 val text = when (e.code()) {

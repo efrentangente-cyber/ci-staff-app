@@ -27,7 +27,10 @@ data class LoanApplicationDto(
     val updatedAt: String? = null,
     val ciNotes: String? = null,
     val ciChecklistJson: String? = null,
-    val ciCompletedAt: String? = null
+    val ciCompletedAt: String? = null,
+    val loanType: String? = null,
+    val lpsRemarks: String? = null,
+    val loanStaffName: String? = null
 )
 
 @JsonClass(generateAdapter = true)

@@ -56,6 +56,7 @@
     <string name="loan_submit">Submit Application</string>
     <string name="loan_cancel">Cancel</string>
     <string name="loan_open_full_web_form">Open full web form</string>
+    <string name="loan_submit_pending_toast">Application saved on this device as pending. It will sync when you are online.</string>
 
     <!-- Home secondary nav -->
     <string name="home_ci_cases">CI Cases</string>
@@ -63,10 +64,44 @@
 
     <!-- CI screens -->
     <string name="ci_cases_title">CI Staff Dashboard</string>
+    <string name="ci_bi_dashboard_title">CI/BI Dashboard</string>
+    <string name="ci_dashboard_subtitle">Start interviews from Pending; completed work appears under Completed. Native saves stay on this device until you are online.</string>
     <string name="ci_cases_section">Assigned Applications</string>
-    <string name="ci_cases_pull_assigned">Pull latest from server</string>
+    <string name="ci_cases_pull_assigned">Refresh / download</string>
+    <string name="ci_search_hint">Filter: name, ID, address…</string>
+    <string name="ci_section_pending">Pending interviews</string>
+    <string name="ci_section_completed">Completed interviews (for review)</string>
+    <string name="ci_section_completed_help">Your finished investigations appear here (loan officer / admin reviews next).</string>
+    <string name="ci_action_start">Start</string>
+    <string name="ci_row_submitted_fmt">Submitted %1$s</string>
+    <string name="ci_row_pending_upload">Pending upload</string>
+    <string name="ci_badge_pending_fmt">%1$d Pending</string>
+    <string name="ci_status_pending_label">Pending Interview</string>
+    <string name="ci_status_completed_label">CI Completed</string>
+    <string name="ci_sync_saved_native">Saved on this device. Pending rows use Start; completed items show Pending upload until the server confirms.</string>
+    <string name="ci_sync_failed_prefix">Could not refresh: %1$s</string>
 
-    <string name="ci_interview_title">Credit Investigation</string>
+    <string name="ci_interview_title">Review application</string>
+    <string name="ci_interview_header_app">Application information</string>
+    <string name="ci_interview_header_docs">Uploaded documents &amp; photos</string>
+    <string name="ci_interview_docs_help">Member documents from LPS are available on the full web review screen. Use “View in browser” below if you need to inspect files before the checklist.</string>
+    <string name="ci_interview_header_workflow">Interview workflow</string>
+    <string name="ci_interview_workflow_steps">1. Review application details (this screen)\n2. Field checklist\n3. Evidence photos\n4. Submit — stays pending on device until online sync</string>
+    <string name="ci_label_app_id">Application ID</string>
+    <string name="ci_label_status">Status</string>
+    <string name="ci_label_member">Member name</string>
+    <string name="ci_label_contact">Contact number</string>
+    <string name="ci_label_address">Address</string>
+    <string name="ci_label_amount">Loan amount</string>
+    <string name="ci_label_loan_type">Loan type</string>
+    <string name="ci_label_lps_remarks">LPS remarks / notes</string>
+    <string name="ci_label_submitted_by">Submitted by (LPS)</string>
+    <string name="ci_label_submitted_at">Submitted date</string>
+    <string name="ci_na">N/A</string>
+    <string name="ci_back_dashboard">Back to dashboard</string>
+    <string name="ci_readonly_banner">This investigation is already on the server. To change it, use the web app or contact admin.</string>
+    <string name="ci_complete">Submit investigation</string>
+    <string name="ci_complete_toast">Saved on this device as pending. It will sync to the server when you are online.</string>
     <string name="ci_notes_label">CI Interview notes</string>
     <string name="ci_notes_hint">Type observations, household info, references…</string>
     <string name="ci_checklist_title">Field Checklist</string>
@@ -76,8 +111,9 @@
     <string name="ci_chk_recommend">Recommend approval</string>
     <string name="ci_evidence_section">Evidence Photos</string>
     <string name="ci_photos_zero">Photos: 0</string>
-    <string name="ci_complete">Complete &amp; Send</string>
-    <string name="ci_open_in_browser">Open this case in browser</string>
+    <string name="ci_photos_count_fmt">Photos: %1$d</string>
+    <string name="ci_open_in_browser">Optional: view full case in browser</string>
+    <string name="ci_open_web_dashboard">Open dashboard in browser</string>
 
     <!-- Sync -->
     <string name="sync_title">Sync Status</string>

@@ -34,7 +34,10 @@ data class LoanApplicationEntity(
     // CI completion fields (mirror website columns: ci_notes, ci_checklist_data, ci_completed_at)
     val ciNotes: String? = null,
     val ciChecklistJson: String? = null,
-    val ciCompletedAt: Long? = null
+    val ciCompletedAt: Long? = null,
+    val loanType: String? = null,
+    val lpsRemarks: String? = null,
+    val loanStaffName: String? = null
 )
 
 @Entity(

@@ -385,19 +385,63 @@ def upload_document():
     return jsonify(response)
 
 
+def _select_rows(conn: Any, extended_sql: str, minimal_sql: str, params=()):
+    """Use richer SELECT when DB has loan_type / lps_remarks (production); fall back for slim SQLite demos."""
+    try:
+        return conn.execute(extended_sql, params).fetchall()
+    except Exception:
+        return conn.execute(minimal_sql, params).fetchall()
+
+
+_SQL_LIST_EXT = """
+        SELECT la.id, la.member_name, la.member_contact, la.member_address, la.loan_amount,
+               la.needs_ci_interview, la.status, la.submitted_at, la.loan_type, la.lps_remarks,
+               u.name AS loan_staff_name
+        FROM loan_applications la
+        LEFT JOIN users u ON u.id = la.submitted_by
+        ORDER BY la.submitted_at DESC
+        LIMIT 200
+"""
+_SQL_LIST_MIN = """
+        SELECT la.id, la.member_name, la.member_contact, la.member_address, la.loan_amount,
+               la.needs_ci_interview, la.status, la.submitted_at,
+               u.name AS loan_staff_name
+        FROM loan_applications la
+        LEFT JOIN users u ON u.id = la.submitted_by
+        ORDER BY la.submitted_at DESC
+        LIMIT 200
+"""
+_SQL_CI_EXT = """
+        SELECT la.id, la.member_name, la.member_contact, la.member_address, la.loan_amount,
+               la.needs_ci_interview, la.status, la.submitted_at, la.assigned_ci_staff,
+               la.ci_notes, la.ci_checklist_data, la.ci_completed_at,
+               la.loan_type, la.lps_remarks, u.name AS loan_staff_name
+        FROM loan_applications la
+        LEFT JOIN users u ON u.id = la.submitted_by
+        WHERE (la.status = 'assigned_to_ci' OR la.status = 'ci_completed')
+          AND (la.assigned_ci_staff = ? OR ? = 'admin')
+        ORDER BY la.submitted_at DESC
+        LIMIT 200
+"""
+_SQL_CI_MIN = """
+        SELECT la.id, la.member_name, la.member_contact, la.member_address, la.loan_amount,
+               la.needs_ci_interview, la.status, la.submitted_at, la.assigned_ci_staff,
+               la.ci_notes, la.ci_checklist_data, la.ci_completed_at,
+               u.name AS loan_staff_name
+        FROM loan_applications la
+        LEFT JOIN users u ON u.id = la.submitted_by
+        WHERE (la.status = 'assigned_to_ci' OR la.status = 'ci_completed')
+          AND (la.assigned_ci_staff = ? OR ? = 'admin')
+        ORDER BY la.submitted_at DESC
+        LIMIT 200
+"""
+
+
 @mobile_api_bp.get("/loan_applications")
 @require_token
 def list_loan_applications():
     conn = _db()
-    rows = conn.execute(
-        """
-        SELECT id, member_name, member_contact, member_address, loan_amount,
-               needs_ci_interview, status, submitted_at
-        FROM loan_applications
-        ORDER BY submitted_at DESC
-        LIMIT 200
-        """
-    ).fetchall()
+    rows = _select_rows(conn, _SQL_LIST_EXT, _SQL_LIST_MIN)
     conn.close()
     return jsonify({
         "loans": [_loan_dto(r) for r in rows],
@@ -421,19 +465,7 @@ def ci_assigned():
     if g.role not in ("ci_staff", "admin"):
         return jsonify({"loans": [], "serverNow": _iso_now()})
     conn = _db()
-    rows = conn.execute(
-        """
-        SELECT id, member_name, member_contact, member_address, loan_amount,
-               needs_ci_interview, status, submitted_at, assigned_ci_staff,
-               ci_notes, ci_checklist_data, ci_completed_at
-        FROM loan_applications
-        WHERE (status = 'assigned_to_ci' OR status = 'ci_completed')
-          AND (assigned_ci_staff = ? OR ? = 'admin')
-        ORDER BY submitted_at DESC
-        LIMIT 200
-        """,
-        (g.user_id, g.role),
-    ).fetchall()
+    rows = _select_rows(conn, _SQL_CI_EXT, _SQL_CI_MIN, (g.user_id, g.role))
     conn.close()
     return jsonify({"loans": [_loan_dto(r) for r in rows], "serverNow": _iso_now()})
 
@@ -531,6 +563,9 @@ def _loan_dto(r: Any) -> Dict[str, Any]:
         "ciNotes": _opt("ci_notes"),
         "ciChecklistJson": _opt("ci_checklist_data"),
         "ciCompletedAt": _opt("ci_completed_at"),
+        "loanType": _opt("loan_type"),
+        "lpsRemarks": _opt("lps_remarks"),
+        "loanStaffName": _opt("loan_staff_name"),
     }
 
 

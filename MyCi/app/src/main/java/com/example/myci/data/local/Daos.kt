@@ -34,6 +34,29 @@ interface LoanApplicationDao {
     @Query("SELECT * FROM loan_applications WHERE assignedCiStaffId = :userId AND status = 'assigned_to_ci' ORDER BY submittedAt DESC")
     fun observeAssignedToMe(userId: Long): Flow<List<LoanApplicationEntity>>
 
+    /**
+     * CI staff native list: pending + completed for cases assigned to this user only.
+     */
+    @Query(
+        """
+        SELECT * FROM loan_applications
+        WHERE assignedCiStaffId = :userId
+          AND (status = 'assigned_to_ci' OR status = 'ci_completed')
+        ORDER BY submittedAt DESC
+        """
+    )
+    fun observeCiMine(userId: Long): Flow<List<LoanApplicationEntity>>
+
+    /** Admin (or debugging): every CI-stage row regardless of assignee. */
+    @Query(
+        """
+        SELECT * FROM loan_applications
+        WHERE status = 'assigned_to_ci' OR status = 'ci_completed'
+        ORDER BY submittedAt DESC
+        """
+    )
+    fun observeAllCiPipeline(): Flow<List<LoanApplicationEntity>>
+
     @Query("SELECT * FROM loan_applications WHERE isConflict = 1")
     fun observeConflicts(): Flow<List<LoanApplicationEntity>>
 }

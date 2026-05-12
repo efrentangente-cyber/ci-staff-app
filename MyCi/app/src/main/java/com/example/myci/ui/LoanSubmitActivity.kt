@@ -14,7 +14,9 @@ import androidx.lifecycle.lifecycleScope
 import com.example.myci.data.LoanRepository
 import com.example.myci.databinding.ActivityLoanSubmitBinding
 import com.example.myci.web.WebAppIntents
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -96,17 +98,19 @@ class LoanSubmitActivity : AppCompatActivity() {
         binding.progress.visibility = View.VISIBLE
         binding.btnSubmit.isEnabled = false
         lifecycleScope.launch {
-            LoanRepository().createLoanOffline(
-                memberName = name,
-                memberContact = contact,
-                memberAddress = address,
-                loanAmount = amount,
-                needsCi = needsCi,
-                documentLocalPaths = pickedPaths.toList()
-            )
+            withContext(Dispatchers.IO) {
+                LoanRepository().createLoanOffline(
+                    memberName = name,
+                    memberContact = contact,
+                    memberAddress = address,
+                    loanAmount = amount,
+                    needsCi = needsCi,
+                    documentLocalPaths = pickedPaths.toList()
+                )
+            }
             Toast.makeText(
                 this@LoanSubmitActivity,
-                "Saved offline. Will sync when online.",
+                R.string.loan_submit_pending_toast,
                 Toast.LENGTH_LONG
             ).show()
             finish()

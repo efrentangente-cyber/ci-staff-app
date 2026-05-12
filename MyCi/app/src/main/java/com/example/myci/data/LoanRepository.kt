@@ -11,6 +11,9 @@ import com.example.myci.data.local.PendingOpType
 import com.example.myci.data.local.SyncStatus
 import com.example.myci.sync.SyncWorker
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import org.json.JSONObject
 import java.util.UUID
 
@@ -26,19 +29,25 @@ class LoanRepository(private val app: MyCiApp = MyCiApp.instance) {
         loanDao.observeAssignedToMe(userId)
 
     /**
-     * Server already filtered /api/ci/assigned by the current user; locally we just want any
-     * row whose status is 'assigned_to_ci' regardless of which user_id stored it.
+     * CI dashboard: only **your** assigned applications (native Room), or full CI pipeline for admin.
+     * Avoids listing everyone else's cases that leaked in from generic /api/sync dumps.
      */
-    fun observeCiAssignedAnyone(): Flow<List<LoanApplicationEntity>> =
-        kotlinx.coroutines.flow.flow {
-            loanDao.observeAll().collect { list ->
-                emit(
-                    list.filter {
-                        it.status == "assigned_to_ci" || it.status == "ci_completed"
-                    }
-                )
+    fun observeCiDashboard(): Flow<List<LoanApplicationEntity>> {
+        val roleFlow = app.tokenStore.role
+        val userIdFlow = app.tokenStore.userId
+        return combine(roleFlow, userIdFlow) { role, uid ->
+            val r = role?.trim()?.lowercase().orEmpty()
+            r to uid
+        }.flatMapLatest { (role, uid) ->
+            when (role) {
+                "admin" -> loanDao.observeAllCiPipeline()
+                else -> {
+                    if (uid != null && uid > 0) loanDao.observeCiMine(uid)
+                    else flowOf(emptyList())
+                }
             }
         }
+    }
 
     fun observeConflicts(): Flow<List<LoanApplicationEntity>> = loanDao.observeConflicts()
 
