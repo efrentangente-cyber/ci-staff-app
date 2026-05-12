@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Theme.MyCi — Material Components base. Required because the native activities
+        (LoginActivity, HomeActivity, LoanSubmitActivity, …) use MaterialButton /
+        TextInputLayout / FloatingActionButton, which crash on inflate when the
+        activity's theme is plain AppCompat.
+
+        Theme stays "Light.NoActionBar" so the existing WebView UI looks identical
+        (no system action bar — your HTML/JS has its own header).
+    -->
+    <style name="Theme.MyCi" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#1e3a5f</item>
+        <item name="colorPrimaryDark">#16294a</item>
+        <item name="colorAccent">#fbbf24</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

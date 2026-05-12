@@ -951,6 +951,35 @@ init_offline_interview_api(app, csrf)
 init_ci_offline_saves(app, csrf)
 
 
+def _register_mobile_staff_api():
+    """
+    Native Android (Retrofit) expects POST /api/login and Bearer-auth routes under /api/*.
+    That blueprint ships alongside MyCi; wire it to this app's DB pool via MOBILE_API_GET_DB.
+    """
+    import sys
+
+    _mini_root = Path(__file__).resolve().parent / 'MyCi' / 'flask_app'
+    _p = str(_mini_root)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+    from mobile_api import json_login_handler, mobile_api_bp
+
+    app.config['MOBILE_API_GET_DB'] = get_db
+    app.register_blueprint(mobile_api_bp)
+    app.add_url_rule(
+        '/api/login',
+        'api_json_login',
+        json_login_handler,
+        methods=['GET', 'POST'],
+    )
+    for _ep in list(app.view_functions.keys()):
+        if _ep.startswith('mobile_api.') or _ep == 'api_json_login':
+            csrf.exempt(app.view_functions[_ep])
+
+
+_register_mobile_staff_api()
+
+
 def _csrf_safe_redirect_target():
     """
     After a CSRF validation failure, still-authenticated users should stay in the app

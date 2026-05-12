@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<div class="top-bar">
+    <h2><i class="bi bi-bell"></i> Notifications</h2>
+    <div class="top-bar-actions">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back
+        </a>
+        <div class="user-menu-container">
+            <button class="btn btn-outline-secondary user-menu-btn" type="button">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <div class="user-menu-dropdown">
+                <div class="user-menu-header">
+                    <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                </div>
+                <a class="user-menu-item" href="{{ url_for('change_password') }}">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+                <div class="user-menu-divider"></div>
+                <a class="user-menu-item text-danger" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header">
+        <h5>System Notifications</h5>
+        <span class="badge bg-primary">{{ notifications|length }} Total</span>
+    </div>
+    <div class="content-card-body p-0">
+        {% if notifications %}
+        <div class="notification-list">
+            {% for notif in notifications %}
+            <a href="{{ notif.link or '#' }}" class="notification-item">
+                <div class="notification-icon">
+                    <i class="bi bi-info-circle"></i>
+                </div>
+                <div class="notification-content">
+                    <p class="notification-message">{{ notif.message }}</p>
+                    <small class="notification-time">{{ notif.created_at[:16] }}</small>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-bell-slash" style="font-size: 64px;"></i>
+            <p class="mt-3">No notifications</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.notification-list {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.notification-item {
+    display: flex;
+    padding: 20px;
+    border-bottom: 1px solid #e5e7eb;
+    text-decoration: none;
+    color: inherit;
+    transition: background-color 0.2s;
+}
+
+.notification-item:hover {
+    background-color: #f9fafb;
+}
+
+.notification-item:last-child {
+    border-bottom: none;
+}
+
+.notification-icon {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background: #dbeafe;
+    color: #1e40af;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px;
+    flex-shrink: 0;
+}
+
+.notification-icon i {
+    font-size: 22px;
+}
+
+.notification-content {
+    flex: 1;
+}
+
+.notification-message {
+    margin: 0 0 8px 0;
+    font-size: 15px;
+    color: #1f2937;
+    line-height: 1.5;
+}
+
+.notification-time {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.notification-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.notification-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.notification-list::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+</style>
+
+{% endblock %}

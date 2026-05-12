@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Single brand-colored ring behind logo — no white mat -->
+    <item
+        android:width="96dp"
+        android:height="96dp"
+        android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="@color/dccco_blue"/>
+        </shape>
+    </item>
+    <item
+        android:width="88dp"
+        android:height="88dp"
+        android:gravity="center">
+        <bitmap
+            android:src="@drawable/logo"
+            android:gravity="fill"/>
+    </item>
+</layer-list>

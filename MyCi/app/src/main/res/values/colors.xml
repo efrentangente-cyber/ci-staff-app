@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand colors mirror the website's CSS (#1e3a5f navy + #fbbf24 gold). -->
+    <color name="dccco_blue">#1e3a5f</color>
+    <color name="dccco_blue_light">#2c5282</color>
+    <color name="dccco_blue_dark">#16294a</color>
+    <color name="dccco_yellow">#fbbf24</color>
+    <color name="ic_launcher_background">#1e3a5f</color>
+
+    <!-- Surfaces -->
+    <color name="surface_card">#FFFFFF</color>
+    <color name="surface_field_border">#E5E7EB</color>
+    <color name="surface_field_border_focus">#1e3a5f</color>
+    <color name="surface_muted_text">#6B7280</color>
+
+    <!-- Status badges (matches Bootstrap-ish colors used in the web). -->
+    <color name="status_success_bg">#D1FAE5</color>
+    <color name="status_success_text">#065F46</color>
+    <color name="status_warning_bg">#FEF3C7</color>
+    <color name="status_warning_text">#92400E</color>
+    <color name="status_danger_bg">#FEE2E2</color>
+    <color name="status_danger_text">#991B1B</color>
+    <color name="status_info_bg">#DBEAFE</color>
+    <color name="status_info_text">#1E40AF</color>
+</resources>

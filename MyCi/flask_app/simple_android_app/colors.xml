@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DCCCO Brand Colors -->
+    <color name="dccco_blue">#1e3a5f</color>
+    <color name="dccco_yellow">#fbbf24</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    
+    <!-- Material Design Colors -->
+    <color name="colorPrimary">@color/dccco_blue</color>
+    <color name="colorPrimaryDark">#152a45</color>
+    <color name="colorAccent">@color/dccco_yellow</color>
+</resources>
