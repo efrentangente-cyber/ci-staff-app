@@ -1287,7 +1287,7 @@ window.__CI_APP_ID__ = {{ application.id }};
 window.__CI_HAS_REGISTERED_SIGNATURE__ = {{ 'true' if current_user.signature_path else 'false' }};
 window.__CI_SERVER_PREFILL__ = {{ (prefill_data or {})|tojson }};
 </script>
-<script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}?v=20260511-no-probe"></script>
+<script src="{{ url_for('static', filename='ci-checklist-wizard.js') }}?v=20260512-block-implicit-submit"></script>
 <script src="{{ url_for('static', filename='signature-pad.js') }}"></script>
 <script src="{{ url_for('static', filename='ci-location-tracker.js') }}"></script>
 

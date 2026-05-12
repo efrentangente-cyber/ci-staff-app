@@ -56,10 +56,10 @@ select.ci-route-select.route-assign-await-js[multiple] {
     </summary>
     <div class="content-card-body border-top" id="ciCoverageRouteWizard" data-create-url="{{ url_for('api_ci_coverage_routes') }}">
         <ol class="small text-muted mb-3 ps-3">
-            <li><strong>Whole south Negros chain in one go:</strong> choose <strong>Corridor preset</strong> (e.g. Sipalay through Dumaguete) — loads merged <strong>PSGC barangays</strong> for every LGU in that preset into From/To.</li>
-            <li><strong>Or one municipality:</strong> type a <strong>city / municipality</strong> in the search box — after a short pause, barangays load automatically into <strong>From barangay</strong> and <strong>To barangay</strong> (pick both, then Save). If several LGUs match, choose the right one under <strong>Municipality</strong>. Use <strong>Search now</strong> to refresh without waiting.</li>
-            <li><strong>Puroks / sitio</strong> are not national PSGC rows; where the address catalogue lists them for the selected <strong>From barangay</strong>, use <strong>Optional purok</strong> (appends to <strong>Extra keywords</strong>) or type under Extra keywords.</li>
-            <li>Save — route matching uses barangay-related keywords plus extras.</li>
+            <li><strong>Corridor (many cities at once):</strong> choose <strong>Corridor preset</strong> — barangays load into <strong>From</strong> and <strong>To</strong> without Search.</li>
+            <li><strong>One city/municipality:</strong> type the name → click <strong>Search</strong> → if more than one area matches, pick the row under <strong>Municipality</strong> → all barangays load into the two dropdowns (no page reload).</li>
+            <li>Choose <strong>From barangay</strong> (start) and <strong>To barangay</strong> (end) — they must not be the same. Optional puroks appear after <strong>From</strong> is chosen.</li>
+            <li>Click <strong>Save new route</strong> when ready.</li>
         </ol>
         <div class="row g-2 align-items-end mb-2">
             <div class="col-md-8">
@@ -73,27 +73,30 @@ select.ci-route-select.route-assign-await-js[multiple] {
         <div class="row g-2 align-items-end mb-2">
             <div class="col-md-8">
                 <label class="form-label small mb-1" for="coveragePlaceSearch">Area / municipality search</label>
-                <input type="text" class="form-control form-control-sm" id="coveragePlaceSearch" maxlength="120" placeholder="e.g. Bayawan City — then click Search now to list barangays" autocomplete="off">
+                <input type="text" class="form-control form-control-sm" id="coveragePlaceSearch" maxlength="120" placeholder="Type city or municipality, then click Search" autocomplete="off">
             </div>
             <div class="col-md-4">
-                <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="coverageLoadBrgysBtn"><i class="bi bi-search" aria-hidden="true"></i> Search now</button>
+                <button type="button" class="btn btn-sm btn-primary w-100" id="coverageLoadBrgysBtn"><i class="bi bi-search" aria-hidden="true"></i> Search</button>
             </div>
         </div>
-        <div class="small mb-2" id="coverageMatchedAreaMsg" hidden role="status"></div>
+        <div class="small mb-2" id="coverageMatchedAreaMsg" hidden role="status" aria-live="polite"></div>
         <div class="row g-2 mb-2" id="coverageMunicipalityRow" hidden>
             <div class="col-12">
                 <label class="form-label small mb-1" for="coverageMunicipalitySelect">Municipality (when multiple match)</label>
                 <select class="form-select form-select-sm" id="coverageMunicipalitySelect"></select>
             </div>
         </div>
-        <div class="row g-2 mb-2" id="coverageBrgyPickers" hidden>
+        <div class="row g-2 mb-2" id="coverageBrgyPickers" hidden aria-live="polite">
             <div class="col-md-6">
-                <label class="form-label small mb-1" for="coverageBrgyFrom">From barangay</label>
-                <select class="form-select form-select-sm" id="coverageBrgyFrom"></select>
+                <label class="form-label small mb-1" for="coverageBrgyFrom">From barangay <span class="text-muted fw-normal">(start)</span></label>
+                <select class="form-select form-select-sm" id="coverageBrgyFrom" aria-describedby="coverageBrgyHint"></select>
             </div>
             <div class="col-md-6">
-                <label class="form-label small mb-1" for="coverageBrgyTo">To barangay</label>
-                <select class="form-select form-select-sm" id="coverageBrgyTo"></select>
+                <label class="form-label small mb-1" for="coverageBrgyTo">To barangay <span class="text-muted fw-normal">(end)</span></label>
+                <select class="form-select form-select-sm" id="coverageBrgyTo" aria-describedby="coverageBrgyHint"></select>
+            </div>
+            <div class="col-12">
+                <p class="small text-muted mb-0" id="coverageBrgyHint" hidden>Lists update after each Search. From and To must be two different barangays.</p>
             </div>
         </div>
         <div class="alert alert-light border py-2 small mb-2" id="coverageRoutePreview" hidden role="status"></div>
@@ -324,7 +327,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
 
 <script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}" defer></script>
 <script src="{{ url_for('static', filename='addresses.js') }}" defer></script>
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=12" defer></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=14" defer></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};

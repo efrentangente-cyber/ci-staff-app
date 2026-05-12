@@ -119,6 +119,20 @@ function snapshotExcelCashflowForDraft() {
 
 // Initialize wizard
 document.addEventListener('DOMContentLoaded', function() {
+    const ciForm = document.getElementById('ciChecklistForm');
+    if (ciForm) {
+        /* Block implicit submit (Enter in inputs). HTML can still submit a form with only
+         * type="button" children — that POST used the page-render CSRF and explodes after
+         * long sessions / session refresh, showing the login "security token" banner.
+         * Intentional flow uses form.submit() in submitChecklist(), which bypasses this event. */
+        ciForm.addEventListener(
+            'submit',
+            function (e) {
+                e.preventDefault();
+            },
+            true
+        );
+    }
     loadSavedData();
     loadCheckboxData(); // Load checkbox data from summary page
     loadVerificationData(); // Load CI verification checkbox data

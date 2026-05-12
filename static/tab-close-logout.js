@@ -1,5 +1,5 @@
 // Cross-tab registry + GET /logout when the last authenticated app tab actually closes.
-// Controlled by body data-tab-close-auto-logout / TAB_CLOSE_AUTO_LOGOUT (default on in app config).
+// Runs only when body data-tab-close-auto-logout is true / TAB_CLOSE_AUTO_LOGOUT (opt-in; default off in app).
 // Does not end the session on idle — only when the final tab is closed (and in-app navigations are excluded).
 //
 // We skip logout when the unload is likely an in-app navigation (same-origin link follow,
@@ -24,12 +24,15 @@
 
     var STORAGE_KEY = 'dccco_live_tabs_v1';
     var EXPECT_NAV_KEY = 'dccco_expect_nav';
-    var EXPECT_NAV_MAX_MS = 12000;
+    // Users often open the account menu, resume work, then click Change password minutes later.
+    // 12s caused GET /logout on normal in-app navigation (single tab). An hour is safe for shared PCs.
+    var EXPECT_NAV_MAX_MS = 3600000;
 
     var HEARTBEAT_MS = 12000;
     // Drop entries older than this so crashed tabs don't block last-tab logout forever.
-    // Background tabs can be throttled for minutes — keep high to avoid false "last tab" logout.
-    var STALE_MS = 420000;
+    // Background tabs can be throttled heavily (mobile, long interviews) — keep very high so another
+    // live tab is not "forgotten", which would make the only active tab look like "last closed".
+    var STALE_MS = 21600000; // 6 hours
 
     function tabId() {
         try {
@@ -146,6 +149,48 @@
         }
         armNavigationFromAnchor(e.target && e.target.closest ? e.target.closest('a[href]') : null);
     }, true);
+
+    /* Opening the account menu usually precedes Change password / settings — arm early. */
+    document.addEventListener('click', function (e) {
+        var t = e.target && e.target.closest ? e.target.closest('.user-menu-btn') : null;
+        if (t) {
+            setExpectInAppNavigation();
+        }
+    }, true);
+
+    /* Keyboard / accessibility: refresh intent when focusing a link in app chrome. */
+    document.addEventListener(
+        'focusin',
+        function (e) {
+            var t = e.target;
+            if (!t || t.tagName !== 'A' || !t.getAttribute || !t.hasAttribute('href')) {
+                return;
+            }
+            if (t.hasAttribute('download')) {
+                return;
+            }
+            var tgt = (t.getAttribute('target') || '').toLowerCase().trim();
+            if (tgt === '_blank') {
+                return;
+            }
+            var inMenu =
+                (t.closest && !!t.closest('.user-menu-dropdown')) ||
+                (t.classList && t.classList.contains('user-menu-item'));
+            var inSidebar = t.closest && !!t.closest('.sidebar-nav');
+            if (!inMenu && !inSidebar) {
+                return;
+            }
+            try {
+                var u = new URL(t.href, location.href);
+                if (u.origin === location.origin) {
+                    setExpectInAppNavigation();
+                }
+            } catch (x) {
+                void x;
+            }
+        },
+        true
+    );
 
     document.addEventListener('submit', function () {
         setExpectInAppNavigation();

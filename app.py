@@ -984,6 +984,10 @@ def handle_csrf_error(e):
             'This page was open a long time or your security token was refreshed. '
             'Reload the page, then try your action again.'
         )
+        msg_logged_out = (
+            'Your session ended or the page was out of date. Please sign in again, '
+            'then open this page fresh (avoid using the back button right after signing in).'
+        )
         is_ajax = (
             request.headers.get('X-Requested-With') == 'XMLHttpRequest'
             or (request.accept_mimetypes and request.accept_mimetypes.best == 'application/json')
@@ -991,20 +995,22 @@ def handle_csrf_error(e):
             or request.is_json
         )
         if is_ajax:
+            unauth = not getattr(current_user, 'is_authenticated', False)
             return (
                 jsonify(
                     {
                         'success': False,
                         'error': 'csrf_mismatch',
-                        'message': msg,
+                        'message': msg_logged_out if unauth else msg,
                         'csrf_reload': True,
                     }
                 ),
                 400,
             )
-        flash(msg, 'warning')
         if getattr(current_user, 'is_authenticated', False):
+            flash(msg, 'warning')
             return redirect(_csrf_safe_redirect_target())
+        flash(msg_logged_out, 'warning')
         return redirect(url_for('login'))
     except Exception:
         return jsonify({'success': False, 'error': 'csrf_mismatch'}), 400
@@ -1394,9 +1400,10 @@ _SINGLE_LOGIN_STALE_SECONDS = int(_SESSION_STALE_HOURS * 3600)
 # Hard off: no time-based / idle server logout while a tab stays open (ENV cannot override).
 # Tab-close logout is separate (TAB_CLOSE_AUTO_LOGOUT + tab-close-logout.js, last tab closed only).
 _SESSION_IDLE_LOGOUT = False
-# When true, tab-close-logout.js GET /logout when the last in-origin tab closes (recommended for shared PCs).
-# Default on; set TAB_CLOSE_AUTO_LOGOUT=false if mobile/PWA pagehide misfires in your environment.
-app.config['TAB_CLOSE_AUTO_LOGOUT'] = (os.getenv('TAB_CLOSE_AUTO_LOGOUT', 'true').lower() in ('1', 'true', 'yes'))
+# When true, tab-close-logout.js GET /logout when the last in-origin tab closes (shared / kiosk PCs).
+# Default off: pagehide can misfire on long CI sessions and navigations, which felt like random logouts.
+# Enable explicitly: TAB_CLOSE_AUTO_LOGOUT=true
+app.config['TAB_CLOSE_AUTO_LOGOUT'] = (os.getenv('TAB_CLOSE_AUTO_LOGOUT', 'false').lower() in ('1', 'true', 'yes'))
 # Unused while SESSION_IDLE_LOGOUT is off; kept for parity if idle logic is reintroduced.
 try:
     _SESSION_TOUCH_MIN_SEC = int((os.getenv('SESSION_TOUCH_MIN_SEC') or '45').strip() or '45')
