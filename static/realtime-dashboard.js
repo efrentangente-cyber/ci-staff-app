@@ -212,9 +212,14 @@ function initDcccoDashboardRealtime() {
     initDcccoDashboardRealtime._done = true;
 
     socket.on('connect', function () {
-        if (needsApplicationListRefresh()) {
-            scheduleRefreshApplications(true);
+        if (!needsApplicationListRefresh()) {
+            return;
         }
+        /* All dashboards: debounced refresh so first navigations aren't racing /api snapshots. */
+        var delayMs = currentDashboard === 'ci' ? 1800 : 950;
+        setTimeout(function () {
+            scheduleRefreshApplications(false);
+        }, delayMs);
     });
 
     socket.on('disconnect', function (reason) {
@@ -226,9 +231,13 @@ function initDcccoDashboardRealtime() {
     });
 
     socket.on('reconnect', function () {
-        if (needsApplicationListRefresh()) {
-            scheduleRefreshApplications(true);
+        if (!needsApplicationListRefresh()) {
+            return;
         }
+        var delayMs = currentDashboard === 'ci' ? 1400 : 800;
+        setTimeout(function () {
+            scheduleRefreshApplications(false);
+        }, delayMs);
     });
 
     socket.on('new_application', function (data) {
@@ -252,12 +261,28 @@ function initDcccoDashboardRealtime() {
     });
 }
 
-if (currentDashboard) {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initDcccoDashboardRealtime, { once: true });
-    } else {
-        initDcccoDashboardRealtime();
+function tryAttachDashboardRealtime() {
+    if (!currentDashboard) {
+        return;
     }
+    initDcccoDashboardRealtime();
+}
+
+if (currentDashboard) {
+    document.addEventListener('dccco:socket-ready', tryAttachDashboardRealtime);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryAttachDashboardRealtime);
+    } else {
+        tryAttachDashboardRealtime();
+    }
+    var _sockPoll = 0;
+    var _sockTimer = setInterval(function () {
+        tryAttachDashboardRealtime();
+        _sockPoll += 1;
+        if (initDcccoDashboardRealtime._done || _sockPoll > 100) {
+            clearInterval(_sockTimer);
+        }
+    }, 100);
 }
 
 function showToast(title, message, type) {

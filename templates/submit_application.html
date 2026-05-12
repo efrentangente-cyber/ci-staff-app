@@ -3,11 +3,18 @@
 {% block layout_feature_scripts %}{% include 'includes/assets_autocomplete.html' %}{% endblock %}
 {% block styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='loan-amount-confirm.css') }}?v=1">
+<style>
+/* Address suggestion list uses position:absolute; avoid clipping inside the card */
+.lps-submit-page-card,
+.lps-submit-page-card .card-body {
+    overflow: visible !important;
+}
+</style>
 {% endblock %}
 
 {% block content %}
 <h2>Submit New Loan Application</h2>
-<div class="card position-relative">
+<div class="card position-relative lps-submit-page-card">
     <div class="card-body">
         <form method="POST" enctype="multipart/form-data" id="lpsSubmitApplicationForm">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -54,7 +61,7 @@
                 </div>
             </div>
             <div class="mb-3 position-relative">
-                <label class="form-label">Address (Purok/Barangay, Municipality, Province) *</label>
+                <label class="form-label" for="member_address">Address (Purok/Barangay, Municipality, Province) *</label>
                 <input type="text" name="member_address" id="member_address" class="form-control" required autocomplete="off" data-global-autocomplete="off" autocorrect="off" spellcheck="false"
                        placeholder="e.g. Linotob, Basay, Negros Oriental — or type Purok 4 first; click a suggestion to fill">
                 <div id="address_suggestions" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" style="z-index: 1060; max-height: 320px; overflow-y: auto; display: none;"></div>
@@ -131,9 +138,9 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=13"></script>
 <script src="{{ url_for('static', filename='loan-amount-confirm.js') }}?v=1"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {

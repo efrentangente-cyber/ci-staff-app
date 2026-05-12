@@ -56,20 +56,10 @@ select.ci-route-select.route-assign-await-js[multiple] {
     </summary>
     <div class="content-card-body border-top" id="ciCoverageRouteWizard" data-create-url="{{ url_for('api_ci_coverage_routes') }}">
         <ol class="small text-muted mb-3 ps-3">
-            <li><strong>Corridor (many cities at once):</strong> choose <strong>Corridor preset</strong> — barangays load into <strong>From</strong> and <strong>To</strong> without Search.</li>
-            <li><strong>One city/municipality:</strong> type the name → click <strong>Search</strong> → if more than one area matches, pick the row under <strong>Municipality</strong> → all barangays load into the two dropdowns (no page reload).</li>
-            <li>Choose <strong>From barangay</strong> (start) and <strong>To barangay</strong> (end) — they must not be the same. Optional puroks appear after <strong>From</strong> is chosen.</li>
-            <li>Click <strong>Save new route</strong> when ready.</li>
+            <li>Type a <strong>city or municipality</strong> (e.g. Bayawan) → click <strong>Search</strong>. If several areas match, pick the row under <strong>Municipality</strong>.</li>
+            <li>Choose <strong>From barangay</strong> and <strong>To barangay</strong> — the list is <strong>all barangays</strong> catalogued for that LGU — they must not be the same.</li>
+            <li>Optional: pick a <strong>Purok</strong> to add keywords, or type more in <strong>Extra keywords</strong>. Click <strong>Save new route</strong> when ready.</li>
         </ol>
-        <div class="row g-2 align-items-end mb-2">
-            <div class="col-md-8">
-                <label class="form-label small mb-1" for="coverageCorridorPreset">Corridor preset (optional)</label>
-                <select class="form-select form-select-sm" id="coverageCorridorPreset">
-                    <option value="">— Search a single municipality instead —</option>
-                    <option value="south_negros">South Negros (Sipalay–Bayawan–Dumaguete chain)</option>
-                </select>
-            </div>
-        </div>
         <div class="row g-2 align-items-end mb-2">
             <div class="col-md-8">
                 <label class="form-label small mb-1" for="coveragePlaceSearch">Area / municipality search</label>
@@ -98,10 +88,17 @@ select.ci-route-select.route-assign-await-js[multiple] {
             <div class="col-12">
                 <p class="small text-muted mb-0" id="coverageBrgyHint" hidden>Lists update after each Search. From and To must be two different barangays.</p>
             </div>
+            <div class="col-12">
+                <label class="form-label small mb-1" for="coveragePurokSelect">Purok (optional — fills extra keywords)</label>
+                <select class="form-select form-select-sm" id="coveragePurokSelect" disabled aria-describedby="coveragePurokHelp">
+                    <option value="">— Choose “From barangay” first —</option>
+                </select>
+                <div class="form-text small" id="coveragePurokHelp">Choosing a row appends it to Extra keywords.</div>
+            </div>
         </div>
         <div class="alert alert-light border py-2 small mb-2" id="coverageRoutePreview" hidden role="status"></div>
         <label class="form-label small mb-1" for="coverageExtraKeywords">Extra keywords (optional, comma-separated)</label>
-        <input type="text" class="form-control form-control-sm mb-3" id="coverageExtraKeywords" maxlength="400" placeholder="e.g. purok nickname, subdivision" autocomplete="off">
+        <input type="text" class="form-control form-control-sm mb-3" id="coverageExtraKeywords" maxlength="400" placeholder="Optional — subdivisions / nicknames, or pick a purok above" autocomplete="off">
         <button type="button" class="btn btn-sm btn-primary" id="createRouteSubmitBtn">Save new route</button>
     </div>
 </details>
@@ -327,7 +324,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
 
 <script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}" defer></script>
 <script src="{{ url_for('static', filename='addresses.js') }}" defer></script>
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=15" defer></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=16" defer></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
@@ -411,7 +408,6 @@ document.addEventListener('DOMContentLoaded', function () {
         useCoverageCatalogApi: true,
         coverageMunicipalitiesUrl: COVERAGE_CAT_MUNICIPALITIES_URL,
         coverageBarangaysUrl: COVERAGE_CAT_BARANGAYS_URL,
-        coverageCorridorBarangaysUrl: COVERAGE_CAT_CORRIDOR_URL,
     });
 });
 

@@ -1,5 +1,5 @@
 /**
- * Manage Users — pinpoint coverage routes: municipality search → barangay from/to → POST create.
+ * Manage Users — pinpoint coverage routes: municipality search → all barangays for that LGU → From/To → POST create.
  * Options: opts.useCoverageCatalogApi + municipalities/barangays URLs (server parses PSGC JS), or
  * static/addresses.js (findCoverageMunicipalitiesMatching, listCoverageBarangaysInMunicipality).
  */
@@ -101,10 +101,6 @@
     var DEFAULT_BRGY_HINT =
         'Lists update after each Search. From and To must be two different barangays.';
 
-    function encodeCovOpt(mun, prov, brgy) {
-        return 'cov\t' + mun + '\t' + prov + '\t' + brgy;
-    }
-
     function decodeCovOpt(v) {
         var raw = String(v || '');
         if (raw.indexOf('cov\t') !== 0) {
@@ -146,12 +142,8 @@
                 opts.coverageBarangaysUrl);
         var coverageMunicipalitiesUrl =
             useCatalogueApi ? String(opts.coverageMunicipalitiesUrl) : '';
-        var coverageBarangaysUrl = useCatalogueApi ? String(opts.coverageBarangaysUrl) : '';
-        var coverageCorridorBarangaysUrl =
-            opts && opts.coverageCorridorBarangaysUrl
-                ? String(opts.coverageCorridorBarangaysUrl)
-                : '';
-
+        var coverageBarangaysUrl =
+            useCatalogueApi ? String(opts.coverageBarangaysUrl) : '';
         function catalogueFetchHeaders() {
             var headers = {
                 Accept: 'application/json',
@@ -212,7 +204,6 @@
         var preview = el('coverageRoutePreview');
         var kwExtra = el('coverageExtraKeywords');
         var saveBtn = el('createRouteSubmitBtn');
-        var corridorPresetSel = el('coverageCorridorPreset');
         var brgyHintEl = el('coverageBrgyHint');
 
         var catalogueLoadingStack = [];
@@ -276,36 +267,9 @@
             province: '',
             labels: [],
             multi: [],
-            corridorPresetKey: '',
-            corridorPresetDisplay: '',
         };
         var municipalitiesCache = Object.create(null);
         var barangaysCache = Object.create(null);
-
-        function fillSelectCorridor(sel, items) {
-            if (!sel) {
-                return;
-            }
-            sel.innerHTML = '';
-            var ph = document.createElement('option');
-            ph.value = '';
-            ph.textContent = items && items.length ? 'Select…' : '—';
-            sel.appendChild(ph);
-            var seenVal = Object.create(null);
-            (items || []).forEach(function (it) {
-                var o = document.createElement('option');
-                var v = encodeCovOpt(it.municipality, it.province, it.barangay);
-                if (seenVal[v]) {
-                    return;
-                }
-                seenVal[v] = true;
-                o.value = v;
-                o.textContent =
-                    it.label || it.barangay + ' — ' + it.municipality + ', ' + it.province;
-                sel.appendChild(o);
-            });
-            sel.disabled = !items || items.length === 0;
-        }
 
         function decodeBarangayChoice(v) {
             var raw = String(v || '').trim();
@@ -342,7 +306,7 @@
             ps.appendChild(ph);
             var v = fromSel && fromSel.value ? fromSel.value.trim() : '';
             var d = decodeCovOpt(v);
-            if (!d && state.municipality && v && !state.corridorPresetKey) {
+            if (!d && state.municipality && v) {
                 d = {
                     municipality: state.municipality,
                     province: state.province || '',
@@ -365,43 +329,6 @@
                 o.textContent = lbl;
                 ps.appendChild(o);
             });
-        }
-
-        function applyCorridorItems(presetKey, presetLabel, items) {
-            state.corridorPresetKey = presetKey || '';
-            state.corridorPresetDisplay = presetLabel || '';
-            state.municipality = presetLabel || '';
-            state.province = '';
-            state.labels = [];
-            fillSelectCorridor(fromSel, items);
-            fillSelectCorridor(toSel, items);
-            mirrorToOptions(fromSel, toSel);
-            if (pickRow) {
-                pickRow.hidden = !(items && items.length);
-            }
-            if (munRow) {
-                munRow.hidden = true;
-            }
-            if (brgyHintEl) {
-                if (items && items.length) {
-                    brgyHintEl.hidden = false;
-                    brgyHintEl.classList.remove('text-danger');
-                    brgyHintEl.textContent = DEFAULT_BRGY_HINT;
-                } else {
-                    brgyHintEl.hidden = true;
-                }
-            }
-            refreshPurokOptions();
-            updatePreview();
-            sanitizeDuplicateFromTo();
-        }
-
-        function clearCorridorSelection() {
-            state.corridorPresetKey = '';
-            state.corridorPresetDisplay = '';
-            if (corridorPresetSel) {
-                corridorPresetSel.value = '';
-            }
         }
 
         function setMsg(txt, isError) {
@@ -442,11 +369,10 @@
                     ? toSel.options[toIdx].textContent.trim()
                     : '';
             var head =
-                state.corridorPresetDisplay ||
-                (state.municipality
+                state.municipality
                     ? state.municipality +
                       (state.province ? ', ' + state.province : '')
-                    : '');
+                    : '';
             if (preview && head && fromTxt && toTxt) {
                 preview.hidden = false;
                 preview.textContent = head + ': ' + fromTxt + ' → ' + toTxt;
@@ -483,7 +409,6 @@
 
         function finishBarangayList(labels, msgOpts) {
             msgOpts = msgOpts || {};
-            clearCorridorSelection();
             state.labels = normalizeBarangayLabels(labels || []);
             fillSelect(fromSel, state.labels);
             fillSelect(toSel, state.labels);
@@ -714,7 +639,6 @@
                 }
                 return;
             }
-            clearCorridorSelection();
             if (useCatalogueApi) {
                 setMsg('Searching areas…', false);
                 var qKey = q.toLowerCase();
@@ -860,75 +784,6 @@
             populateMunicipalityPicker(matched);
         }
 
-        if (corridorPresetSel && coverageCorridorBarangaysUrl) {
-            corridorPresetSel.addEventListener('change', function () {
-                var pk = (corridorPresetSel.value || '').trim();
-                if (!pk) {
-                    clearCorridorSelection();
-                    state.municipality = '';
-                    state.province = '';
-                    state.labels = [];
-                    fillSelect(fromSel, []);
-                    fillSelect(toSel, []);
-                    if (pickRow) {
-                        pickRow.hidden = true;
-                    }
-                    if (brgyHintEl) {
-                        brgyHintEl.hidden = true;
-                        brgyHintEl.classList.remove('text-danger');
-                        brgyHintEl.textContent = DEFAULT_BRGY_HINT;
-                    }
-                    refreshPurokOptions();
-                    updatePreview();
-                    setMsg('', false);
-                    return;
-                }
-                var sep = coverageCorridorBarangaysUrl.indexOf('?') >= 0 ? '&' : '?';
-                fetch(
-                    coverageCorridorBarangaysUrl + sep + 'preset=' + encodeURIComponent(pk)
-                )
-                    .then(function (r) {
-                        return r.json();
-                    })
-                    .then(function (j) {
-                        if (!j || !j.ok) {
-                            setMsg(
-                                (j && (j.message || j.error)) ||
-                                    'Could not load corridor barangays.',
-                                true
-                            );
-                            return;
-                        }
-                        if (j.empty_catalogue) {
-                            setMsg(
-                                'Address catalogue is empty on the server. Deploy static/generated/address_psgc_negros.generated.js.',
-                                true
-                            );
-                            applyCorridorItems(
-                                pk,
-                                j.preset_label || pk,
-                                []
-                            );
-                            return;
-                        }
-                        applyCorridorItems(
-                            pk,
-                            j.preset_label || pk,
-                            j.items || []
-                        );
-                        setMsg(
-                            'Loaded ' +
-                                (j.count || 0) +
-                                ' barangays for this corridor. Choose From / To.',
-                            false
-                        );
-                    })
-                    .catch(function () {
-                        setMsg('Network error loading corridor barangays.', true);
-                    });
-            });
-        }
-
         if (munSel) {
             munSel.addEventListener('change', function () {
                 var info = decodeMunicipalitySelect();
@@ -1001,20 +856,11 @@
             placeIn.addEventListener('input', function () {
                 var q = placeIn.value ? placeIn.value.trim() : '';
                 if (!q) {
-                    if (!state.corridorPresetKey) {
-                        resetSingleMunicipalityPickersUi();
-                    } else {
-                        resetCatalogueLoading();
-                    }
+                    resetSingleMunicipalityPickersUi();
                     setMsg('', false);
                     return;
                 }
-                if (state.corridorPresetKey) {
-                    clearCorridorSelection();
-                    resetSingleMunicipalityPickersUi();
-                } else {
-                    resetSingleMunicipalityPickersUi();
-                }
+                resetSingleMunicipalityPickersUi();
                 setMsg(
                     'Click “Search” (or press Enter) to load all barangays for this city or municipality.'
                 );
@@ -1048,19 +894,17 @@
 
             if (!fd || !td || !fd.barangay || !td.barangay) {
                 alert(
-                    'Load barangays (or choose a corridor preset), then choose both “from” and “to” barangays.'
+                    'Search for an area, wait for barangays to load, then choose both “From” and “To” barangays.'
                 );
                 return;
             }
 
-            var head =
-                state.corridorPresetDisplay ||
-                (state.municipality
-                    ? state.municipality +
-                      (state.province ? ', ' + state.province : '')
-                    : '');
+            var head = state.municipality
+                ? state.municipality +
+                  (state.province ? ', ' + state.province : '')
+                : '';
             if (!head) {
-                alert('Search for an area or pick a corridor preset first.');
+                alert('Search for an area first, then choose From / To.');
                 return;
             }
 

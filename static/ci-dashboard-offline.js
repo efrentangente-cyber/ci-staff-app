@@ -536,10 +536,23 @@
     }
 
     /**
+     * When online, SSR already renders grouped rows — skipping re-paint avoids stalls while staff tap Home/Messages.
+     * Still hydrate IndexedDB mirror silently (see runCiDashboardHydration).
+     */
+    function ciServerAlreadyRenderedGroupedRows() {
+        var pt = document.querySelector('#pendingTable tbody');
+        if (pt && pt.querySelector('tr') && pt.querySelector('a[href^="/ci/review/"]')) {
+            return true;
+        }
+        var ct = document.querySelector('#completedTable tbody');
+        return !!(ct && ct.querySelector('tr') && ct.querySelector('a[href^="/ci/application/"]'));
+    }
+
+    /**
      * While online, warm the service worker cache for interview flows so "Start" works offline.
      * One scheduled pass per application id per tab session (avoids duplicate storms on re-render).
      */
-    var MAX_SHELL_PREFETCH = 12;
+    var MAX_SHELL_PREFETCH = 5;
     var _shellPrefetchScheduled = Object.create(null);
 
     function prefetchCiInterviewShellsForApps(apps) {
@@ -561,7 +574,7 @@
                 return;
             }
             _shellPrefetchScheduled[id] = true;
-            var baseDelay = idx * 400;
+            var baseDelay = idx * 900;
             var paths = [
                 '/ci/review/' + id,
                 '/ci/checklist/summary/' + id,
@@ -572,14 +585,14 @@
                     fetch(path, { credentials: 'include', cache: 'default' }).catch(function () {
                         void 0;
                     });
-                }, baseDelay + j * 150);
+                }, baseDelay + j * 350);
             });
         });
     }
 
     window.prefetchCiInterviewShellsForApps = prefetchCiInterviewShellsForApps;
 
-    var MAX_LPS_DOC_PREFETCH_APPS = 10;
+    var MAX_LPS_DOC_PREFETCH_APPS = 4;
     var _lpsDocPrefetchScheduled = Object.create(null);
 
     /**
@@ -705,7 +718,7 @@
         if (!ids.length) {
             return;
         }
-        var concurrency = 5;
+        var concurrency = 2;
         var pos = 0;
         function runBatch() {
             var n = Math.min(concurrency, ids.length - pos);
@@ -738,7 +751,7 @@
                         void 0;
                     }
                 },
-                { timeout: 3500 }
+                { timeout: 8000 }
             );
             return;
         }
@@ -748,7 +761,7 @@
             } catch (eTo) {
                 void 0;
             }
-        }, 1800);
+        }, 3200);
     }
 
     window.scheduleCiIdlePrefetch = scheduleIdlePrefetch;
@@ -806,7 +819,26 @@
                 });
             })
             .then(function (merged) {
-                if (merged && merged.length > 0) {
+                var mergedLen = merged && merged.length ? merged.length : 0;
+                var online = typeof navigator !== 'undefined' && navigator.onLine;
+                if (mergedLen > 0 && online && ciServerAlreadyRenderedGroupedRows()) {
+                    document.body.setAttribute('data-ci-offline-hydrated', '1');
+                    try {
+                        saveMirrorApplicationsFromDicts(merged).catch(function () {});
+                    } catch (eMir) {
+                        void 0;
+                    }
+                    try {
+                        scheduleIdlePrefetch(function () {
+                            prefetchCiInterviewShellsForApps(merged);
+                            prefetchLpsDocumentBytesForApplications(merged);
+                        });
+                    } catch (ePf0) {
+                        void 0;
+                    }
+                    return;
+                }
+                if (mergedLen > 0) {
                     document.body.setAttribute('data-ci-offline-hydrated', '1');
                     applyFromApps(merged);
                 } else {
@@ -936,13 +968,8 @@
     window.addEventListener('online', scheduleHydration);
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            scheduleHydration();
-            /** One deferred merge only — avoids triple /api hits competing with navigations */
-            setTimeout(scheduleHydration, 850);
-        });
+        document.addEventListener('DOMContentLoaded', scheduleHydration);
     } else {
         scheduleHydration();
-        setTimeout(scheduleHydration, 850);
     }
 })();

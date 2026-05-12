@@ -7,6 +7,29 @@
 (function () {
     'use strict';
 
+    /** PSGC list can load after scripts run; LPS autocomplete must read fresh rows each keystroke. */
+    function resolveAddressCatalogueRows() {
+        try {
+            if (
+                typeof window !== 'undefined' &&
+                window.addressDatabase != null &&
+                typeof window.addressDatabase.length === 'number'
+            ) {
+                return window.addressDatabase;
+            }
+        } catch (e0) {
+            void e0;
+        }
+        try {
+            if (typeof addressDatabase !== 'undefined' && addressDatabase != null) {
+                return addressDatabase;
+            }
+        } catch (e1) {
+            void e1;
+        }
+        return [];
+    }
+
     var BRGY_CACHE = null;
 
     function normalizeSp(text) {
@@ -394,7 +417,7 @@
         var maxAttempts = typeof o.maxAttempts === 'number' ? o.maxAttempts : 100;
         var debounceMs = typeof o.debounceMs === 'number' ? o.debounceMs : 72;
 
-        function attachWhenReady() {
+        function attachAutocomplete(forceAttach) {
             var input = document.getElementById(inputId);
             var list = document.getElementById(listId);
             if (!input || !list) {
@@ -406,16 +429,21 @@
             if (input.dataset.lpsAddressAcBound === '1') {
                 return true;
             }
-            if (typeof addressDatabase === 'undefined' || !addressDatabase.length) {
+            var catalogueRows = resolveAddressCatalogueRows();
+            if (!catalogueRows.length && !forceAttach) {
                 return false;
             }
 
             input.dataset.lpsAddressAcBound = '1';
             list.setAttribute('role', 'listbox');
+            list.style.zIndex = '1090';
             input.setAttribute('aria-autocomplete', 'list');
             input.setAttribute('aria-controls', listId);
 
             var debounceTimer = null;
+
+            /** Label + input + list share one .position-relative wrapper — clicks there must not close the list. */
+            var wrap = input.closest('.position-relative');
 
             function hideList() {
                 list.style.display = 'none';
@@ -431,6 +459,16 @@
                     .replace(/'/g, '&#39;');
             }
 
+            function flushSuggestionsFromCatalogue() {
+                window.requestAnimationFrame(function () {
+                    if (debounceTimer) {
+                        clearTimeout(debounceTimer);
+                        debounceTimer = null;
+                    }
+                    updateAddressSuggestionList();
+                });
+            }
+
             function updateAddressSuggestionList() {
                 var raw = input.value;
                 var trimmed = raw.trim();
@@ -444,7 +482,22 @@
                     return;
                 }
 
-                var out = collectMatches(raw, tokens, addressDatabase);
+                var dbLive = resolveAddressCatalogueRows();
+                if (!dbLive.length) {
+                    list.innerHTML = '';
+                    var note = document.createElement('button');
+                    note.type = 'button';
+                    note.disabled = true;
+                    note.className = 'list-group-item list-group-item-warning text-start small';
+                    note.textContent =
+                        'Address list not loaded. Hard refresh (Ctrl+Shift+R). Ask admin to verify static/generated/address_psgc_negros.generated.js is deployed.';
+                    list.appendChild(note);
+                    list.style.display = 'block';
+                    input.setAttribute('aria-expanded', 'true');
+                    return;
+                }
+
+                var out = collectMatches(raw, tokens, dbLive);
                 var scored = out.rows;
                 var anchored = out.anchoredBrgyNorm;
 
@@ -523,12 +576,20 @@
                 }
             });
 
+            window.addEventListener('dcccoAddressCatalogueReady', flushSuggestionsFromCatalogue);
+
             document.addEventListener('click', function (e) {
-                if (e.target !== input && !list.contains(e.target)) {
-                    setTimeout(function () {
-                        hideList();
-                    }, 150);
+                var tgt = e.target;
+                var insideComposite = wrap && tgt && wrap.contains(tgt);
+                if (insideComposite) {
+                    return;
                 }
+                if (tgt === input || list.contains(tgt)) {
+                    return;
+                }
+                setTimeout(function () {
+                    hideList();
+                }, 120);
             });
 
             return true;
@@ -536,16 +597,16 @@
 
         var attempts = 0;
         function schedule() {
-            if (attachWhenReady()) {
+            if (attachAutocomplete(false)) {
                 return;
             }
             attempts += 1;
             if (attempts >= maxAttempts) {
-                console.warn(
-                    'LPS address autocomplete: catalogue still empty after ' +
-                        maxAttempts +
-                        ' attempts. Ensure address_psgc_negros.generated.js loads before addresses.js.'
-                );
+                if (!attachAutocomplete(true)) {
+                    console.warn(
+                        'LPS address autocomplete: #member_address / #address_suggestions missing; autocomplete not bound.'
+                    );
+                }
                 return;
             }
             setTimeout(schedule, pollMs);

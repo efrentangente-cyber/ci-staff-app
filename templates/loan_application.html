@@ -10,6 +10,9 @@
     background-color: #e9ecef;
     cursor: not-allowed;
 }
+.lps-address-dropdown-card .card-body {
+    overflow: visible !important;
+}
 </style>
 
 {% block content %}
@@ -26,7 +29,7 @@
 
 <div class="row">
     <div class="col-12">
-        <div class="card position-relative mb-3">
+        <div class="card position-relative mb-3 lps-address-dropdown-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5>Application Details</h5>
                 <span class="badge bg-{% if application.status == 'approved' %}success{% elif application.status == 'disapproved' %}danger{% else %}warning{% endif %}">
@@ -51,7 +54,7 @@
                         </div>
                     </div>
                     <div class="mb-3 {% if can_edit %}position-relative{% endif %}">
-                        <label class="form-label">Address (Purok/Barangay, Municipality, Province) *</label>
+                        <label class="form-label" for="member_address">Address (Purok/Barangay, Municipality, Province) *</label>
                         <input type="text" name="member_address" id="member_address" class="form-control" value="{{ application.member_address or '' }}" required autocomplete="off" data-global-autocomplete="off" autocorrect="off" spellcheck="false" placeholder="e.g. Linotob, Basay, Negros Oriental — or type Purok 4 first; click a suggestion to fill" {% if not can_edit %}readonly class="form-control read-only-field"{% endif %}>
                         {% if can_edit %}
                         <div id="address_suggestions" class="list-group position-absolute shadow-sm border rounded mt-1 w-100" style="z-index: 1060; max-height: 320px; overflow-y: auto; display: none;"></div>
@@ -186,9 +189,9 @@
 </div>
 
 {% if can_edit %}
-<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=13"></script>
 <script src="{{ url_for('static', filename='loan-amount-confirm.js') }}?v=1"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {

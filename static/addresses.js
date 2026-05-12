@@ -295,6 +295,13 @@ window.listPurokLabelsForBarangayCell = listPurokLabelsForBarangayCell;
         }
         window.__ADDRESS_CATALOGUE_ROWS__ = addressDatabase.length;
         window.addressDatabase = addressDatabase;
+        try {
+            window.dispatchEvent(
+                new CustomEvent('dcccoAddressCatalogueReady', { detail: addressDatabase.length })
+            );
+        } catch (ign) {
+            void ign;
+        }
     } catch (err) {
         console.error('addresses.js: catalogue build failed', err);
         window.__ADDRESS_CATALOGUE_ROWS__ = 0;
