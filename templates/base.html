@@ -471,11 +471,11 @@
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=16" defer></script>
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=18" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
-    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260430-perf" defer></script>
-    <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=10" defer></script>
+    <script src="{{ url_for('static', filename='session-security.js') }}?v=20260512-bfcache-csrf" defer></script>
+    <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=11" defer></script>
     <script src="{{ url_for('static', filename='offline-request-queue.js') }}?v=1" defer></script>
     {% endif %}
     
@@ -490,29 +490,56 @@
         }
         (function () {
             var hbUrl = {{ url_for('session_heartbeat') | tojson }};
+            var stUrl = {{ url_for('api_session_status') | tojson }};
             var intervalMs = 60 * 1000;
-            function csrfToken() {
-                var m = document.querySelector('meta[name="csrf-token"]');
-                return m ? m.getAttribute('content') : '';
+            function applyCsrfFromPayload(data) {
+                if (data && data.csrf_token) {
+                    var m = document.querySelector('meta[name="csrf-token"]');
+                    if (m) m.setAttribute('content', data.csrf_token);
+                }
+            }
+            /* Refreshes <meta name="csrf-token"> from an authenticated GET (no CSRF header). */
+            function pullCsrfFromSessionStatus() {
+                if (!stUrl) return;
+                fetch(stUrl, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    cache: 'no-store',
+                })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                        if (data && data.ok) applyCsrfFromPayload(data);
+                    })
+                    .catch(function () {});
             }
             function sessionHeartbeat() {
-                var t = csrfToken();
-                if (!t || !hbUrl) return;
+                if (!hbUrl) return;
                 fetch(hbUrl, {
-                    method: 'POST',
+                    method: 'GET',
                     credentials: 'same-origin',
                     headers: {
-                        'X-CSRFToken': t,
                         'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    }
-                }).catch(function () {});
+                        Accept: 'application/json',
+                    },
+                    cache: 'no-store',
+                })
+                    .then(function (r) { return r.json().catch(function () { return {}; }); })
+                    .then(function (data) {
+                        applyCsrfFromPayload(data);
+                    })
+                    .catch(function () {});
             }
             setInterval(sessionHeartbeat, intervalMs);
+            setInterval(pullCsrfFromSessionStatus, 3 * 60 * 1000);
             document.addEventListener('visibilitychange', function () {
-                if (!document.hidden) sessionHeartbeat();
+                if (!document.hidden) {
+                    pullCsrfFromSessionStatus();
+                    sessionHeartbeat();
+                }
             });
             document.addEventListener('DOMContentLoaded', function () {
+                setTimeout(pullCsrfFromSessionStatus, 1500);
                 setTimeout(sessionHeartbeat, 3000);
             });
         })();

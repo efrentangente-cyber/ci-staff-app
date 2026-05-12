@@ -366,12 +366,32 @@
                     setMsg(
                         'Showing ' +
                             state.labels.length +
-                            ' barangays under ' +
+                            ' barangays for ' +
                             state.municipality +
-                            ' (' +
-                            state.province +
-                            '). Choose from / to.'
+                            (state.province ? ', ' + state.province : '') +
+                            '. Choose From barangay and To barangay below.'
                     );
+                    if (pickRow && typeof pickRow.scrollIntoView === 'function') {
+                        try {
+                            pickRow.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'nearest',
+                            });
+                        } catch (eSc) {
+                            void eSc;
+                        }
+                    }
+                    if (fromSel && typeof fromSel.focus === 'function') {
+                        try {
+                            fromSel.focus({ preventScroll: true });
+                        } catch (eF) {
+                            try {
+                                fromSel.focus();
+                            } catch (eF2) {
+                                void eF2;
+                            }
+                        }
+                    }
                 } else if (!msgOpts.fromHttpFail) {
                     setMsg(
                         'No barangays are catalogued for this municipality yet.',
@@ -626,7 +646,6 @@
                             return;
                         }
                         populateMunicipalityPicker(matched);
-                        /* Single-match flow loads barangays asynchronously; leave status as “Loading…” until done. */
                     })
                     .catch(function (err) {
                         if (loadBtn) {
@@ -790,10 +809,6 @@
             });
         }
 
-        var placeInputDebounceTimer = null;
-        var PLACE_INPUT_DEBOUNCE_MS = 420;
-        var PLACE_INPUT_MIN_CHARS = 2;
-
         function resetSingleMunicipalityPickersUi() {
             if (munRow) {
                 munRow.hidden = true;
@@ -814,47 +829,31 @@
             updatePreview();
         }
 
-        function onPlaceSearchInputDebounced() {
-            var q = placeIn && placeIn.value ? placeIn.value.trim() : '';
-            if (!q) {
-                if (loadBtn) {
-                    loadBtn.disabled = false;
-                }
-                if (!state.corridorPresetKey) {
-                    resetSingleMunicipalityPickersUi();
-                    setMsg('', false);
-                } else {
-                    setMsg('', false);
-                }
-                return;
-            }
-            if (q.length < PLACE_INPUT_MIN_CHARS) {
-                return;
-            }
-            doLoadPlaces({ silentEmpty: true });
-        }
-
-        function schedulePlaceSearchDebounced() {
-            if (placeInputDebounceTimer) {
-                clearTimeout(placeInputDebounceTimer);
-            }
-            placeInputDebounceTimer = setTimeout(function () {
-                placeInputDebounceTimer = null;
-                onPlaceSearchInputDebounced();
-            }, PLACE_INPUT_DEBOUNCE_MS);
-        }
-
         if (placeIn) {
             placeIn.addEventListener('input', function () {
-                schedulePlaceSearchDebounced();
+                var q = placeIn.value ? placeIn.value.trim() : '';
+                if (!q) {
+                    if (loadBtn) {
+                        loadBtn.disabled = false;
+                    }
+                    if (!state.corridorPresetKey) {
+                        resetSingleMunicipalityPickersUi();
+                    }
+                    setMsg('', false);
+                    return;
+                }
+                if (state.corridorPresetKey) {
+                    clearCorridorSelection();
+                    resetSingleMunicipalityPickersUi();
+                } else {
+                    resetSingleMunicipalityPickersUi();
+                }
+                setMsg(
+                    'Click “Search now” (or press Enter) to load all barangays for this city or municipality.'
+                );
             });
             placeIn.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
-                    /* Enter: search immediately (also clears debounce timer). */
-                    if (placeInputDebounceTimer) {
-                        clearTimeout(placeInputDebounceTimer);
-                        placeInputDebounceTimer = null;
-                    }
                     e.preventDefault();
                     doLoadPlaces({ silentEmpty: true });
                 }
@@ -862,10 +861,6 @@
         }
         if (loadBtn) {
             loadBtn.addEventListener('click', function () {
-                if (placeInputDebounceTimer) {
-                    clearTimeout(placeInputDebounceTimer);
-                    placeInputDebounceTimer = null;
-                }
                 doLoadPlaces();
             });
         }

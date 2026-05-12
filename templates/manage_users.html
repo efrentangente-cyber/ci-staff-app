@@ -73,7 +73,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
         <div class="row g-2 align-items-end mb-2">
             <div class="col-md-8">
                 <label class="form-label small mb-1" for="coveragePlaceSearch">Area / municipality search</label>
-                <input type="text" class="form-control form-control-sm" id="coveragePlaceSearch" maxlength="120" placeholder="Type city or municipality — barangays appear below automatically (e.g. Bayawan)" autocomplete="off">
+                <input type="text" class="form-control form-control-sm" id="coveragePlaceSearch" maxlength="120" placeholder="e.g. Bayawan City — then click Search now to list barangays" autocomplete="off">
             </div>
             <div class="col-md-4">
                 <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="coverageLoadBrgysBtn"><i class="bi bi-search" aria-hidden="true"></i> Search now</button>
@@ -324,7 +324,7 @@ select.ci-route-select.route-assign-await-js[multiple] {
 
 <script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}" defer></script>
 <script src="{{ url_for('static', filename='addresses.js') }}" defer></script>
-<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=11" defer></script>
+<script src="{{ url_for('static', filename='ci-coverage-route-wizard.js') }}?v=12" defer></script>
 <script>
 const UPDATE_CI_ROUTE_URL = {{ url_for('update_ci_route')|tojson }};
 const CREATE_CI_ROUTE_URL = {{ url_for('api_ci_coverage_routes')|tojson }};
@@ -502,6 +502,11 @@ function saveRoutesFromSelect(userId) {
             if (btn) {
                 btn.disabled = false;
             }
+            if (out.data && out.data.error === 'csrf_mismatch') {
+                alert(out.data.message || 'Reloading page with a fresh security token.');
+                location.reload();
+                return;
+            }
             if (out.ok && out.data && out.data.success) {
                 location.reload();
                 return;
@@ -534,8 +539,18 @@ function assignRole(userId, role) {
         credentials: 'same-origin',
         body: JSON.stringify({ role: role, csrf_token: manageUsersCsrfToken() })
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(function (response) {
+        return response.json().then(function (data) {
+            return { response: response, data: data };
+        });
+    })
+    .then(function (packed) {
+        var data = packed.data;
+        if (data && data.error === 'csrf_mismatch') {
+            alert(data.message || 'Reloading page with a fresh security token.');
+            location.reload();
+            return;
+        }
         if (data.success) {
             const wrap = document.querySelector('.ci-route-wrap[data-user-id="' + userId + '"]');
             if (wrap) {
@@ -579,10 +594,10 @@ function assignRole(userId, role) {
             document.body.appendChild(alert);
             setTimeout(() => alert.remove(), 3000);
         } else {
-            alert('Error: ' + data.error);
+            alert('Error: ' + (data.error || 'Request failed'));
         }
     })
-    .catch(error => {
+    .catch(function (error) {
         console.error('Error:', error);
         alert('Failed to assign role');
     });
@@ -607,8 +622,18 @@ function changeUserRole(userId, newRole, userName) {
         credentials: 'same-origin',
         body: JSON.stringify({ role: newRole, csrf_token: manageUsersCsrfToken() })
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(function (response) {
+        return response.json().then(function (data) {
+            return { response: response, data: data };
+        });
+    })
+    .then(function (packed) {
+        var data = packed.data;
+        if (data && data.error === 'csrf_mismatch') {
+            alert(data.message || 'Reloading page with a fresh security token.');
+            location.reload();
+            return;
+        }
         if (data.success) {
             // Show success message
             const alert = document.createElement('div');

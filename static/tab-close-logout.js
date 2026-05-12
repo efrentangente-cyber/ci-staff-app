@@ -1,5 +1,6 @@
-// Optional: cross-tab heartbeat + GET /logout when the last authenticated tab closes.
-// Disabled by default (see body data-tab-close-auto-logout / TAB_CLOSE_AUTO_LOGOUT); easy to misfire on mobile.
+// Cross-tab registry + GET /logout when the last authenticated app tab actually closes.
+// Controlled by body data-tab-close-auto-logout / TAB_CLOSE_AUTO_LOGOUT (default on in app config).
+// Does not end the session on idle — only when the final tab is closed (and in-app navigations are excluded).
 //
 // We skip logout when the unload is likely an in-app navigation (same-origin link follow,
 // form submit, reload shortcut, or programmatic same-origin redirect) using a short
@@ -26,9 +27,9 @@
     var EXPECT_NAV_MAX_MS = 12000;
 
     var HEARTBEAT_MS = 12000;
-    // Drop entries older than this so "dead" tabs don't block last-tab logout forever.
-    // Keep generous — throttled background tabs may miss heartbeats for tens of seconds.
-    var STALE_MS = 120000;
+    // Drop entries older than this so crashed tabs don't block last-tab logout forever.
+    // Background tabs can be throttled for minutes — keep high to avoid false "last tab" logout.
+    var STALE_MS = 420000;
 
     function tabId() {
         try {
@@ -225,6 +226,11 @@
 
     heartbeat();
     setInterval(heartbeat, HEARTBEAT_MS);
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+            heartbeat();
+        }
+    });
 
     function endSessionIfLastTab() {
         try {

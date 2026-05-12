@@ -169,6 +169,24 @@
             return { rows: strict, anchoredBrgyNorm: null };
         }
 
+        /* e.g. "caranoche santa catalina" — treat "santa catalina" as one token for row matching */
+        if (tokens.length >= 2) {
+            for (var mi = 0; mi < tokens.length - 1; mi++) {
+                var mergedTok = tokens[mi] + ' ' + tokens[mi + 1];
+                var alt = tokens.slice();
+                alt.splice(mi, 2, mergedTok);
+                var relaxed = [];
+                for (var rj = 0; rj < db.length; rj++) {
+                    if (allTokensInRow(db[rj], alt)) {
+                        relaxed.push(db[rj]);
+                    }
+                }
+                if (relaxed.length) {
+                    return { rows: relaxed, anchoredBrgyNorm: normalizeSp(mergedTok) };
+                }
+            }
+        }
+
         if (!BRGY_CACHE || BRGY_CACHE._dbLen !== db.length) {
             BRGY_CACHE = { triples: distinctBrgyTriples(db), _dbLen: db.length };
         }

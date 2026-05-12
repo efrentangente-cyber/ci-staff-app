@@ -170,7 +170,7 @@ app.config['WTF_CSRF_ENABLED'] = os.getenv('WTF_CSRF_ENABLED', 'True').lower() =
 app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF tokens don't expire
 app.config['WTF_CSRF_CHECK_DEFAULT'] = os.getenv('WTF_CSRF_CHECK_DEFAULT', 'True').lower() == 'true'
 app.config['REMEMBER_COOKIE_DURATION'] = __import__('datetime').timedelta(days=30)
-app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=24)  # Used only if session.permanent True; idle expiry is SESSION_IDLE_LOGOUT (default off)
+app.config['PERMANENT_SESSION_LIFETIME'] = __import__('datetime').timedelta(hours=24)  # Only if session.permanent True (login forces False). No idle expiry while tab is open.
 app.config['SESSION_PERMANENT'] = False  # Session expires when browser closes
 # HSTS / "production" UI — not the same as session cookie "Secure" (RENDER=1 is often only for DATABASE_URL on LAN).
 _is_production = (os.getenv('FLASK_ENV', '').lower() == 'production') or (os.getenv('RENDER', '').lower() == 'true')
@@ -462,8 +462,8 @@ _FALLBACK_ADDRESS_KEYWORDS = {
     'route_2_bayawan_basay': ['basay', 'actin', 'bal-os', 'bongalonan', 'cabalayongan', 'maglinao', 'nagbo-alao', 'olandao'],
     'route_3_bayawan_sipalay': ['sipalay', 'cabadiangan', 'camindangan', 'canturay', 'cartagena', 'mambaroto', 'maricalum'],
     'route_4_bayawan_santa_catalina': [
-        'santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'cawitan', 'manalongon',
-        'milagrosa', 'obat', 'talalak',
+        'santa catalina', 'alangilan', 'amio', 'buenavista', 'caigangan', 'caranoche', 'cawitan',
+        'manalongon', 'milagrosa', 'obat', 'talalak',
     ],
     'route_5_bayawan_center': [
         'ali-is', 'banaybanay', 'banga', 'boyco', 'cansumalig',
@@ -597,7 +597,9 @@ def get_ci_route_address_match_map() -> dict:
             "SELECT route_key, keywords FROM ci_coverage_routes WHERE is_active = 1"
         ).fetchall()
         for r in rows or []:
-            rk = r['route_key']
+            rk = str(r['route_key'] or '').strip()
+            if not rk:
+                continue
             raw = (r['keywords'] or '') or ''
             if not str(raw).strip():
                 continue
@@ -610,7 +612,15 @@ def get_ci_route_address_match_map() -> dict:
                 kws = [x.strip().lower() for x in str(raw).split(',') if x.strip()]
             if not kws:
                 continue
-            merged[str(rk).strip()] = kws
+            base_fb = _FALLBACK_ADDRESS_KEYWORDS.get(rk)
+            if base_fb is not None:
+                merged[rk] = sorted(
+                    set(base_fb) | set(kws), key=lambda x: (-len(str(x)), str(x))
+                )
+            elif rk not in merged:
+                merged[rk] = kws
+            else:
+                merged[rk] = kws
     except Exception as e:
         app.logger.debug('get_ci_route_address_match_map: %s', e)
     try:
@@ -733,11 +743,16 @@ def resolve_coverage_route_key_by_label_hints(hints: tuple[str, ...]) -> str | N
     return (candidates_custom[0] if candidates_custom else (candidates_other[0] if candidates_other else None))
 
 
-def resolve_ci_route_key_for_member_address(member_address: str | None) -> str | None:
-    """Best route_key for member_address: Bayawan corridor barangays first, then keyword tiers."""
+def resolve_ci_route_keys_ranked_for_member_address(member_address: str | None) -> list[str]:
+    """route_keys that match member_address, best first (longest keyword, then sort_order).
+
+    Several keys can match one address (e.g. preset ``route_4_bayawan_santa_catalina`` vs a custom
+    corridor row). Try CI assignment in this order so staff who only hold the custom key still get
+    the application when the preset key has no assignee.
+    """
     addr_norm = _normalize_address_for_ci_route_match(member_address)
     if not addr_norm:
-        return None
+        return []
 
     # Kalumboyan→Dawis corridor barangays in Bayawan: assign custom segment route before generic keyword tiers.
     if _bayawan_city_context_address(addr_norm):
@@ -745,7 +760,7 @@ def resolve_ci_route_key_for_member_address(member_address: str | None) -> str |
         if ch:
             seg = resolve_coverage_route_key_by_label_hints(ch)
             if seg:
-                return seg
+                return [seg]
 
     route_map = get_ci_route_address_match_map()
     sort_map = get_ci_route_sort_index_map()
@@ -766,9 +781,15 @@ def resolve_ci_route_key_for_member_address(member_address: str | None) -> str |
         tier = sort_map.get(rk, [999999, 999999])
         ranked.append((best_len, tier[0], tier[1], rk))
     if not ranked:
-        return None
+        return []
     ranked.sort(key=lambda t: (-t[0], t[1], t[2], t[3]))
-    return ranked[0][3]
+    return [t[3] for t in ranked]
+
+
+def resolve_ci_route_key_for_member_address(member_address: str | None) -> str | None:
+    """Best route_key for member_address (first of ranked list)."""
+    keys = resolve_ci_route_keys_ranked_for_member_address(member_address)
+    return keys[0] if keys else None
 
 
 def fetch_first_ci_staff_id_for_route_key(conn, route_key: str | None):
@@ -813,6 +834,22 @@ def fetch_first_ci_staff_id_for_route_key(conn, route_key: str | None):
         return None
     candidates.sort(key=lambda t: (t[0], t[1]))
     return candidates[0][1]
+
+
+def fetch_first_ci_staff_id_for_route_keys(conn, route_keys: list[str] | None):
+    """Like fetch_first_ci_staff_id_for_route_key but try each route_key in order until one matches staff."""
+    if not route_keys:
+        return None
+    seen = set()
+    for raw in route_keys:
+        rk = str(raw or '').strip()
+        if not rk or rk in seen:
+            continue
+        seen.add(rk)
+        uid = fetch_first_ci_staff_id_for_route_key(conn, rk)
+        if uid:
+            return uid
+    return None
 
 
 def ensure_ci_coverage_routes_table():
@@ -917,11 +954,36 @@ init_offline_interview_api(app, csrf)
 init_ci_offline_saves(app, csrf)
 
 
+def _csrf_safe_redirect_target():
+    """
+    After a CSRF validation failure, still-authenticated users should stay in the app
+    (reload or retry), not be sent to /login — that felt like a random logout.
+    """
+    try:
+        ref = (request.referrer or '').strip()
+        cur = (request.url or '').strip()
+        if ref and ref != cur:
+            from urllib.parse import urlparse
+
+            p = urlparse(ref)
+            if p.scheme in ('http', 'https'):
+                rh = (p.netloc or '').lower()
+                hh = (request.host or '').lower()
+                if rh == hh:
+                    return ref
+    except Exception:
+        pass
+    return url_for('index')
+
+
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
     """Gracefully handle CSRF mismatches for both AJAX and full-page requests."""
     try:
-        msg = 'Security token mismatch. Please refresh the page and try again.'
+        msg = (
+            'This page was open a long time or your security token was refreshed. '
+            'Reload the page, then try your action again.'
+        )
         is_ajax = (
             request.headers.get('X-Requested-With') == 'XMLHttpRequest'
             or (request.accept_mimetypes and request.accept_mimetypes.best == 'application/json')
@@ -929,16 +991,24 @@ def handle_csrf_error(e):
             or request.is_json
         )
         if is_ajax:
-            return jsonify({'success': False, 'error': 'csrf_mismatch', 'message': msg}), 400
+            return (
+                jsonify(
+                    {
+                        'success': False,
+                        'error': 'csrf_mismatch',
+                        'message': msg,
+                        'csrf_reload': True,
+                    }
+                ),
+                400,
+            )
         flash(msg, 'warning')
-        ref = request.referrer
-        current = request.url
-        # Avoid redirect loops when referrer is the same failing URL.
-        if ref and ref != current:
-            return redirect(ref)
+        if getattr(current_user, 'is_authenticated', False):
+            return redirect(_csrf_safe_redirect_target())
         return redirect(url_for('login'))
     except Exception:
         return jsonify({'success': False, 'error': 'csrf_mismatch'}), 400
+
 
 # Import secure routing module
 from secure_routes import SecureRouter, require_token
@@ -1314,22 +1384,20 @@ def _invalidate_lps_dedupe(user_id):
 # System settings cache — invalidated on every write to system_settings table.
 _system_settings_cache: dict = {'data': None, 'ts': 0.0}
 _SYSTEM_SETTINGS_CACHE_TTL = 60  # seconds
-# Server-side "abandoned session" window — increase for long forms / field work (overridable).
+# If idle logout is ever re-enabled, this caps how old last_seen may be (hours).
 try:
     _SESSION_STALE_HOURS = float((os.getenv('SESSION_STALE_HOURS') or '8').strip() or '8')
 except ValueError:
     _SESSION_STALE_HOURS = 8.0
 _SESSION_STALE_HOURS = max(1.0, min(72.0, _SESSION_STALE_HOURS))
 _SINGLE_LOGIN_STALE_SECONDS = int(_SESSION_STALE_HOURS * 3600)
-# When false (default), do not sign users out based on last_seen idle time. TAB_CLOSE_AUTO_LOGOUT is
-# also off by default. Set SESSION_IDLE_LOGOUT=true to restore idle timeout (uses SESSION_STALE_HOURS).
-# to restore idle timeout (uses SESSION_STALE_HOURS, max 72h).
-_SESSION_IDLE_LOGOUT = (os.getenv('SESSION_IDLE_LOGOUT', 'false').lower() in ('1', 'true', 'yes'))
-# When true, tab-close-logout.js sends GET /logout if all app tabs are gone. Default off — it often misfires
-# (mobile pagehide, PWA, switching apps) and feels like random logout while working. Set TAB_CLOSE_AUTO_LOGOUT=true
-# if you want that behavior on shared PCs. Users still sign out via the Log out link.
-app.config['TAB_CLOSE_AUTO_LOGOUT'] = (os.getenv('TAB_CLOSE_AUTO_LOGOUT', 'false').lower() in ('1', 'true', 'yes'))
-# How often to update last_seen in the DB (keeps long single-page work from going stale).
+# Hard off: no time-based / idle server logout while a tab stays open (ENV cannot override).
+# Tab-close logout is separate (TAB_CLOSE_AUTO_LOGOUT + tab-close-logout.js, last tab closed only).
+_SESSION_IDLE_LOGOUT = False
+# When true, tab-close-logout.js GET /logout when the last in-origin tab closes (recommended for shared PCs).
+# Default on; set TAB_CLOSE_AUTO_LOGOUT=false if mobile/PWA pagehide misfires in your environment.
+app.config['TAB_CLOSE_AUTO_LOGOUT'] = (os.getenv('TAB_CLOSE_AUTO_LOGOUT', 'true').lower() in ('1', 'true', 'yes'))
+# Unused while SESSION_IDLE_LOGOUT is off; kept for parity if idle logic is reintroduced.
 try:
     _SESSION_TOUCH_MIN_SEC = int((os.getenv('SESSION_TOUCH_MIN_SEC') or '45').strip() or '45')
 except ValueError:
@@ -4560,33 +4628,41 @@ def api_session_status():
     """
     Lightweight auth check for history revalidation (returns JSON 401, not a login HTML page).
     Used when the user returns via Back/Forward so we can redirect to login if the session ended.
+    Includes csrf_token when authenticated so long-lived tabs can refresh the meta tag.
     """
+    from flask_wtf.csrf import generate_csrf
+
     if not current_user.is_authenticated:
         resp = jsonify({'ok': False})
         resp.headers['Cache-Control'] = 'no-store, private, max-age=0'
         return resp, 401
-    resp = jsonify({'ok': True})
+    resp = jsonify({'ok': True, 'csrf_token': generate_csrf()})
     resp.headers['Cache-Control'] = 'no-store, private, max-age=0'
     return resp
 
 
-@app.route('/api/session_heartbeat', methods=['POST'])
+@app.route('/api/session_heartbeat', methods=['GET', 'POST'])
+@csrf.exempt
 @login_required
 def session_heartbeat():
     """
-    Refresh server-side last_seen when SESSION_IDLE_LOGOUT is enabled (long single-page work).
-    No-op for session validity when idle logout is off.
+    Periodic touch when SESSION_IDLE_LOGOUT is on (currently always off); returns a fresh CSRF token for the meta tag.
+
+    Uses GET by default (no CSRF header required) so long CI wizard sessions are not logged out
+    because POST heartbeats repeatedly returned 400 csrf_mismatch when the token and session drifted.
+    POST remains supported for older clients and is CSRF-exempt (login-only, no state change beyond touch).
     """
-    if not _SESSION_IDLE_LOGOUT:
-        return jsonify({'ok': True})
-    try:
-        auth_token = session.get('auth_session_token')
-        if auth_token and current_user.is_authenticated:
-            _touch_user_session(current_user.id, auth_token)
-            session['_session_touch_ts'] = int(time.time())
-    except Exception:
-        pass
-    return jsonify({'ok': True})
+    from flask_wtf.csrf import generate_csrf
+
+    if _SESSION_IDLE_LOGOUT:
+        try:
+            auth_token = session.get('auth_session_token')
+            if auth_token and current_user.is_authenticated:
+                _touch_user_session(current_user.id, auth_token)
+                session['_session_touch_ts'] = int(time.time())
+        except Exception:
+            pass
+    return jsonify({'ok': True, 'csrf_token': generate_csrf()})
 
 
 @app.route('/notifications/count')
@@ -4843,9 +4919,9 @@ def submit_application():
                             ).fetchone()
                         ci_staff_id = selected_ci['id'] if selected_ci else None
                     else:
-                        matched_route = resolve_ci_route_key_for_member_address(member_address)
-                        if matched_route:
-                            ci_staff_id = fetch_first_ci_staff_id_for_route_key(conn, matched_route)
+                        matched_routes = resolve_ci_route_keys_ranked_for_member_address(member_address)
+                        if matched_routes:
+                            ci_staff_id = fetch_first_ci_staff_id_for_route_keys(conn, matched_routes)
 
                     if ci_staff_id:
                         conn.execute('UPDATE loan_applications SET status=?, assigned_ci_staff=? WHERE id=?',
@@ -6529,9 +6605,9 @@ def loan_application(id):
                         selected_ci = None
                     new_ci_staff_id = selected_ci['id'] if selected_ci else None
                 if not new_ci_staff_id and member_address:
-                    matched_route = resolve_ci_route_key_for_member_address(member_address)
-                    if matched_route:
-                        new_ci_staff_id = fetch_first_ci_staff_id_for_route_key(conn, matched_route)
+                    matched_routes = resolve_ci_route_keys_ranked_for_member_address(member_address)
+                    if matched_routes:
+                        new_ci_staff_id = fetch_first_ci_staff_id_for_route_keys(conn, matched_routes)
 
                 if new_ci_staff_id != old_ci_staff:
                     if old_ci_staff:

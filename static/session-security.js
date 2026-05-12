@@ -1,5 +1,6 @@
 // Session security — server ties the cookie to one active login session (ends on Log out
-// or idle timeout). tab-close-logout.js ends the session when the last app tab closes
+// or optional idle timeout when SESSION_IDLE_LOGOUT is enabled). tab-close-logout.js ends
+// the session when the last app tab closes if TAB_CLOSE_AUTO_LOGOUT is on.
 // (GET /logout with keepalive); in-app navigations set a short sessionStorage flag so we
 // do not sign the user out on every link click.
 (function() {
@@ -45,7 +46,12 @@
         })
             .then(function (res) {
                 if (res.ok && res.status === 200) {
-                    return;
+                    return res.json().then(function (data) {
+                        if (data && data.csrf_token) {
+                            var m = document.querySelector('meta[name="csrf-token"]');
+                            if (m) m.setAttribute('content', data.csrf_token);
+                        }
+                    }).catch(function () {});
                 }
                 window.location.reload();
             })
