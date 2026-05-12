@@ -613,8 +613,14 @@
         }, 0);
     }
 
-    window.syncManager = {
-        downloadApplication: function (appId) {
+    /** Patch dashboard download helpers onto the real syncManager (keeps saveChecklistOffline, autoSync, etc.). */
+    (function attachDashboardSync() {
+        var sm = window.syncManager;
+        if (!sm || typeof sm !== 'object') {
+            window.syncManager = {};
+            sm = window.syncManager;
+        }
+        sm.downloadApplication = function (appId) {
             var id = parseInt(appId, 10);
             if (!id) {
                 return;
@@ -643,8 +649,8 @@
                 .catch(function (err) {
                     alert('Download failed: ' + (err && err.message ? err.message : err));
                 });
-        },
-        downloadAllPending: function () {
+        };
+        sm.downloadAllPending = function () {
             fetchCiApiJson('/api/ci/download_applications')
                 .then(function (data) {
                     if (!data || !data.success || !data.applications) {
@@ -673,8 +679,8 @@
                 .catch(function (err) {
                     alert('Download failed: ' + (err && err.message ? err.message : err));
                 });
-        }
-    };
+        };
+    })();
 
     function onOfflineDataUpdated(ev) {
         var apps = ev.detail && ev.detail.applications;

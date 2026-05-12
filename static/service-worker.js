@@ -1,15 +1,17 @@
 // DCCCO CI Staff App - cache pages for offline (must register at /service-worker.js so scope is /)
-const CACHE_NAME = 'dccco-staff-v14';
+const CACHE_NAME = 'dccco-staff-v15';
 const OFFLINE_URL = '/static/offline.html';
 
-// Static assets to pre-cache on install
+// Static assets to pre-cache on install (Bootstrap Icons are self-hosted so fonts load with CSS — no CDN font delay).
 const STATIC_ASSETS = [
   '/static/offline.html',
   '/static/manifest.json',
   '/static/css/base.css',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js',
-  'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css',
+  '/static/vendor/bootstrap-icons/bootstrap-icons.css',
+  '/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff2',
+  '/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff',
 ];
 
 // Pages to cache after first successful online visit — prefix match (do not use '/' alone).

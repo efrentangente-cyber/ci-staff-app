@@ -444,7 +444,9 @@ function submitChecklist() {
             syncManager
                 .saveChecklistOffline(applicationId, checklistData, signature, latitude, longitude)
                 .then(() => {
-                    alert('Checklist saved offline. Will upload when connection is available.');
+                    alert(
+                        'Interview saved on this device as pending upload. It will finish syncing when you are back online. You can leave this page.',
+                    );
                     window.location.href = '/ci/dashboard';
                 })
                 .catch((err) => {
