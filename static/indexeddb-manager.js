@@ -3,8 +3,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const DB_NAME = 'ci-staff-offline';
-// v2: align with service-worker.js (pending store); adds interview_v2 outbox fields
-const DB_VERSION = 1;
+/** Must be >= any DB already on the device; lower open() version throws VersionError. Keep in sync with deployment bumps. */
+const DB_VERSION = 3;
 const CLEANUP_DAYS = 7;
 
 class IndexedDBManager {

@@ -1,5 +1,5 @@
 // DCCCO CI Staff App - cache pages for offline (must register at /service-worker.js so scope is /)
-const CACHE_NAME = 'dccco-staff-v18';
+const CACHE_NAME = 'dccco-staff-v19';
 const OFFLINE_URL = '/static/offline.html';
 
 // Static assets to pre-cache on install (Bootstrap Icons are self-hosted so fonts load with CSS — no CDN font delay).
@@ -18,6 +18,8 @@ const STATIC_ASSETS = [
   '/static/excel-spreadsheet.css',
   '/static/signature-pad.js',
   '/static/ci-location-tracker.js',
+  '/static/ci-doc-fullscreen-zoom.js',
+  '/static/ci-doc-fullscreen-zoom.css',
 ];
 
 // Pages to cache after first successful online visit — prefix match (do not use '/' alone).
@@ -39,6 +41,12 @@ const CACHE_PAGES = [
   '/ci-tracking',
   '/manage_users',
 ];
+
+/** LPS → CI reference photos + downloads (img src / “Download” on review page). */
+function isLoanDocumentMediaPath(pathname) {
+  if (pathname.startsWith('/view_document/')) return true;
+  return /^\/download\/\d+$/.test(pathname);
+}
 
 /**
  * When a navigation is not in Cache Storage, serve the first available cached app page
@@ -158,12 +166,14 @@ self.addEventListener('fetch', (event) => {
 
         const path = url.pathname;
         const cacheByPrefix = CACHE_PAGES.some((p) => path.startsWith(p));
+        const cacheDocMedia = isLoanDocumentMediaPath(path);
 
         if (
           response.status === 200 &&
           (request.mode === 'navigate' ||
             path === '/' ||
             cacheByPrefix ||
+            cacheDocMedia ||
             (path.startsWith('/static/') && !isGeneratedOrAddressCatalogue))
         ) {
           const clone = response.clone();
@@ -174,6 +184,12 @@ self.addEventListener('fetch', (event) => {
       .catch(async () => {
         let fromCache = await caches.match(request, { ignoreSearch: true });
         if (fromCache) return fromCache;
+        if (isLoanDocumentMediaPath(url.pathname)) {
+          fromCache = await caches.match(new Request(url.origin + url.pathname, { credentials: 'include' }), {
+            ignoreSearch: true
+          });
+          if (fromCache) return fromCache;
+        }
         if (url.pathname.startsWith('/static/')) {
           fromCache = await caches.match(new Request(url.origin + url.pathname, { credentials: 'include' }), {
             ignoreSearch: true

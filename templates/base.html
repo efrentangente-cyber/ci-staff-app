@@ -299,7 +299,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             const registerServiceWorker = () => {
-                navigator.serviceWorker.register('/service-worker.js?v=18-prefetch-offline')
+                navigator.serviceWorker.register('/service-worker.js?v=19-lps-doc-offline')
                     .catch(function () {});
             };
             if ('requestIdleCallback' in window) {
@@ -606,8 +606,8 @@
     
     <!-- CI staff: real offline stack (ci-pwa.min.js is a placeholder — keep these scripts for IndexedDB + sync) -->
     {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
-    <script src="{{ url_for('static', filename='indexeddb-manager.js') }}?v=1" defer></script>
-    <script src="{{ url_for('static', filename='offline-sync.js') }}?v=1" defer></script>
+    <script src="{{ url_for('static', filename='indexeddb-manager.js') }}?v=3-idb-version" defer></script>
+    <script src="{{ url_for('static', filename='offline-sync.js') }}?v=3-idb-version" defer></script>
     {% endif %}
     
     {% if request.endpoint == 'manage_users' %}

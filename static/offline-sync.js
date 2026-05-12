@@ -3,7 +3,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const CI_STAFF_OFFLINE_DB = 'CIStaffOfflineDB';
-const CI_STAFF_OFFLINE_DB_VERSION = 1;
+/** Must match MIRROR_VER in static/ci-dashboard-offline.js (same DB name). */
+const CI_STAFF_OFFLINE_DB_VERSION = 3;
 
 /**
  * Same shape as base.html → serverApplications. Android WebView loads offline.html with

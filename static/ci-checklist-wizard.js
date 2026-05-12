@@ -445,7 +445,7 @@ function submitChecklist() {
                 .saveChecklistOffline(applicationId, checklistData, signature, latitude, longitude)
                 .then(() => {
                     alert(
-                        'Interview saved on this device as pending upload. It will finish syncing when you are back online. You can leave this page.',
+                        'Saved as pending upload. Your interview will be sent to the database automatically when you are online again.',
                     );
                     window.location.href = '/ci/dashboard';
                 })

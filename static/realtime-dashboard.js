@@ -668,6 +668,9 @@ function renderCiDashboardTables(applications) {
         if (typeof window.prefetchCiInterviewShellsForApps === 'function') {
             window.prefetchCiInterviewShellsForApps(applications);
         }
+        if (typeof window.prefetchLpsDocumentBytesForApplications === 'function') {
+            window.prefetchLpsDocumentBytesForApplications(applications);
+        }
     } catch (e) { /* ignore */ }
 }
 

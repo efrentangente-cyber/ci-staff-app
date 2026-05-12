@@ -579,6 +579,59 @@
 
     window.prefetchCiInterviewShellsForApps = prefetchCiInterviewShellsForApps;
 
+    var MAX_LPS_DOC_PREFETCH_APPS = 30;
+    var _lpsDocPrefetchScheduled = Object.create(null);
+
+    /**
+     * Fetches each LPS document via /view_document/<id> so the service worker stores image/PDF bytes for offline review.
+     */
+    function prefetchLpsDocumentBytesForApplications(apps) {
+        if (!apps || !apps.length) {
+            return;
+        }
+        if (typeof navigator === 'undefined' || !navigator.onLine) {
+            return;
+        }
+        var pending = apps.filter(function (a) {
+            return a && a.status === 'assigned_to_ci' && a.id != null;
+        });
+        if (pending.length > MAX_LPS_DOC_PREFETCH_APPS) {
+            pending = pending.slice(0, MAX_LPS_DOC_PREFETCH_APPS);
+        }
+        pending.forEach(function (app, idx) {
+            var appId = app.id;
+            if (_lpsDocPrefetchScheduled[appId]) {
+                return;
+            }
+            _lpsDocPrefetchScheduled[appId] = true;
+            var startAfter = idx * 200 + 500;
+            setTimeout(function () {
+                fetchCiApiJson('/api/ci_application/' + appId)
+                    .then(function (data) {
+                        var docs = (data && data.documents) || [];
+                        if (!docs.length) {
+                            return;
+                        }
+                        docs.forEach(function (doc, di) {
+                            if (!doc || doc.id == null) {
+                                return;
+                            }
+                            setTimeout(function () {
+                                fetch('/view_document/' + doc.id, { credentials: 'include' }).catch(function () {
+                                    void 0;
+                                });
+                            }, di * 50);
+                        });
+                    })
+                    .catch(function () {
+                        void 0;
+                    });
+            }, startAfter);
+        });
+    }
+
+    window.prefetchLpsDocumentBytesForApplications = prefetchLpsDocumentBytesForApplications;
+
     function applyFromApps(apps) {
         if (!apps || !apps.length) {
             return;
@@ -594,6 +647,7 @@
         updateStats(list, pending, completed);
         try {
             prefetchCiInterviewShellsForApps(list);
+            prefetchLpsDocumentBytesForApplications(list);
         } catch (ePf) {
             void 0;
         }
@@ -696,6 +750,9 @@
                     try {
                         if (typeof window.prefetchCiInterviewShellsForApps === 'function') {
                             window.prefetchCiInterviewShellsForApps([app]);
+                        }
+                        if (typeof window.prefetchLpsDocumentBytesForApplications === 'function') {
+                            window.prefetchLpsDocumentBytesForApplications([app]);
                         }
                     } catch (ePre) {
                         void 0;
