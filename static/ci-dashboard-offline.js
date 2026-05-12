@@ -435,6 +435,11 @@
     }
 
     function applyFromApps(apps) {
+        /* While online, realtime-dashboard.js + server HTML own the grouped table layout.
+           Applying flat per-app rows here caused visible flicker/size jumps. Offline only. */
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+            return;
+        }
         if (!apps || !apps.length) {
             return;
         }
@@ -500,6 +505,9 @@
     }
 
     function scheduleHydration() {
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+            return;
+        }
         if (_hydrateScheduled) {
             clearTimeout(_hydrateScheduled);
         }
