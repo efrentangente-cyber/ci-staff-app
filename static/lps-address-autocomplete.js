@@ -1,9 +1,8 @@
 /**
  * LPS / loan form: member_address suggestions from global addressDatabase (addresses.js).
  * - Strict AND: every query token appears somewhere in row (purok + barangay + mun + province).
- * - Fallback: token exactly equals a catalogue barangay name → show all rows under that barangay
- *   so every purok line is visible (rank rows where other tokens appear in `purok` first).
- * - Last resort lone token ≥3 chars: substring match inside `purok` field only (avoids province floods).
+ * - Comma segments: "Purok ..., Basay, Negros Oriental" — first segment anchors purok/barangay hint; later segments refine (typo-plural tolerant).
+ * - Fallback: merged tokens (e.g. two-word barangay), barangay-only pool, loose multi-token, then purok/barangay substring.
  */
 (function () {
     'use strict';
@@ -157,7 +156,140 @@
         );
     }
 
-    function collectMatches(tokens, db) {
+    function commaSegments(raw) {
+        return String(raw || '')
+            .split(',')
+            .map(function (s) {
+                return normalizeSp(s);
+            })
+            .filter(Boolean);
+    }
+
+    function relaxedTokenInHaystack(hay, tok) {
+        if (!tok) {
+            return false;
+        }
+        if (hay.indexOf(tok) !== -1) {
+            return true;
+        }
+        if (tok.length >= 5 && tok.slice(-1) === 's' && hay.indexOf(tok.slice(0, -1)) !== -1) {
+            return true;
+        }
+        if (tok.length >= 5 && tok.slice(-1) !== 's' && hay.indexOf(tok + 's') !== -1) {
+            return true;
+        }
+        return false;
+    }
+
+    function refinementSegmentMatches(addr, segText) {
+        var hay = rowHaystack(addr);
+        var phrase = normalizeSp(segText);
+        if (phrase.length >= 2 && hay.indexOf(phrase) !== -1) {
+            return true;
+        }
+        var toks = tokenize(segText);
+        if (!toks.length) {
+            return phrase.length >= 2 && hay.indexOf(phrase) !== -1;
+        }
+        var i;
+        for (i = 0; i < toks.length; i++) {
+            if (!relaxedTokenInHaystack(hay, toks[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function primarySegmentMatches(addr, segText) {
+        var ptoks = tokenize(segText);
+        if (!ptoks.length) {
+            return false;
+        }
+        var pk = String(addr.purok || '').toLowerCase();
+        var br = String(addr.barangay || '').toLowerCase();
+        var fused = rowHaystack(addr);
+        var i;
+        for (i = 0; i < ptoks.length; i++) {
+            var t = ptoks[i];
+            if (pk && pk.indexOf(t) !== -1) {
+                continue;
+            }
+            if (br && br.indexOf(t) !== -1) {
+                continue;
+            }
+            if (relaxedTokenInHaystack(fused, t)) {
+                continue;
+            }
+            if (t.length >= 3 && fused.indexOf(t) !== -1) {
+                continue;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    function commaSeparatedCollect(raw, db) {
+        if (String(raw || '').indexOf(',') === -1) {
+            return null;
+        }
+        var segs = commaSegments(raw);
+        if (segs.length < 2) {
+            return null;
+        }
+        var pool = [];
+        var i;
+        for (i = 0; i < db.length; i++) {
+            if (!primarySegmentMatches(db[i], segs[0])) {
+                continue;
+            }
+            var k;
+            var ok = true;
+            for (k = 1; k < segs.length; k++) {
+                if (!refinementSegmentMatches(db[i], segs[k])) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
+                pool.push(db[i]);
+            }
+        }
+        return pool.length ? pool : null;
+    }
+
+    function looseMultiTokenCollect(tokens, db) {
+        if (tokens.length < 2) {
+            return null;
+        }
+        var need = Math.max(2, Math.ceil(tokens.length * 0.51));
+        var pool = [];
+        var i;
+        for (i = 0; i < db.length; i++) {
+            var hay = rowHaystack(db[i]);
+            var t0 = tokens[0];
+            var pk = String(db[i].purok || '').toLowerCase();
+            var anchored =
+                (pk && pk.indexOf(t0) !== -1) ||
+                relaxedTokenInHaystack(hay, t0) ||
+                (t0.length >= 3 && hay.indexOf(t0) !== -1);
+            if (!anchored) {
+                continue;
+            }
+            var hit = 0;
+            var j;
+            for (j = 0; j < tokens.length; j++) {
+                if (relaxedTokenInHaystack(hay, tokens[j]) || hay.indexOf(tokens[j]) !== -1) {
+                    hit += 1;
+                }
+            }
+            if (hit >= need) {
+                pool.push(db[i]);
+            }
+        }
+        return pool.length ? pool : null;
+    }
+
+    function collectMatches(raw, tokens, db) {
         var strict = [];
         var i;
         for (i = 0; i < db.length; i++) {
@@ -185,6 +317,11 @@
                     return { rows: relaxed, anchoredBrgyNorm: normalizeSp(mergedTok) };
                 }
             }
+        }
+
+        var commaPool = commaSeparatedCollect(raw, db);
+        if (commaPool && commaPool.length) {
+            return { rows: commaPool, anchoredBrgyNorm: null };
         }
 
         if (!BRGY_CACHE || BRGY_CACHE._dbLen !== db.length) {
@@ -224,13 +361,19 @@
             }
         }
 
+        var looseMt = looseMultiTokenCollect(tokens, db);
+        if (looseMt && looseMt.length) {
+            return { rows: looseMt, anchoredBrgyNorm: null };
+        }
+
         if (tokens.length === 1 && tokens[0].length >= 3) {
             var needle = tokens[0];
             var weak = [];
             for (i = 0; i < db.length; i++) {
                 var pr = db[i].purok;
                 var pl = typeof pr === 'string' ? pr.toLowerCase() : '';
-                if (pl && pl.indexOf(needle) !== -1) {
+                var brg = typeof db[i].barangay === 'string' ? db[i].barangay.toLowerCase() : '';
+                if ((pl && pl.indexOf(needle) !== -1) || (brg && brg.indexOf(needle) !== -1)) {
                     weak.push(db[i]);
                 }
             }
@@ -249,6 +392,7 @@
         var maxResults = typeof o.maxResults === 'number' ? o.maxResults : 180;
         var pollMs = typeof o.pollMs === 'number' ? o.pollMs : 100;
         var maxAttempts = typeof o.maxAttempts === 'number' ? o.maxAttempts : 100;
+        var debounceMs = typeof o.debounceMs === 'number' ? o.debounceMs : 72;
 
         function attachWhenReady() {
             var input = document.getElementById(inputId);
@@ -267,21 +411,40 @@
             }
 
             input.dataset.lpsAddressAcBound = '1';
+            list.setAttribute('role', 'listbox');
+            input.setAttribute('aria-autocomplete', 'list');
+            input.setAttribute('aria-controls', listId);
 
-            input.addEventListener('input', function () {
+            var debounceTimer = null;
+
+            function hideList() {
+                list.style.display = 'none';
+                list.innerHTML = '';
+                input.setAttribute('aria-expanded', 'false');
+            }
+
+            function escapeHtml(str) {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function updateAddressSuggestionList() {
                 var raw = input.value;
                 var trimmed = raw.trim();
                 if (trimmed.length < 2) {
-                    list.style.display = 'none';
+                    hideList();
                     return;
                 }
                 var tokens = tokenize(raw);
                 if (tokens.length === 0) {
-                    list.style.display = 'none';
+                    hideList();
                     return;
                 }
 
-                var out = collectMatches(tokens, addressDatabase);
+                var out = collectMatches(raw, tokens, addressDatabase);
                 var scored = out.rows;
                 var anchored = out.anchoredBrgyNorm;
 
@@ -291,7 +454,7 @@
                 var matches = scored.slice(0, maxResults);
 
                 if (matches.length === 0) {
-                    list.style.display = 'none';
+                    hideList();
                     return;
                 }
 
@@ -301,27 +464,33 @@
                         ? addr.purok + ', ' + addr.barangay + ', ' + addr.municipality + ', ' + addr.province
                         : addr.barangay + ', ' + addr.municipality + ', ' + addr.province;
 
-                    var item = document.createElement('a');
-                    item.href = '#';
-                    item.className = 'list-group-item list-group-item-action';
+                    var item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'list-group-item list-group-item-action text-start py-2';
+                    item.setAttribute('role', 'option');
+                    var pu = escapeHtml(addr.purok ? String(addr.purok) : '—');
+                    var brgy = escapeHtml(String(addr.barangay || ''));
+                    var mun = escapeHtml(String(addr.municipality || ''));
+                    var prov = escapeHtml(String(addr.province || ''));
                     item.innerHTML =
-                        '<div class="d-flex w-100 justify-content-between">' +
-                        '<h6 class="mb-1">' +
-                        (addr.purok || addr.barangay) +
-                        '</h6>' +
-                        '<small class="text-muted">' +
-                        addr.municipality +
-                        '</small></div>' +
-                        '<small class="text-muted">' +
-                        fullAddress +
-                        '</small>';
+                        '<div class="fw-semibold small">' +
+                        pu +
+                        '</div>' +
+                        '<div class="text-muted small mt-1">' +
+                        '<span>' +
+                        brgy +
+                        '</span>' +
+                        ' · <span>' +
+                        mun +
+                        '</span>' +
+                        ' · <span>' +
+                        prov +
+                        '</span></div>';
 
-                    item.addEventListener('click', function (ev) {
-                        ev.preventDefault();
-                        ev.stopPropagation();
+                    item.addEventListener('click', function () {
                         input.value = fullAddress;
                         input.focus();
-                        list.style.display = 'none';
+                        hideList();
                     });
                     item.addEventListener('mousedown', function (ev) {
                         ev.preventDefault();
@@ -330,12 +499,34 @@
                     list.appendChild(item);
                 });
                 list.style.display = 'block';
+                input.setAttribute('aria-expanded', 'true');
+            }
+
+            input.addEventListener('input', function () {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(function () {
+                    debounceTimer = null;
+                    updateAddressSuggestionList();
+                }, debounceMs);
+            });
+
+            input.addEventListener('focus', function () {
+                clearTimeout(debounceTimer);
+                if (input.value.trim().length >= 2) {
+                    updateAddressSuggestionList();
+                }
+            });
+
+            input.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Escape') {
+                    hideList();
+                }
             });
 
             document.addEventListener('click', function (e) {
                 if (e.target !== input && !list.contains(e.target)) {
                     setTimeout(function () {
-                        list.style.display = 'none';
+                        hideList();
                     }, 150);
                 }
             });
