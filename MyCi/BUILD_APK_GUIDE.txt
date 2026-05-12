@@ -1,0 +1,94 @@
+========================================
+HOW TO BUILD APK IN ANDROID STUDIO
+========================================
+
+STEP 1: BUILD THE APK
+---------------------
+1. Open Android Studio
+2. Make sure your project is fully loaded (no errors in bottom status bar)
+3. Click on "Build" menu at the top
+4. Select "Build Bundle(s) / APK(s)"
+5. Click "Build APK(s)"
+6. Wait for build to complete (you'll see a notification at bottom right)
+7. Click "locate" in the notification to find your APK
+
+APK LOCATION:
+C:\Users\carba\AndroidStudioProjects\MyCi\app\build\outputs\apk\debug\app-debug.apk
+
+
+STEP 2: INSTALL ON YOUR PHONE
+------------------------------
+METHOD A - USB Transfer:
+1. Connect phone to computer via USB cable
+2. On phone: Swipe down notification → Tap USB notification → Select "File Transfer" or "MTP"
+3. On computer: Open File Explorer → Find your phone → Copy app-debug.apk to Downloads folder
+4. On phone: Open Files app → Downloads → Tap app-debug.apk
+5. If prompted "Install unknown apps", tap Settings → Enable "Allow from this source"
+6. Tap Install
+
+METHOD B - Google Drive:
+1. Upload app-debug.apk to Google Drive from computer
+2. On phone: Open Google Drive app → Download the APK
+3. Open Files app → Downloads → Tap app-debug.apk
+4. If prompted "Install unknown apps", enable it
+5. Tap Install
+
+METHOD C - Bluetooth:
+1. Right-click app-debug.apk → Send to → Bluetooth device
+2. Select your phone
+3. Accept file on phone
+4. Open Files app → Downloads → Tap app-debug.apk
+5. Enable "Install unknown apps" if prompted
+6. Tap Install
+
+
+STEP 3: INSTALL ON OTHER DEVICES
+---------------------------------
+The APK works on Android 7.0 (API 24) and above.
+
+If someone gets "You cannot install the app on your device":
+1. Check Android version: Settings → About phone → Android version
+   - Must be Android 7.0 or higher
+2. Enable "Install unknown apps":
+   - Settings → Security → Install unknown apps
+   - Find the app you're using to install (Files, Chrome, etc.)
+   - Enable "Allow from this source"
+3. Try installing again
+
+
+WHY NOT USE TERMINAL COMMANDS?
+-------------------------------
+The terminal commands (gradlew assembleDebug) require JAVA_HOME to be set correctly.
+Android Studio has Java built-in, so using the Build menu is easier and more reliable.
+
+
+ADDING DEVICE TO ANDROID STUDIO (OPTIONAL)
+-------------------------------------------
+This is only needed if you want to install directly from Android Studio.
+Otherwise, just build APK and transfer it manually (easier).
+
+To add device:
+1. On phone: Settings → About phone → Tap "Build number" 7 times (enables Developer options)
+2. Settings → Developer options → Enable "USB debugging"
+3. Connect phone to computer via USB
+4. On phone: Accept "Allow USB debugging" prompt
+5. In Android Studio: Top toolbar → Device dropdown → Your phone should appear
+6. Click Run button (green triangle) to install directly
+
+But honestly, just build APK and transfer it manually - it's simpler!
+
+
+TROUBLESHOOTING
+---------------
+Q: Build fails with errors?
+A: Check the "Build" tab at bottom of Android Studio for error details
+
+Q: APK won't install on other phones?
+A: Make sure they have Android 7.0+ and "Install unknown apps" enabled
+
+Q: App crashes on startup?
+A: Check if phone has internet connection for first launch (to reach server)
+   If no internet, app will load offline.html automatically
+
+Q: Gradle sync issues?
+A: File → Invalidate Caches → Invalidate and Restart

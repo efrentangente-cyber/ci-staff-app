@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users{% endblock %}
+
+<!-- Cache buster: v2.0 -->
+
+{% block content %}
+<div class="top-bar">
+    <h2><i class="bi bi-people"></i> Manage Users</h2>
+    <div class="top-bar-actions">
+        <div class="user-menu-container">
+            <button class="btn btn-outline-secondary user-menu-btn" type="button">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <div class="user-menu-dropdown">
+                <div class="user-menu-header">
+                    <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                </div>
+                <a class="user-menu-item" href="{{ url_for('change_password') }}">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+                <div class="user-menu-divider"></div>
+                <a class="user-menu-item text-danger" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pending Approvals -->
+<div class="content-card">
+    <div class="content-card-header">
+        <h5><i class="bi bi-clock-history"></i> Pending Approvals</h5>
+        <span class="badge bg-warning">{{ pending_users|length }} Pending</span>
+    </div>
+    <div class="content-card-body">
+        {% if pending_users %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Type</th>
+                        <th>Registered</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in pending_users %}
+                    <tr>
+                        <td><i class="bi bi-person-circle"></i> {{ user.name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            <span class="badge bg-info">
+                                {{ user.role.replace('_', ' ').title() }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.approval_type == 'password_reset' %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-key"></i> Password Reset
+                            </span>
+                            {% else %}
+                            <span class="badge bg-primary">
+                                <i class="bi bi-person-plus"></i> New Account
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.created_at }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('approve_user', user_id=user.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Approve this user?')">
+                                    <i class="bi bi-check-circle"></i> Approve
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('reject_user', user_id=user.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Reject this user?')">
+                                    <i class="bi bi-x-circle"></i> Reject
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            <i class="bi bi-check-circle" style="font-size: 48px;"></i>
+            <p class="mt-2">No pending approvals</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Active Users -->
+<div class="content-card mt-4">
+    <div class="content-card-header">
+        <h5><i class="bi bi-people-fill"></i> Active Users</h5>
+        <span class="badge bg-success">{{ active_users|length }} Active</span>
+    </div>
+    <div class="content-card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in active_users %}
+                    <tr>
+                        <td><i class="bi bi-person-check-fill"></i> {{ user.name }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            <span class="badge bg-primary">
+                                {{ user.role.replace('_', ' ').title() }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle-fill"></i> Active
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.role != 'admin' %}
+                            <form method="POST" action="{{ url_for('deactivate_user', user_id=user.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Deactivate this user?')">
+                                    <i class="bi bi-pause-circle"></i> Deactivate
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

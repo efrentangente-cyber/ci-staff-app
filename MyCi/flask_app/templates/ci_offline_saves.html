@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Offline field saves — CI{% endblock %}
+{% block content %}
+<div class="top-bar d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h2 class="m-0">Offline field saves</h2>
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-success"><i class="bi bi-wifi"></i> Online</span>
+        <a href="{{ url_for('ci_dashboard') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> CI dashboard</a>
+    </div>
+</div>
+
+<p class="text-muted small mb-3">
+    Completed interviews from the app (when you are online) are stored here as <strong>pending</strong> first, so you can reopen or continue review. Synced-offline packages from the app also appear here. If nothing arrived, use <strong>Import from your phone</strong> with <code>package.json</code> (and photos). Tap <strong>Continue</strong> to open the full CI interview page (same as online): complete the checklist, then <strong>Complete Interview &amp; Send to Admin</strong>—the row moves to <strong>done</strong> after submit.
+</p>
+
+<div class="content-card mb-4">
+    <div class="content-card-header">
+        <span><i class="bi bi-phone"></i> Import from your phone (saved offline folder)</span>
+    </div>
+    <div class="content-card-body">
+        <p class="small text-muted mb-2">
+            Pick the <strong>package.json</strong> saved under something like <code class="small">Android/data/&lt;app&gt;/files/Documents/CI_Offline_Packages/&hellip;/package.json</code>,
+            then add the evidence images from the same folder (same filenames as saved, usually in picker order matching the form).
+        </p>
+        <form id="offlineImportFromDeviceForm" class="row g-2 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label small fw-bold mb-0" for="offlineImportPkgJson">package.json</label>
+                <input type="file" class="form-control form-control-sm" id="offlineImportPkgJson" accept=".json,application/json" required>
+            </div>
+            <div class="col-12 col-md-5">
+                <label class="form-label small fw-bold mb-0" for="offlineImportEvidence">Evidence photos (optional, multiple)</label>
+                <input type="file" class="form-control form-control-sm" id="offlineImportEvidence" accept="image/*" multiple>
+            </div>
+            <div class="col-12 col-md-3">
+                <button type="submit" class="btn btn-primary w-100" id="offlineImportSubmitBtn">
+                    <i class="bi bi-cloud-upload"></i> Upload package
+                </button>
+            </div>
+        </form>
+        <p id="offlineImportStatus" class="small mt-2 mb-0 text-muted" role="status"></p>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="content-card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-cloud-upload"></i> Queued packages</span>
+        <span class="badge bg-secondary">{{ packages|length }} row(s)</span>
+    </div>
+    <div class="content-card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 small">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Loan #</th>
+                        <th>Member</th>
+                        <th>Client ref</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% if packages %}
+                    {% for p in packages %}
+                    <tr>
+                        <td>{{ p.id }}</td>
+                        <td><strong>#{{ p.application_id }}</strong></td>
+                        <td>{{ p.member_name or '—' }}</td>
+                        <td class="text-truncate" style="max-width:120px" title="{{ p.client_request_id or '' }}">{{ (p.client_request_id or '—')[:20] }}{% if p.client_request_id and p.client_request_id|length > 20 %}…{% endif %}</td>
+                        <td><span class="badge bg-{% if p.status == 'done' %}success{% elif p.status == 'dismissed' %}secondary{% elif p.status == 'in_progress' %}warning{% elif p.status == 'queued' %}secondary{% else %}info{% endif %}">{% if p.status == 'queued' %}pending{% else %}{{ p.status }}{% endif %}</span></td>
+                        <td>{{ p.updated_at[:19] if p.updated_at else '—' }}</td>
+                        <td>
+                            {% if p.status not in ['done', 'dismissed'] %}
+                            <a class="btn btn-sm btn-primary" href="{{ url_for('ci_application', id=p.application_id) }}?merge_offline={{ p.id }}">
+                                <i class="bi bi-play-fill"></i> Continue
+                            </a>
+                            {% else %}
+                            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('ci_application', id=p.application_id) }}">View case</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            Nothing queued yet. Completing an interview online from the app saves a <strong>pending</strong> row here; you can also <strong>Sync</strong> offline work or <strong>Import from your phone</strong> with <code>package.json</code>.
+                        </td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var form = document.getElementById('offlineImportFromDeviceForm');
+    var statusEl = document.getElementById('offlineImportStatus');
+    var submitBtn = document.getElementById('offlineImportSubmitBtn');
+    if (!form) return;
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var jsonInput = document.getElementById('offlineImportPkgJson');
+        var evInput = document.getElementById('offlineImportEvidence');
+        var f = jsonInput && jsonInput.files && jsonInput.files[0];
+        if (!f) {
+            if (statusEl) statusEl.textContent = 'Choose package.json first.';
+            return;
+        }
+        if (statusEl) statusEl.textContent = 'Reading file…';
+        if (submitBtn) submitBtn.disabled = true;
+
+        var reader = new FileReader();
+        reader.onload = function () {
+            try {
+                var obj = JSON.parse(String(reader.result || '{}'));
+                var aid = obj.applicationId != null ? obj.applicationId : obj.application_id;
+                var pid = (obj.packageId != null ? String(obj.packageId) : '').trim();
+                if (!pid || aid == null || aid === '') {
+                    if (statusEl) statusEl.textContent = 'package.json must include packageId and applicationId.';
+                    if (submitBtn) submitBtn.disabled = false;
+                    return;
+                }
+                var n = parseInt(String(aid), 10);
+                if (n !== n) {
+                    if (statusEl) statusEl.textContent = 'Invalid applicationId in package.json.';
+                    if (submitBtn) submitBtn.disabled = false;
+                    return;
+                }
+                var payload = {
+                    packageId: pid,
+                    applicationId: n,
+                    clientRequestId: obj.clientRequestId || obj.client_request_id || null,
+                    format: (obj.format && String(obj.format)) || 'ci_offline_v1',
+                    checklist: obj.checklist != null ? obj.checklist : {},
+                    notes: obj.notes != null ? obj.notes : '',
+                    reviewSnapshot: obj.reviewSnapshot != null ? obj.reviewSnapshot : (obj.review_snapshot != null ? obj.review_snapshot : null)
+                };
+                var fd = new FormData();
+                fd.append('payload', JSON.stringify(payload));
+                var evFiles = evInput && evInput.files ? evInput.files : [];
+                for (var i = 0; i < evFiles.length; i++) {
+                    fd.append('evidence_' + i, evFiles[i], evFiles[i].name);
+                }
+                if (statusEl) statusEl.textContent = 'Uploading to server…';
+                fetch({{ url_for('offline_interview.api_ci_offline_package') | tojson }}, {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function (res) {
+                    return res.json().then(function (jr) {
+                        return { ok: res.ok, status: res.status, jr: jr };
+                    }).catch(function () {
+                        return { ok: res.ok, status: res.status, jr: {} };
+                    });
+                }).then(function (out) {
+                    if (out.status === 401 || out.status === 403) {
+                        if (statusEl) statusEl.textContent = 'Session expired or not allowed. Log in as CI Staff and try again.';
+                        return;
+                    }
+                    if (out.ok && out.jr && (out.jr.success === true || out.jr.duplicate === true)) {
+                        if (statusEl) statusEl.textContent = out.jr.duplicate ? 'Package was already on the server. Refreshing…' : 'Uploaded. Refreshing…';
+                        window.location.reload();
+                        return;
+                    }
+                    var err = (out.jr && (out.jr.error || out.jr.message)) ? out.jr.error || out.jr.message : ('HTTP ' + out.status);
+                    if (statusEl) statusEl.textContent = 'Could not import: ' + err;
+                }).catch(function (err) {
+                    if (statusEl) statusEl.textContent = 'Network error: ' + (err && err.message ? err.message : err);
+                }).finally(function () {
+                    if (submitBtn) submitBtn.disabled = false;
+                });
+            } catch (err) {
+                if (statusEl) statusEl.textContent = 'Invalid JSON or file: ' + (err && err.message ? err.message : err);
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        };
+        reader.onerror = function () {
+            if (statusEl) statusEl.textContent = 'Could not read the file.';
+            if (submitBtn) submitBtn.disabled = false;
+        };
+        reader.readAsText(f, 'UTF-8');
+    });
+})();
+</script>
+{% endblock %}

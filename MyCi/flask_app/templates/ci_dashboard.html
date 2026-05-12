@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block title %}CI Staff Dashboard{% endblock %}
+{% block content %}
+
+<!-- Include Offline System Scripts -->
+<script src="{{ url_for('static', filename='indexeddb-manager.js') }}"></script>
+<script src="{{ url_for('static', filename='offline-sync.js') }}"></script>
+<script src="{{ url_for('static', filename='ci-offline-download-one.js') }}"></script>
+
+<!-- Offline Status Indicator -->
+{% include 'offline_indicator.html' %}
+
+<div class="top-bar">
+    <h2>CI Staff Dashboard</h2>
+    <div class="top-bar-actions">
+        <div class="user-menu-container">
+            <button class="btn btn-outline-secondary user-menu-btn" type="button" onclick="this.nextElementSibling.classList.toggle('show'); event.stopPropagation();">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <div class="user-menu-dropdown">
+                <div class="user-menu-header">
+                    <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                </div>
+                <a class="user-menu-item" href="{{ url_for('change_password') }}">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+                <div class="user-menu-divider"></div>
+                <a class="user-menu-item text-danger" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card blue">
+        <div class="stat-card-icon blue">
+            <i class="bi bi-clipboard-check"></i>
+        </div>
+        <h3>{{ applications|length }}</h3>
+        <p>Total Assigned</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon yellow">
+            <i class="bi bi-hourglass-split"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'equalto', 'assigned_to_ci')|list|length }}</h3>
+        <p>Pending Interview</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon blue">
+            <i class="bi bi-check-circle-fill"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'equalto', 'ci_completed')|list|length }}</h3>
+        <p>Completed</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon yellow">
+            <i class="bi bi-percent"></i>
+        </div>
+        <h3>{{ "%.0f"|format((applications|selectattr('status', 'equalto', 'ci_completed')|list|length / applications|length * 100) if applications|length > 0 else 0) }}%</h3>
+        <p>Completion Rate</p>
+    </div>
+</div>
+
+{% if applications|length == 0 %}
+<div class="alert alert-info border-0 shadow-sm mb-3" role="status" style="border-left: 4px solid #0dcaf0 !important;">
+    <h6 class="alert-heading mb-2"><i class="bi bi-phone"></i> Same process online or offline</h6>
+    <ol class="mb-0 ps-3 small">
+        <li><strong>Online:</strong> Use <strong>Start</strong> here for the full CI interview, or download assignments to your phone/tablet.</li>
+        <li><strong>Offline:</strong> <strong>Start</strong> is the same flow (checklist, notes, evidence). The only difference: your save goes to the <strong>offline queue</strong> until you reconnect &mdash; it is not final for the loan officer until you finish online.</li>
+        <li><strong>Online again:</strong> Sync, open <strong>Offline field saves</strong>, <strong>Continue</strong>, then submit to the loan officer as usual.</li>
+    </ol>
+    <p class="small text-muted mb-0 mt-2"><strong>“0 Total”</strong> here means nothing is assigned to your account yet &mdash; it is not a sync failure.</p>
+</div>
+{% endif %}
+
+<div class="content-card">
+    <div class="content-card-header">
+        <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0">Assigned Applications</h5>
+            <div class="input-group" style="max-width: 250px;">
+                <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Search..." onkeyup="searchApplications()">
+                <button class="btn btn-sm btn-outline-secondary" type="button">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary" id="totalCount">{{ applications|length }} Total</span>
+        </div>
+    </div>
+    <div class="content-card-body">
+        <table class="table table-hover" id="applicationsTable">
+            <thead>
+                <tr>
+                    <th>Member Name</th>
+                    <th>Date Submitted</th>
+                    <th>Location</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for app in applications %}
+                <tr>
+                    <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                    <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                    <td>{{ app.member_address }}</td>
+                    <td>
+                        <span class="badge bg-{% if app.status == 'ci_completed' %}success{% else %}warning{% endif %} me-2" id="offlineBadge_{{ app.id }}">
+                            🌐 ONLINE ONLY
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-success me-1" title="Save this assignment to your device for offline use"
+                                data-app-id="{{ app.id }}"
+                                onclick="handleDashboardDownloadOffline(this); return false;">
+                            <i class="bi bi-download"></i> Offline
+                        </button>
+                        <a href="{{ url_for('ci_application', id=app.id) }}" class="btn btn-sm btn-{% if app.status == 'ci_completed' %}primary{% else %}warning{% endif %}">
+                            <i class="bi bi-{% if app.status == 'ci_completed' %}eye{% else %}pencil{% endif %}"></i>
+                            <span class="btn-text">{% if app.status == 'ci_completed' %}View{% else %}Start{% endif %}</span>
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox d-block fs-2 mb-2"></i>
+                        <span>No applications assigned to you yet. When an admin assigns cases, they will appear here and in your phone’s offline storage after you open this page while online.</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+async function handleDashboardDownloadOffline(btn) {
+    const raw = btn.getAttribute('data-app-id');
+    const id = raw ? parseInt(raw, 10) : NaN;
+    if (!id || isNaN(id)) {
+        return;
+    }
+    await ciDownloadApplicationForOffline(id, {
+        button: btn,
+        onSuccess: function (appId) {
+            const b = document.getElementById('offlineBadge_' + appId);
+            if (b) {
+                b.className = 'badge bg-success me-2';
+                b.textContent = '✓ OFFLINE';
+            }
+            if (typeof syncManager !== 'undefined' && typeof syncManager.showNotification === 'function') {
+                syncManager.showNotification('Saved for offline', 'Application #' + appId);
+            }
+        }
+    });
+}
+
+// Search applications
+function searchApplications() {
+    const searchValue = document.getElementById('searchInput').value.toLowerCase();
+    const table = document.getElementById('applicationsTable');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    let visibleCount = 0;
+    
+    for (let i = 0; i < rows.length; i++) {
+        const cells = rows[i].getElementsByTagName('td');
+        let found = false;
+        
+        // Search in all cells
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().includes(searchValue)) {
+                found = true;
+                break;
+            }
+        }
+        
+        if (found) {
+            rows[i].style.display = '';
+            visibleCount++;
+        } else {
+            rows[i].style.display = 'none';
+        }
+    }
+    
+    // Update count badge
+    document.getElementById('totalCount').textContent = `${visibleCount} ${searchValue ? 'Found' : 'Total'}`;
+    
+    // Reset status filter when searching
+    if (searchValue) {
+        const filterEl = document.getElementById('statusFilter');
+        if (filterEl) filterEl.value = 'all';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTO-DOWNLOAD FUNCTIONALITY - Fully Automatic, No Buttons
+// ═══════════════════════════════════════════════════════════════════
+
+// Check which applications are already downloaded
+async function updateOfflineBadges() {
+    try {
+        const apps = await dbManager.getAllApplications();
+        const downloadedIds = apps.map(app => app.id);
+        
+        // Update badges for downloaded apps
+        downloadedIds.forEach(id => {
+            const badge = document.getElementById(`offlineBadge_${id}`);
+            
+            if (badge) {
+                badge.className = 'badge bg-success me-2';
+                badge.textContent = '✓ OFFLINE';
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error updating badges:', error);
+    }
+}
+
+// Auto-download all applications on page load
+async function autoDownloadAllApplications() {
+    if (!syncManager.isOnline) {
+        console.log('⚠️ Offline - skipping auto-download');
+        return;
+    }
+
+    try {
+        console.log('📥 Auto-downloading all applications...');
+        
+        // Get all application IDs from the page
+        const table = document.getElementById('applicationsTable');
+        const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+        const appIds = [];
+        
+        for (let i = 0; i < rows.length; i++) {
+            const firstCell = rows[i].getElementsByTagName('td')[0];
+            if (firstCell) {
+                const match = firstCell.textContent.match(/#(\d+)/);
+                if (match) {
+                    appIds.push(parseInt(match[1]));
+                }
+            }
+        }
+
+        if (appIds.length === 0) {
+            console.log('✅ No applications to download');
+            return;
+        }
+
+        // Check which apps are already downloaded
+        const existingApps = await dbManager.getAllApplications();
+        const existingIds = existingApps.map(app => app.id);
+        const newAppIds = appIds.filter(id => !existingIds.includes(id));
+
+        if (newAppIds.length === 0) {
+            console.log('✅ All applications already downloaded');
+            await updateOfflineBadges();
+            return;
+        }
+
+        console.log(`📥 Downloading ${newAppIds.length} new applications...`);
+
+        // Download all new apps in parallel
+        let successCount = 0;
+        const downloadPromises = newAppIds.map(async (appId) => {
+            try {
+                await syncManager.downloadApplication({ id: appId });
+                
+                // Update badge immediately
+                const badge = document.getElementById(`offlineBadge_${appId}`);
+                if (badge) {
+                    badge.className = 'badge bg-success me-2';
+                    badge.textContent = '✓ OFFLINE';
+                }
+                
+                successCount++;
+                return { success: true, id: appId };
+            } catch (error) {
+                console.error(`❌ Failed to download app ${appId}:`, error);
+                return { success: false, id: appId };
+            }
+        });
+
+        await Promise.allSettled(downloadPromises);
+
+        console.log(`✅ Auto-downloaded ${successCount}/${newAppIds.length} applications`);
+
+        // Show subtle notification
+        if (successCount > 0) {
+            syncManager.showNotification('Applications Ready', 
+                `✓ ${successCount} applications available offline`);
+        }
+
+    } catch (error) {
+        console.error('❌ Auto-download error:', error);
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        // Initialize database
+        await dbManager.init();
+        console.log('✅ Database initialized');
+        
+        // Update badges for already downloaded apps
+        await updateOfflineBadges();
+        
+        // Auto-download all applications (runs in background)
+        setTimeout(() => autoDownloadAllApplications(), 1000);
+        
+        // Listen for sync events
+        syncManager.addEventListener((event, data) => {
+            if (event === 'download_complete' || event === 'bulk_download_complete') {
+                updateOfflineBadges();
+            }
+        });
+
+        // Re-download when coming back online
+        window.addEventListener('online', () => {
+            setTimeout(() => autoDownloadAllApplications(), 2000);
+        });
+
+    } catch (error) {
+        console.error('❌ Initialization error:', error);
+    }
+});
+</script>
+
+<!-- Real-time Dashboard Updates -->
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Flask
+instance/
+.webassets-cache
+
+# Environment variables (NEVER upload this - has secrets!)
+.env
+
+# Database (DON'T upload - has user data)
+*.db
+*.sqlite
+*.sqlite3
+app.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Large files and user uploads (DON'T upload to GitHub)
+uploads/
+signatures/
+voice_messages/
+message_attachments/
+
+# Executables (large files)
+*.exe
+ngrok.exe
+
+# Keep folder structure but not the files
+!uploads/.gitkeep
+!signatures/.gitkeep
+!voice_messages/.gitkeep
+!message_attachments/.gitkeep
+
+# Documentation files we DO want to upload
+!*.md
+!README.md
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Compressed files (can be large)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Video files (usually large)
+*.mp4
+*.avi
+*.mov
+*.wmv
+
+# Large image files
+*.psd
+*.ai

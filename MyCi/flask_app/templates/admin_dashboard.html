@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div class="top-bar">
+    <h2>Admin Dashboard</h2>
+    <div class="top-bar-actions">
+        <div class="user-menu-container">
+            <button class="btn btn-outline-secondary user-menu-btn" type="button" onclick="this.nextElementSibling.classList.toggle('show'); event.stopPropagation();">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <div class="user-menu-dropdown">
+                <div class="user-menu-header">
+                    <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                </div>
+                <a class="user-menu-item" href="{{ url_for('change_password') }}">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+                <div class="user-menu-divider"></div>
+                <a class="user-menu-item text-danger" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card blue">
+        <div class="stat-card-icon blue">
+            <i class="bi bi-file-earmark-text"></i>
+        </div>
+        <h3>{{ applications|length }}</h3>
+        <p>Total Applications</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon yellow">
+            <i class="bi bi-clock-history"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'in', ['submitted', 'ci_completed'])|list|length }}</h3>
+        <p>For Review</p>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-icon blue">
+            <i class="bi bi-check-circle"></i>
+        </div>
+        <h3>{{ applications|selectattr('status', 'equalto', 'approved')|list|length }}</h3>
+        <p>Approved</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12 mb-3">
+        <div class="content-card">
+            <div class="content-card-header">
+                <h5><i class="bi bi-people-fill"></i> CI Staff Status</h5>
+                <span class="badge bg-success" id="onlineCount">{{ ci_staff|selectattr('is_online', 'equalto', 1)|list|length }} Online</span>
+            </div>
+            <div class="content-card-body">
+                <div class="ci-staff-list-horizontal">
+                    {% for staff in ci_staff %}
+                    <div class="ci-staff-item-compact" data-user-id="{{ staff.id }}">
+                        <div class="ci-staff-avatar">
+                            <img src="https://ui-avatars.com/api/?name={{ staff.name }}&background=random&color=fff" alt="{{ staff.name }}">
+                            <span class="status-indicator {% if staff.is_online %}online{% else %}offline{% endif %}"></span>
+                        </div>
+                        <div class="ci-staff-info">
+                            <h6>{{ staff.name }}</h6>
+                            <small class="status-text">
+                                {% if staff.is_online %}
+                                <span class="text-success"><i class="bi bi-circle-fill"></i> Online</span>
+                                {% else %}
+                                <span class="text-muted"><i class="bi bi-circle"></i> Offline</span>
+                                {% endif %}
+                            </small>
+                        </div>
+                        <a href="{{ url_for('messages') }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-chat-dots"></i>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12">
+        <div class="content-card">
+            <div class="content-card-header">
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="mb-0">Applications</h5>
+                    <div class="input-group" style="max-width: 250px;">
+                        <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Search..." onkeyup="searchApplications()">
+                        <button class="btn btn-sm btn-outline-secondary" type="button">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <select class="form-select form-select-sm" id="statusFilter" onchange="filterApplications()" style="width: auto;">
+                        <option value="all">All Status</option>
+                        <option value="submitted">Submitted (Direct)</option>
+                        <option value="ci_completed">CI Completed</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                    <span class="badge bg-secondary" id="totalCount">{{ applications|length }} Total</span>
+                </div>
+            </div>
+            <div class="content-card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="applicationsTable">
+                        <thead>
+                            <tr>
+                                <th>Member Name</th>
+                                <th>Loan Amount</th>
+                                <th>Status</th>
+                                <th>Loan Staff</th>
+                                <th>CI Staff</th>
+                                <th>Submitted</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for app in applications %}
+                            <tr>
+                                <td><strong>#{{ app.id }}</strong> {{ app.member_name }}</td>
+                                <td><strong>₱{{ "{:,.2f}".format(app.loan_amount) }}</strong></td>
+                                <td>
+                                    <span class="badge bg-{% if app.status == 'approved' %}success{% elif app.status == 'rejected' %}danger{% else %}warning{% endif %}">
+                                        {{ app.status.replace('_', ' ').title() }}
+                                    </span>
+                                </td>
+                                <td>{{ app.loan_staff_name }}</td>
+                                <td>{{ app.ci_staff_name or 'N/A' }}</td>
+                                <td>{{ app.submitted_at[8:10] }}-{{ app.submitted_at[5:7] }}-{{ app.submitted_at[2:4] }}</td>
+                                <td>
+                                    <a href="{{ url_for('admin_application', id=app.id) }}" class="btn btn-sm btn-primary">
+                                        <i class="bi bi-eye"></i>
+                                        <span class="btn-text">Review</span>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.ci-staff-list-horizontal {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 8px 0;
+}
+
+.ci-staff-item-compact {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+    min-width: 280px;
+    transition: all 0.2s;
+}
+
+.ci-staff-item-compact:hover {
+    background: #f8f9fa;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.ci-staff-avatar {
+    position: relative;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.ci-staff-avatar img {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+}
+
+.status-indicator {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 14px;
+    height: 14px;
+    border: 2px solid white;
+    border-radius: 50%;
+}
+
+.status-indicator.online {
+    background: #31a24c;
+}
+
+.status-indicator.offline {
+    background: #6c757d;
+}
+
+.ci-staff-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.ci-staff-info h6 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ci-staff-info small {
+    font-size: 12px;
+}
+
+.ci-staff-info small i {
+    font-size: 8px;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+    .ci-staff-list-horizontal {
+        flex-wrap: nowrap;
+    }
+    
+    .ci-staff-item-compact {
+        min-width: 250px;
+    }
+}
+</style>
+
+<script>
+const socket = io();
+
+// Listen for online/offline events
+socket.on('user_online', function(data) {
+    if (data.role === 'ci_staff') {
+        updateCIStaffStatus(data.user_id, true, data.name);
+    }
+});
+
+socket.on('user_offline', function(data) {
+    updateCIStaffStatus(data.user_id, false);
+});
+
+function updateCIStaffStatus(userId, isOnline, userName) {
+    const staffItem = document.querySelector(`.ci-staff-item[data-user-id="${userId}"]`);
+    if (!staffItem) return;
+    
+    const indicator = staffItem.querySelector('.status-indicator');
+    const statusText = staffItem.querySelector('.status-text');
+    
+    if (isOnline) {
+        indicator.classList.remove('offline');
+        indicator.classList.add('online');
+        statusText.innerHTML = '<span class="text-success"><i class="bi bi-circle-fill"></i> Online</span>';
+    } else {
+        indicator.classList.remove('online');
+        indicator.classList.add('offline');
+        const now = new Date().toISOString().substring(0, 16);
+        statusText.innerHTML = `<span class="text-muted"><i class="bi bi-circle"></i> Last seen ${now}</span>`;
+    }
+    
+    // Update online count
+    const onlineCount = document.querySelectorAll('.status-indicator.online').length;
+    document.getElementById('onlineCount').textContent = `${onlineCount} Online`;
+}
+
+// Search applications
+function searchApplications() {
+    const searchValue = document.getElementById('searchInput').value.toLowerCase();
+    const table = document.getElementById('applicationsTable');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    let visibleCount = 0;
+    
+    for (let i = 0; i < rows.length; i++) {
+        const cells = rows[i].getElementsByTagName('td');
+        let found = false;
+        
+        // Search in ID, Member Name, Loan Amount, Loan Staff, CI Staff
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().includes(searchValue)) {
+                found = true;
+                break;
+            }
+        }
+        
+        if (found) {
+            rows[i].style.display = '';
+            visibleCount++;
+        } else {
+            rows[i].style.display = 'none';
+        }
+    }
+    
+    // Update count badge
+    document.getElementById('totalCount').textContent = `${visibleCount} ${searchValue ? 'Found' : 'Total'}`;
+    
+    // Reset status filter when searching
+    if (searchValue) {
+        document.getElementById('statusFilter').value = 'all';
+    }
+}
+
+// Filter applications by status
+function filterApplications() {
+    const filterValue = document.getElementById('statusFilter').value;
+    const table = document.getElementById('applicationsTable');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    let visibleCount = 0;
+    
+    for (let i = 0; i < rows.length; i++) {
+        const statusCell = rows[i].getElementsByTagName('td')[3]; // Status column
+        if (statusCell) {
+            const statusBadge = statusCell.querySelector('.badge');
+            const statusText = statusBadge ? statusBadge.textContent.trim().toLowerCase() : '';
+            
+            if (filterValue === 'all') {
+                rows[i].style.display = '';
+                visibleCount++;
+            } else {
+                let showRow = false;
+                
+                // Exact matching for each status
+                if (filterValue === 'pending' && statusText === 'pending') {
+                    showRow = true;
+                } else if (filterValue === 'assigned_to_ci' && statusText === 'assigned to ci') {
+                    showRow = true;
+                } else if (filterValue === 'ci_completed' && statusText === 'ci completed') {
+                    showRow = true;
+                } else if (filterValue === 'approved' && statusText === 'approved') {
+                    showRow = true;
+                } else if (filterValue === 'rejected' && statusText === 'rejected') {
+                    showRow = true;
+                }
+                
+                rows[i].style.display = showRow ? '' : 'none';
+                if (showRow) visibleCount++;
+            }
+        }
+    }
+    
+    // Update count badge
+    document.getElementById('totalCount').textContent = `${visibleCount} ${filterValue === 'all' ? 'Total' : 'Filtered'}`;
+}
+</script>
+
+<!-- Real-time Dashboard Updates -->
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}"></script>
+{% endblock %}
