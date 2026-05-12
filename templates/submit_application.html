@@ -35,7 +35,7 @@
                     <div id="memberNameLookupStatus" class="align-items-center gap-2 small text-muted mt-2" style="display: none;" aria-live="polite">
                         <span class="spinner-border spinner-border-sm text-secondary flex-shrink-0" role="status" aria-hidden="true"></span>
                         <span id="memberLookupStatusText">Checking member records…</span>
-                    </div>
+                </div>
                     <div id="memberNameLookupError" class="alert alert-danger py-2 mt-2 mb-0 small" style="display: none;" role="alert"></div>
                     <div id="memberNameNoRecordNotice" class="alert alert-secondary py-2 mt-2 mb-0 small" style="display: none;" role="status">
                         No matching loan records for this name. Enter contact and address manually.
@@ -238,8 +238,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (kind === 'member_uid') {
             const idt = (memberUidInput && memberUidInput.value ? memberUidInput.value : '').replace(/\D/g, '');
             if (!idt.length) {
-                return;
-            }
+        return;
+    }
         } else {
             const t = (memberNameInput && memberNameInput.value ? memberNameInput.value : '').trim();
             if (t.length < 2) {
@@ -400,8 +400,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!byMu && !byApp && name.length < 2) {
             hideLookupChecking();
-            return;
-        }
+        return;
+    }
         if (prefillAbort) {
             try {
                 prefillAbort.abort();
@@ -437,7 +437,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const res = await fetch(u.toString(), fetchOpts);
             const data = await res.json();
             if (seq !== lookupSeq) {
-                return;
+        return;
             }
             if (!res.ok || !data || !data.ok) {
                 if (seq === lookupSeq) {
@@ -948,7 +948,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (loanAmt && st.loan_amount_display != null && String(st.loan_amount_display).trim() !== '') {
                 loanAmt.value = String(st.loan_amount_display);
-                loanAmt.dispatchEvent(new Event('input', { bubbles: true }));
+                    loanAmt.dispatchEvent(new Event('input', { bubbles: true }));
             }
             if (loanTypeIn && st.loan_type != null) {
                 loanTypeIn.value = String(st.loan_type);

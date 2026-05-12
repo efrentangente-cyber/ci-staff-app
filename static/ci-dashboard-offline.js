@@ -48,6 +48,16 @@
         return (a.id || 0) - (b.id || 0);
     }
 
+    /** Newest submission first — matches CI dashboard Completed table server sort. */
+    function appSortCompletedNewestFirst(a, b) {
+        var sa = String(a.submitted_at || '');
+        var sb = String(b.submitted_at || '');
+        if (sb !== sa) {
+            return sb.localeCompare(sa);
+        }
+        return (b.id || 0) - (a.id || 0);
+    }
+
     function mergeById(first, second) {
         var map = {};
         var i;
@@ -355,7 +365,7 @@
                 '<tr><td colspan="5" class="text-muted text-center py-3">No completed interviews in local cache yet.</td></tr>';
         } else {
             completedTbody.innerHTML = completed
-                .sort(appSort)
+                .sort(appSortCompletedNewestFirst)
                 .map(function (app) {
                     var id = app.id;
                     var mu =

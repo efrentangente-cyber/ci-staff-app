@@ -164,18 +164,8 @@
     }
 }
 
-/* Print styles — black & white like a filled paper form */
+/* Print — do not put filter: grayscale on html/body (breaks multipage + preview; view checklist imports this sheet). */
 @media print {
-    html {
-        filter: grayscale(100%) contrast(1.05);
-        -webkit-filter: grayscale(100%) contrast(1.05);
-    }
-    body {
-        background: #fff !important;
-        color: #000 !important;
-        print-color-adjust: economy !important;
-        -webkit-print-color-adjust: economy !important;
-    }
     .progress-wizard,
     .wizard-navigation,
     .btn,

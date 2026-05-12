@@ -271,19 +271,16 @@ def _should_skip_session_enforce():
 
 @app.template_filter('fmt_datetime')
 def fmt_datetime(value, fmt='%Y-%m-%d %H:%M'):
-    """Format datetime values safely for templates (datetime or ISO string)."""
+    """
+    Format timestamps for templates. Naive datetimes and ISO strings are treated as UTC
+    (see now_ph / DB convention) and shown in DISPLAY_TIMEZONE (default Asia/Manila).
+    Use plain datetime.date for calendar-only fields — no timezone shift.
+    """
     if value is None:
         return ''
-    if isinstance(value, datetime):
+    if isinstance(value, date) and not isinstance(value, datetime):
         return value.strftime(fmt)
-    if isinstance(value, date):
-        return value.strftime(fmt)
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace('Z', '+00:00')).strftime(fmt)
-        except ValueError:
-            return value[:16] if len(value) >= 16 else value
-    return str(value)
+    return _activity_log_timestamp_display(value, fmt)
 
 
 def _activity_log_timestamp_display(value, fmt='%d-%m-%Y %H:%M'):
@@ -2333,9 +2330,10 @@ def _persist_sms_sent_log(
             '''
             INSERT INTO sms_sent_log (
                 phone_number, message_body, status, error_detail,
-                loan_application_id, sent_by_user_id, category, template_id, member_name
+                loan_application_id, sent_by_user_id, category, template_id, member_name,
+                sent_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             (
                 phone or '',
@@ -2347,6 +2345,7 @@ def _persist_sms_sent_log(
                 category,
                 template_id,
                 member_name,
+                now_ph(),
             ),
         )
         conn.commit()
@@ -5368,6 +5367,11 @@ def ci_dashboard():
 
     ci_pending_apps = [r for r in applications if r['status'] == 'assigned_to_ci']
     ci_completed_apps = [r for r in applications if r['status'] == 'ci_completed']
+    # Newest completed first so the latest submission to loan officer appears at top of Completed.
+    ci_completed_apps.sort(
+        key=lambda r: (str(r.get('submitted_at') or ''), int(r.get('id') or 0)),
+        reverse=True,
+    )
     ci_pending_groups = group_lps_dashboard_by_member(ci_pending_apps)
     ci_completed_groups = group_lps_dashboard_by_member(ci_completed_apps)
 

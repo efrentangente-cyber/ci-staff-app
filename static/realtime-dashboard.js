@@ -543,7 +543,15 @@ function renderCiDashboardTables(applications) {
     if (!pendingTbody || !completedTbody) return;
 
     const pendingApps = applications.filter(function (a) { return a.status === 'assigned_to_ci'; });
-    const completedApps = applications.filter(function (a) { return a.status === 'ci_completed'; });
+    var completedApps = applications.filter(function (a) { return a.status === 'ci_completed'; });
+    completedApps = completedApps.sort(function (appA, appB) {
+        var sa = String(appA.submitted_at || '');
+        var sb = String(appB.submitted_at || '');
+        if (sb !== sa) {
+            return sb.localeCompare(sa);
+        }
+        return (parseInt(String(appB.id || 0), 10) || 0) - (parseInt(String(appA.id || 0), 10) || 0);
+    });
     const pendingGroups = groupLpsDashboardByMember(pendingApps);
     const completedGroups = groupLpsDashboardByMember(completedApps);
 
