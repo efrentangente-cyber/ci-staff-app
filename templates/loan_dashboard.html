@@ -589,5 +589,5 @@ function clearSearch(tableType) {
 {% block scripts %}
 <script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
 <script>window.__LPS_USER_ID = {{ current_user.id | tojson }};</script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=17-all-dashboards-snappy" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=19-fetch-dedup" defer></script>
 {% endblock %}

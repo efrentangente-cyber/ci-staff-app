@@ -212,14 +212,9 @@ function initDcccoDashboardRealtime() {
     initDcccoDashboardRealtime._done = true;
 
     socket.on('connect', function () {
-        if (!needsApplicationListRefresh()) {
-            return;
+        if (needsApplicationListRefresh()) {
+            scheduleRefreshApplications(true);
         }
-        /* All dashboards: debounced refresh so first navigations aren't racing /api snapshots. */
-        var delayMs = currentDashboard === 'ci' ? 1800 : 950;
-        setTimeout(function () {
-            scheduleRefreshApplications(false);
-        }, delayMs);
     });
 
     socket.on('disconnect', function (reason) {
@@ -231,13 +226,9 @@ function initDcccoDashboardRealtime() {
     });
 
     socket.on('reconnect', function () {
-        if (!needsApplicationListRefresh()) {
-            return;
+        if (needsApplicationListRefresh()) {
+            scheduleRefreshApplications(true);
         }
-        var delayMs = currentDashboard === 'ci' ? 1400 : 800;
-        setTimeout(function () {
-            scheduleRefreshApplications(false);
-        }, delayMs);
     });
 
     socket.on('new_application', function (data) {
@@ -261,28 +252,12 @@ function initDcccoDashboardRealtime() {
     });
 }
 
-function tryAttachDashboardRealtime() {
-    if (!currentDashboard) {
-        return;
-    }
-    initDcccoDashboardRealtime();
-}
-
 if (currentDashboard) {
-    document.addEventListener('dccco:socket-ready', tryAttachDashboardRealtime);
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', tryAttachDashboardRealtime);
+        document.addEventListener('DOMContentLoaded', initDcccoDashboardRealtime, { once: true });
     } else {
-        tryAttachDashboardRealtime();
+        initDcccoDashboardRealtime();
     }
-    var _sockPoll = 0;
-    var _sockTimer = setInterval(function () {
-        tryAttachDashboardRealtime();
-        _sockPoll += 1;
-        if (initDcccoDashboardRealtime._done || _sockPoll > 100) {
-            clearInterval(_sockTimer);
-        }
-    }, 100);
 }
 
 function showToast(title, message, type) {
@@ -305,6 +280,33 @@ function showToast(title, message, type) {
 /** Used by CI offline dashboard for download start / success toasts (ci-dashboard-offline.js). */
 window.__dcccoShowToast = showToast;
 
+var __dcccoDashboardFetchLocks = {};
+
+function fetchJsonArray(url, onOk) {
+    if (__dcccoDashboardFetchLocks[url]) {
+        return;
+    }
+    __dcccoDashboardFetchLocks[url] = true;
+
+    fetch(url, { credentials: 'same-origin' })
+        .then(function (response) {
+            if (!response.ok) throw new Error(response.statusText);
+            return response.json();
+        })
+        .then(function (data) {
+            if (!Array.isArray(data)) {
+                throw new Error('expected array');
+            }
+            onOk(data);
+        })
+        .catch(function (error) {
+            console.error('Error fetching applications:', error);
+        })
+        .finally(function () {
+            delete __dcccoDashboardFetchLocks[url];
+        });
+}
+
 function refreshApplications() {
     if (!currentDashboard) {
         return;
@@ -324,7 +326,12 @@ function refreshApplications() {
         return;
     }
     if (hasAdminDashboardTables()) {
-        fetch('/api/admin/applications', { credentials: 'same-origin' })
+        var adminSnapUrl = '/api/admin/applications';
+        if (__dcccoDashboardFetchLocks[adminSnapUrl]) {
+            return;
+        }
+        __dcccoDashboardFetchLocks[adminSnapUrl] = true;
+        fetch(adminSnapUrl, { credentials: 'same-origin' })
             .then(function (r) {
                 if (!r.ok) throw new Error('admin applications');
                 return r.json();
@@ -338,6 +345,9 @@ function refreshApplications() {
             })
             .catch(function (err) {
                 console.error('Error fetching admin dashboard snapshot:', err);
+            })
+            .finally(function () {
+                delete __dcccoDashboardFetchLocks[adminSnapUrl];
             });
         return;
     }
@@ -351,22 +361,6 @@ function refreshApplications() {
     });
 }
 
-function fetchJsonArray(url, onOk) {
-    fetch(url, { credentials: 'same-origin' })
-        .then(function (response) {
-            if (!response.ok) throw new Error(response.statusText);
-            return response.json();
-        })
-        .then(function (data) {
-            if (!Array.isArray(data)) {
-                throw new Error('expected array');
-            }
-            onOk(data);
-        })
-        .catch(function (error) {
-            console.error('Error fetching applications:', error);
-        });
-}
 
 function renderLoanDashboardTables(applications) {
     const pendingBody = document.getElementById('pendingTableBody');

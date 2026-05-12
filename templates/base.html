@@ -48,14 +48,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='ci-field.min.css' if config.USE_MINIFIED_ASSETS else 'ci-field.css') }}?v=2">
     {% endif %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base.min.css' if config.USE_MINIFIED_ASSETS else 'css/base.css') }}?v=4">
-    {# Defer Bootstrap JS — avoids blocking sidebar HTML + link clicks on every layout (all roles). #}
+    {# Defer Bootstrap JS — keeps first paint/snappy taps; inline handlers use bootstrap after DOMContentLoaded. #}
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}
 </head>
 <body class="{% if current_user.is_authenticated %}authenticated {% endif %}{% if current_user.is_authenticated and current_user.role == 'ci_staff' %}ci-field-user {% endif %}{% block body_class %}{% endblock %}"{% if current_user.is_authenticated %} data-tab-close-auto-logout="{{ 'true' if config.TAB_CLOSE_AUTO_LOGOUT else 'false' }}"{% endif %}>
     {% if current_user.is_authenticated %}
-    {# Socket.IO loads asynchronously after first paint so sidebar/home/Messages taps are not queued behind CDN JS. Inline init runs in onload below. #}
+    {# Socket.IO early so {% block scripts %} dashboards can rely on io() / __dcccoSocket after parse. #}
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     {% endif %}
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <!-- Apply dark mode immediately on body load -->
@@ -234,116 +235,59 @@
     
     {% if current_user.is_authenticated %}
     <script>
-        (function dcccoInitSocketDefer() {
-            function bindNotificationHandlers(sock) {
-                sock.on('new_notification', function (data) {
-                    if (!data || data.is_direct_message) {
-                        return;
-                    }
-                    var badge = document.getElementById('notif-count');
-                    var mobileBadge = document.getElementById('notif-count-mobile');
-                    var topbarBadge = document.getElementById('notif-count-topbar');
-                    if (badge) {
-                        badge.textContent = (parseInt(badge.textContent, 10) || 0) + 1;
-                        badge.style.display = 'inline';
-                    }
-                    if (mobileBadge) {
-                        mobileBadge.textContent = (parseInt(mobileBadge.textContent, 10) || 0) + 1;
-                        mobileBadge.style.display = 'inline';
-                    }
-                    if (topbarBadge) {
-                        topbarBadge.textContent = (parseInt(topbarBadge.textContent, 10) || 0) + 1;
-                        topbarBadge.style.display = 'inline';
-                    }
-                    if ('Notification' in window && Notification.permission === 'granted') {
-                        new Notification({{ (org_abbr ~ ' Notification')|tojson }}, {
-                            body: data.message,
-                            icon: '/static/favicon.png'
-                        });
-                    }
+        // Single shared Socket.IO client (dashboards reuse window.__dcccoSocket — do not call io() again)
+        if (!window.__dcccoSocket) {
+            window.__dcccoSocket = io({
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionDelay: 500,
+                reconnectionAttempts: 10,
+                timeout: 10000,
+                upgrade: true,
+                rememberUpgrade: true
+            });
+        }
+        var socket = window.__dcccoSocket;
+
+        socket.on('connect', function () {
+            socket.emit('join', { room: '{{ current_user.id }}' });
+        });
+
+        socket.on('new_notification', function (data) {
+            if (!data || data.is_direct_message) {
+                return;
+            }
+            var badge = document.getElementById('notif-count');
+            var mobileBadge = document.getElementById('notif-count-mobile');
+            var topbarBadge = document.getElementById('notif-count-topbar');
+            if (badge) {
+                badge.textContent = (parseInt(badge.textContent, 10) || 0) + 1;
+                badge.style.display = 'inline';
+            }
+            if (mobileBadge) {
+                mobileBadge.textContent = (parseInt(mobileBadge.textContent, 10) || 0) + 1;
+                mobileBadge.style.display = 'inline';
+            }
+            if (topbarBadge) {
+                topbarBadge.textContent = (parseInt(topbarBadge.textContent, 10) || 0) + 1;
+                topbarBadge.style.display = 'inline';
+            }
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification({{ (org_abbr ~ ' Notification')|tojson }}, {
+                    body: data.message,
+                    icon: '/static/favicon.png'
                 });
             }
+        });
 
-            function afterIoReady() {
-                if (!window.__dcccoSocket && typeof io === 'function') {
-                    window.__dcccoSocket = io({
-                        transports: ['websocket', 'polling'],
-                        reconnection: true,
-                        reconnectionDelay: 500,
-                        reconnectionAttempts: 10,
-                        timeout: 10000,
-                        upgrade: true,
-                        rememberUpgrade: true
-                    });
-                }
-                var socket = window.__dcccoSocket;
-                if (!socket) {
-                    return;
-                }
-                if (!socket.__dcccoBaseHandlersBound) {
-                    socket.__dcccoBaseHandlersBound = true;
-                    socket.on('connect', function () {
-                        socket.emit('join', { room: '{{ current_user.id }}' });
-                    });
-                    bindNotificationHandlers(socket);
-                }
-                try {
-                    document.dispatchEvent(new CustomEvent('dccco:socket-ready'));
-                } catch (_eSd) {}
-            }
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        try {
+            document.dispatchEvent(new CustomEvent('dccco:socket-ready'));
+        } catch (_eSd) {}
 
-            dcccoInitSocketDefer._started = false;
-            dcccoInitSocketDefer._scheduled = false;
-
-            function loadSocketIoAndConnect() {
-                if (dcccoInitSocketDefer._started) {
-                    return;
-                }
-                dcccoInitSocketDefer._started = true;
-                if (typeof io !== 'undefined') {
-                    afterIoReady();
-                } else {
-                    var s = document.createElement('script');
-                    s.src = 'https://cdn.socket.io/4.5.4/socket.io.min.js';
-                    s.async = true;
-                    s.onload = function () {
-                        afterIoReady();
-                    };
-                    document.head.appendChild(s);
-                }
-
-                if ('Notification' in window && Notification.permission === 'default') {
-                    if ('requestIdleCallback' in window) {
-                        requestIdleCallback(function () {
-                            Notification.requestPermission();
-                        }, { timeout: 12000 });
-                    } else {
-                        setTimeout(function () {
-                            Notification.requestPermission();
-                        }, 6000);
-                    }
-                }
-            }
-
-            function scheduleSocketBootstrap() {
-                if (dcccoInitSocketDefer._scheduled) {
-                    return;
-                }
-                dcccoInitSocketDefer._scheduled = true;
-                if ('requestIdleCallback' in window) {
-                    requestIdleCallback(loadSocketIoAndConnect, { timeout: 5000 });
-                } else {
-                    setTimeout(loadSocketIoAndConnect, 200);
-                }
-            }
-
-            /* After window load — first paint / nav taps before websocket + CDN (all roles). */
-            if (document.readyState === 'complete') {
-                scheduleSocketBootstrap();
-            } else {
-                window.addEventListener('load', scheduleSocketBootstrap, { once: true });
-            }
-        })();
+        {# CI location: do not POST /api/update_location on every page — use ci-location-tracker.js on CI wizard only. #}
     </script>
     {% endif %}
     
@@ -351,7 +295,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             const registerServiceWorker = () => {
-                navigator.serviceWorker.register('/service-worker.js?v=22-fast-nav')
+                navigator.serviceWorker.register('/service-worker.js?v=24-parity-sw')
                     .catch(function () {});
             };
             if ('requestIdleCallback' in window) {
@@ -590,26 +534,19 @@
                     sessionHeartbeat();
                 }
             });
-            /* Defer until after load — same pattern as websocket; avoids starving link clicks during startup. */
-            function scheduleInitialSessionPolls() {
-                setTimeout(pullCsrfFromSessionStatus, 2800);
-                setTimeout(sessionHeartbeat, 4500);
-            }
-            if (document.readyState === 'complete') {
-                scheduleInitialSessionPolls();
-            } else {
-                window.addEventListener('load', scheduleInitialSessionPolls, { once: true });
-            }
+            document.addEventListener('DOMContentLoaded', function () {
+                setTimeout(pullCsrfFromSessionStatus, 1500);
+                setTimeout(sessionHeartbeat, 3000);
+            });
         })();
     </script>
     {% endif %}
     
-    <!-- Sidebar Navigation Script -->
+    <!-- Sidebar Navigation — active scroll + prefetch chrome links (intent on pointerdown, hover warmup idle). -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const currentPath = window.location.pathname;
-        const sidebarLinks = document.querySelectorAll('.sidebar-nav a');
-
+        var currentPath = window.location.pathname;
+        var sidebarLinks = document.querySelectorAll('.sidebar-nav a');
         sidebarLinks.forEach(function (link) {
             var linkPath = new URL(link.href).pathname;
             if (linkPath === currentPath) {
@@ -620,7 +557,7 @@
             }
         });
 
-        const sidebar = document.querySelector('.sidebar-nav');
+        var sidebar = document.querySelector('.sidebar-nav');
         if (sidebar) {
             var savedScrollPos = sessionStorage.getItem('sidebarScrollPos');
             if (savedScrollPos) {
@@ -633,38 +570,129 @@
             });
         }
 
-        document.querySelectorAll('.sidebar-nav a[href]').forEach(function (a) {
+        var __dcccoChromePrefetch = {};
+
+        function shouldPrefetchChromeAnchor(a) {
+            if (!a || !a.getAttribute || !a.getAttribute('href')) {
+                return false;
+            }
+            if ((a.getAttribute('target') || '').toLowerCase().trim() === '_blank') {
+                return false;
+            }
+            if (a.hasAttribute('download')) {
+                return false;
+            }
+            var raw = String(a.getAttribute('href')).trim();
+            if (!raw || raw[0] === '#' || raw.indexOf('mailto:') === 0 || raw.indexOf('tel:') === 0) {
+                return false;
+            }
             try {
-                var u = new URL(a.href);
+                var u = new URL(a.href, window.location.href);
                 if (u.origin !== window.location.origin) {
-                    return;
+                    return false;
                 }
-            } catch (e) {
+                if (u.pathname === '/logout' || raw.indexOf('logout') === 0 || u.pathname.indexOf('/logout') === 0) {
+                    return false;
+                }
+            } catch (_ePath) {
+                return false;
+            }
+            try {
+                var c = navigator.connection;
+                if (c && (c.saveData === true || (typeof c.effectiveType === 'string' && /^(slow-2g|2g)$/.test(c.effectiveType)))) {
+                    return false;
+                }
+            } catch (_eSkip) {}
+            return true;
+        }
+
+        function injectPrefetch(hrefCanonical) {
+            if (__dcccoChromePrefetch[hrefCanonical]) {
                 return;
             }
-            a.addEventListener('pointerenter', function prefetchNavOnce() {
-                a.removeEventListener('pointerenter', prefetchNavOnce);
-                try {
-                    var c = navigator.connection;
-                    if (c && (c.saveData === true || (typeof c.effectiveType === 'string' && /^(slow-2g|2g)$/.test(c.effectiveType)))) {
+            __dcccoChromePrefetch[hrefCanonical] = 1;
+            try {
+                var l = document.createElement('link');
+                l.rel = 'prefetch';
+                l.href = hrefCanonical;
+                document.head.appendChild(l);
+            } catch (_eLink) {}
+        }
+
+        var dash = document.querySelector('.dashboard-container');
+        function onChromePointerPrefetch(ev) {
+            if (!ev.target || typeof ev.target.closest !== 'function') {
+                return;
+            }
+            if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) {
+                return;
+            }
+            if (typeof ev.button === 'number' && ev.button !== 0) {
+                return;
+            }
+            if (typeof ev.pointerType === 'string' && ev.pointerType !== 'touch' && !ev.isPrimary) {
+                return;
+            }
+            var a = ev.target.closest('a[href]');
+            if (!a) {
+                return;
+            }
+            var inChrome = !!(a.closest('.sidebar-nav') || a.closest('.bottom-nav') || a.closest('.user-menu-dropdown'));
+            if (!inChrome) {
+                return;
+            }
+            if (!shouldPrefetchChromeAnchor(a)) {
+                return;
+            }
+            try {
+                injectPrefetch(new URL(a.href, window.location.href).href);
+            } catch (_eU) {}
+        }
+
+        if (dash) {
+            dash.addEventListener('pointerdown', onChromePointerPrefetch, true);
+        }
+
+        if (dash) {
+            dash.addEventListener(
+                'mouseover',
+                function (ev) {
+                    if (!ev.target || typeof ev.target.closest !== 'function') {
                         return;
                     }
-                } catch (_eSkip) {}
-                function inject() {
+                    var a = ev.target.closest('a[href]');
+                    if (
+                        !a ||
+                        (!a.closest('.sidebar-nav') &&
+                            !a.closest('.bottom-nav') &&
+                            !a.closest('.user-menu-dropdown'))
+                    ) {
+                        return;
+                    }
+                    if (!shouldPrefetchChromeAnchor(a)) {
+                        return;
+                    }
+                    var key;
                     try {
-                        var l = document.createElement('link');
-                        l.rel = 'prefetch';
-                        l.href = a.href;
-                        document.head.appendChild(l);
-                    } catch (e2) {}
-                }
-                if (window.requestIdleCallback) {
-                    window.requestIdleCallback(inject, { timeout: 4500 });
-                } else {
-                    setTimeout(inject, 350);
-                }
-            }, { passive: true });
-        });
+                        key = new URL(a.href, window.location.href).href;
+                    } catch (_err) {
+                        return;
+                    }
+                    if (__dcccoChromePrefetch[key]) {
+                        return;
+                    }
+                    function go() {
+                        injectPrefetch(key);
+                    }
+                    if (window.requestIdleCallback) {
+                        window.requestIdleCallback(go, { timeout: 2600 });
+                    } else {
+                        setTimeout(go, 120);
+                    }
+                },
+                true
+            );
+        }
     });
     </script>
     
