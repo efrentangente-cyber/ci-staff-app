@@ -5,7 +5,7 @@
 
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-checklist-wizard.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}?v=20260425-row-insert">
+<link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}?v=20260212-print-portrait">
 
 <style>
 /* Hide bottom navigation bar on CI checklist page */
@@ -177,10 +177,10 @@ nav[style*="position: fixed"][style*="bottom"],
         max-width: 100%;
     }
 
-    /* Page setup */
+    /* Page setup — portrait for standard office printers */
     @page {
         margin: 1cm;
-        size: A4 landscape;
+        size: letter portrait;
     }
 
     html {

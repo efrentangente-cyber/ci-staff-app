@@ -45,7 +45,7 @@
     {% if current_user.is_authenticated %}
     {# Turbo Drive: client-side navigations without full reload (see static/app-shell-navigation.js). #}
     <script defer src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-umd.js" crossorigin="anonymous"></script>
-    <script defer src="{{ url_for('static', filename='app-shell-navigation.js') }}?v=2-prefetch-off"></script>
+    <script defer src="{{ url_for('static', filename='app-shell-navigation.js') }}?v=3-no-turbo-rail"></script>
     {% endif %}
     {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}

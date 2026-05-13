@@ -436,7 +436,11 @@
 }
 
 @media print {
-    @page { size: auto; margin: 6mm; }
+    /* Explicit portrait — Letter matches typical Edge default; excel-spreadsheet.css must not force landscape after this. */
+    @page {
+        size: letter portrait;
+        margin: 6mm;
+    }
     /*
      * Do NOT set filter on html/body in print: Chromium often rasterizes the whole
      * document to a single page (only 1 page prints). Grayscale is optional; clarity wins.
@@ -1444,7 +1448,7 @@
             <small class="d-block" style="opacity:0.9;">(saved spreadsheet from CI wizard — same as data entry)</small>
         </div>
         <div class="card-body" style="padding-top:0.4rem !important;">
-            <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}">
+            <link rel="stylesheet" href="{{ url_for('static', filename='excel-spreadsheet.css') }}?v=20260212-print-portrait">
             <!-- One printable unit: spreadsheet + signatures so pagination cannot split expense rows from attestations -->
             <div class="print-cashflow-sheet">
             <div class="print-cashflow-excel-tile" id="print-cf-excel-tile-p6">

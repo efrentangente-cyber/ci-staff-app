@@ -586,10 +586,10 @@ td.excel-cell--range.excel-cell--handle {
         display: none !important;
     }
 
-    /* Ensure proper page margins */
+    /* Margins only — do NOT set landscape here; it overrides every print job that links this sheet
+       (e.g. full CI checklist view). Cashflow/grid blocks flow in portrait via table-layout shrink rules. */
     @page {
         margin: 1cm;
-        size: A4 landscape;
     }
 
     /* Hide scrollbars */

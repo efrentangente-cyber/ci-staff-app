@@ -55,27 +55,5 @@
         event.preventDefault();
     });
 
-    var progressTimer = null;
-
-    function showProgressSoon() {
-        if (progressTimer !== null) {
-            return;
-        }
-        progressTimer = window.setTimeout(function () {
-            progressTimer = null;
-            document.documentElement.classList.add('dccco-turbo-busy');
-        }, 140);
-    }
-
-    function hideProgress() {
-        if (progressTimer !== null) {
-            window.clearTimeout(progressTimer);
-            progressTimer = null;
-        }
-        document.documentElement.classList.remove('dccco-turbo-busy');
-    }
-
-    document.addEventListener('turbo:before-fetch-request', showProgressSoon);
-    document.addEventListener('turbo:load', hideProgress);
-    document.addEventListener('turbo:fetch-request-error', hideProgress);
+    // Intentionally no progress overlay: even a slim rail made sub-second navigations feel "loading".
 })();

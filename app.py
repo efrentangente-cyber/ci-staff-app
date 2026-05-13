@@ -4429,7 +4429,8 @@ def login():
         conn = get_db()
         row = conn.execute(
             '''
-            SELECT *
+            SELECT id, email, name, role, password_hash, is_approved, signature_path,
+                   backup_email, profile_photo, assigned_route, permissions
             FROM users
             WHERE email=?
             LIMIT 1
@@ -4471,6 +4472,10 @@ def login():
             session.permanent = False  # Ensure session is not permanent
             session['auth_session_token'] = auth_session_token
             session['_session_touch_ts'] = int(time.time())
+            # Next GET (dashboard after redirect) can skip user_login_sessions read — same as a fresh enforce pass.
+            if _ENFORCE_GET_MIN_SEC > 0:
+                session['_enforce_last_get_ok'] = str(time.time())
+                session['_enforce_token_snap'] = auth_session_token
             # Log without blocking the redirect (activity row is still written best-effort).
             run_background_task(
                 _log_system_activity,
