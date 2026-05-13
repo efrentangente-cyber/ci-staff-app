@@ -1194,3 +1194,31 @@ body.dark-mode .sweet-toast-message { color: #d1d5db; }
 @keyframes sweetToastOut {
     to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
 }
+
+/* Turbo Drive — slim progress rail (shows only after ~140ms; cleared on turbo:load) */
+@keyframes dcccoTurboNavProgress {
+    0% {
+        transform: translateX(-120%);
+    }
+    100% {
+        transform: translateX(320%);
+    }
+}
+html.dccco-turbo-busy body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 42%;
+    z-index: 2147483646;
+    pointer-events: none;
+    background: linear-gradient(90deg, #2c5282, #fbbf24);
+    animation: dcccoTurboNavProgress 0.85s ease-in-out infinite;
+}
+
+/* Long dashboard tables — Chromium skips layout/paint for off-screen rows */
+.table-responsive.dccco-table-rows-lazy tbody tr {
+    content-visibility: auto;
+    contain-intrinsic-size: 44px;
+}

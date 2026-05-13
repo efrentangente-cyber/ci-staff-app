@@ -9294,6 +9294,13 @@ def update_ci_route():
     return redirect(url_for('manage_users'))
 
 
+def _coverage_catalogue_cached_json(payload):
+    """Shared PSGC catalogue responses — identical for all admins; safe short private TTL."""
+    resp = jsonify(payload)
+    resp.headers['Cache-Control'] = 'private, max-age=120'
+    return resp
+
+
 @app.route('/api/admin/coverage_catalogue/municipalities')
 @login_required
 def api_coverage_catalogue_municipalities():
@@ -9303,7 +9310,9 @@ def api_coverage_catalogue_municipalities():
     q = (request.args.get('q') or '').strip()
     rows = get_psgc_negros_catalogue_rows()
     if not rows:
-        return jsonify({'ok': True, 'municipalities': [], 'empty_catalogue': True})
+        return _coverage_catalogue_cached_json(
+            {'ok': True, 'municipalities': [], 'empty_catalogue': True}
+        )
     matched = coverage_find_municipalities_from_catalogue(rows, q)
     payload: dict = {'ok': True, 'municipalities': matched}
     # One HTTP round-trip for the common case (e.g. "Bayawan City" → single LGU).
@@ -9312,7 +9321,7 @@ def api_coverage_catalogue_municipalities():
         payload['barangays'] = coverage_list_barangays_from_catalogue(
             rows, m0.get('municipality') or '', m0.get('province') or ''
         )
-    return jsonify(payload)
+    return _coverage_catalogue_cached_json(payload)
 
 
 @app.route('/api/admin/coverage_catalogue/barangays')
@@ -9327,9 +9336,9 @@ def api_coverage_catalogue_barangays():
         return jsonify({'ok': False, 'error': 'municipality is required'}), 400
     rows = get_psgc_negros_catalogue_rows()
     if not rows:
-        return jsonify({'ok': True, 'barangays': [], 'empty_catalogue': True})
+        return _coverage_catalogue_cached_json({'ok': True, 'barangays': [], 'empty_catalogue': True})
     labels = coverage_list_barangays_from_catalogue(rows, mun, prov)
-    return jsonify({'ok': True, 'barangays': labels})
+    return _coverage_catalogue_cached_json({'ok': True, 'barangays': labels})
 
 
 # Multi-LGU presets: merged PSGC barangay lists for Manage Users coverage wizard (south Negros chain).
@@ -9399,7 +9408,7 @@ def api_coverage_catalogue_corridor_barangays():
         )
     rows = get_psgc_negros_catalogue_rows()
     if not rows:
-        return jsonify(
+        return _coverage_catalogue_cached_json(
             {
                 'ok': True,
                 'preset': preset,
@@ -9409,7 +9418,7 @@ def api_coverage_catalogue_corridor_barangays():
             }
         )
     items = coverage_corridor_barangay_items(rows, preset)
-    return jsonify(
+    return _coverage_catalogue_cached_json(
         {
             'ok': True,
             'preset': preset,

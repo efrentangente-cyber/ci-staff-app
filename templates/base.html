@@ -10,15 +10,7 @@
     <link rel="icon" type="image/png" href="/static/favicon.png?v=3">
     
     <!-- CRITICAL: Load dark mode BEFORE any rendering to prevent flash -->
-    <script>
-        (function() {
-            const isDarkMode = localStorage.getItem('darkMode') === 'true';
-            if (isDarkMode) {
-                document.documentElement.classList.add('dark-mode-loading');
-            }
-        })();
-    </script>
-
+    <script src="{{ url_for('static', filename='js/base-dark-mode-head.js') }}?v=1-ext"></script>
 {% macro user_avatar(user_name, profile_photo, size=40) %}
     {% if profile_photo %}
         <img src="{{ url_for('serve_upload', filename=profile_photo.split('/')[-1].split('\\')[-1]) }}" alt="{{ user_name }}" style="width:{{size}}px; height:{{size}}px; border-radius:50%; object-fit:cover;">
@@ -48,9 +40,14 @@
     {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='ci-field.min.css' if config.USE_MINIFIED_ASSETS else 'ci-field.css') }}?v=3-responsive-ci">
     {% endif %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.min.css' if config.USE_MINIFIED_ASSETS else 'css/base.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.min.css' if config.USE_MINIFIED_ASSETS else 'css/base.css') }}?v=5-spa-nav">
     {# Defer Bootstrap JS — keeps first paint/snappy taps; inline handlers use bootstrap after DOMContentLoaded. #}
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% if current_user.is_authenticated %}
+    {# Turbo Drive: client-side navigations without full reload (see static/app-shell-navigation.js). #}
+    <script defer src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-umd.js" crossorigin="anonymous"></script>
+    <script defer src="{{ url_for('static', filename='app-shell-navigation.js') }}?v=1"></script>
+    {% endif %}
     {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}
 </head>
@@ -58,74 +55,12 @@
     {% if current_user.is_authenticated %}
     {# Socket.IO loads before {% block content %} inline scripts (messages/chat). Poll first — stable behind Render/nginx. #}
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js" crossorigin="anonymous"></script>
-    <script>
-        (function () {
-            if (typeof io !== 'function') return;
-            if (!window.__dcccoSocket) {
-                window.__dcccoSocket = io({
-                    path: '/socket.io/',
-                    transports: ['polling', 'websocket'],
-                    upgrade: true,
-                    rememberUpgrade: false,
-                    reconnection: true,
-                    reconnectionDelay: 800,
-                    reconnectionDelayMax: 12000,
-                    reconnectionAttempts: 15,
-                    timeout: 20000
-                });
-            }
-            var socket = window.__dcccoSocket;
-            if (!socket || socket.__dcccoBaseHandlersBound) {
-                try {
-                    document.dispatchEvent(new CustomEvent('dccco:socket-ready'));
-                } catch (_eSd) {}
-                return;
-            }
-            socket.__dcccoBaseHandlersBound = true;
-            socket.on('connect', function () {
-                socket.emit('join', { room: '{{ current_user.id }}' });
-            });
-            socket.on('new_notification', function (data) {
-                if (!data || data.is_direct_message) return;
-                var badge = document.getElementById('notif-count');
-                var mobileBadge = document.getElementById('notif-count-mobile');
-                var topbarBadge = document.getElementById('notif-count-topbar');
-                if (badge) {
-                    badge.textContent = (parseInt(badge.textContent, 10) || 0) + 1;
-                    badge.style.display = 'inline';
-                }
-                if (mobileBadge) {
-                    mobileBadge.textContent = (parseInt(mobileBadge.textContent, 10) || 0) + 1;
-                    mobileBadge.style.display = 'inline';
-                }
-                if (topbarBadge) {
-                    topbarBadge.textContent = (parseInt(topbarBadge.textContent, 10) || 0) + 1;
-                    topbarBadge.style.display = 'inline';
-                }
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification({{ (org_abbr ~ ' Notification')|tojson }}, {
-                        body: data.message,
-                        icon: '/static/favicon.png'
-                    });
-                }
-            });
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
-            try {
-                document.dispatchEvent(new CustomEvent('dccco:socket-ready'));
-            } catch (_eSd) {}
-        })();
-    </script>
+    <script type="application/json" id="dccco-socket-boot">{{ {'userId': current_user.id, 'notifyTitle': (org_abbr ~ ' Notification') } | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/base-socket-init.js') }}?v=1-ext"></script>
     {% endif %}
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <!-- Apply dark mode immediately on body load -->
-    <script>
-        if (document.documentElement.classList.contains('dark-mode-loading')) {
-            document.body.classList.add('dark-mode');
-            document.documentElement.classList.remove('dark-mode-loading');
-        }
-    </script>
+    <script src="{{ url_for('static', filename='js/base-dark-mode-body.js') }}?v=1-ext"></script>
     
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -147,21 +82,7 @@
         {% endif %}
     {% endwith %}
     
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const alerts = document.querySelectorAll('.auto-dismiss-alert');
-            alerts.forEach(function(alert) {
-                const cat = (alert.getAttribute('data-alert-cat') || '').toLowerCase();
-                const ms = (cat === 'danger' || cat === 'warning') ? 10000 : (cat === 'info' ? 5000 : 4000);
-                function closeToast() {
-                    alert.classList.add('hide');
-                    setTimeout(function() { alert.remove(); }, 180);
-                }
-                alert.querySelector('.sweet-toast-close')?.addEventListener('click', closeToast);
-                setTimeout(closeToast, ms);
-            });
-        });
-    </script>
+    <script defer src="{{ url_for('static', filename='js/base-flash-dismiss.js') }}?v=1-ext"></script>
     
     {% if current_user.is_authenticated %}
     <div class="dashboard-container">
@@ -286,7 +207,7 @@
     {% endif %}
     
     <!-- PWA Install Prompt -->
-    <div id="installPrompt" class="alert alert-info alert-dismissible fade show" style="display: none;">
+    <div id="installPrompt" class="alert alert-info alert-dismissible fade show d-none">
         <strong>Install App</strong><br>
         Add this app to your home screen for easy access!
         <button type="button" class="btn btn-sm btn-primary ms-2" id="installBtn">Install</button>
@@ -294,177 +215,12 @@
     </div>
     
     <!-- PWA: service worker & install banner -->
-        if ('serviceWorker' in navigator) {
-            const registerServiceWorker = () => {
-                navigator.serviceWorker.register('/service-worker.js?v=24-parity-sw')
-                    .catch(function () {});
-            };
-            if ('requestIdleCallback' in window) {
-                requestIdleCallback(registerServiceWorker, {timeout: 3000});
-            } else {
-                window.addEventListener('load', () => setTimeout(registerServiceWorker, 800));
-            }
-        }
-        
-        // PWA Install Prompt
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            document.getElementById('installPrompt').style.display = 'block';
-        });
-        
-        document.getElementById('installBtn')?.addEventListener('click', async () => {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                deferredPrompt = null;
-                document.getElementById('installPrompt').style.display = 'none';
-            }
-        });
-    </script>
+    <script defer src="{{ url_for('static', filename='js/base-pwa-install.js') }}?v=1-ext"></script>
 
     <!-- Offline Mode & Auto-Sync -->
-    <script>
-        // ── Banner ──────────────────────────────────────────────────────────
-        function showBanner(msg, color, autohide) {
-            let ind = document.getElementById('offlineIndicator');
-            if (!ind) {
-                ind = document.createElement('div');
-                ind.id = 'offlineIndicator';
-                ind.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:10px;text-align:center;z-index:9999;font-weight:bold;font-size:14px;';
-                document.body.appendChild(ind);
-            }
-            ind.innerHTML = msg;
-            ind.style.background = color;
-            ind.style.color = 'white';
-            ind.style.display = 'block';
-            if (autohide) setTimeout(() => ind.style.display = 'none', 3000);
-        }
-
-        // ── Online / Offline events ─────────────────────────────────────────
-        window.addEventListener('offline', () => {
-            showBanner('📡 Offline — submits are saved on this device and sent when you reconnect', '#f59e0b', false);
-        });
-
-        window.addEventListener('online', () => {
-            showBanner('✅ Back online — syncing saved data...', '#10b981', false);
-            if (window.DCCCOOutbox && typeof window.DCCCOOutbox.flush === 'function') {
-                window.DCCCOOutbox.flush();
-            }
-            if ('serviceWorker' in navigator && 'SyncManager' in window) {
-                navigator.serviceWorker.ready
-                    .then(reg => reg.sync.register('sync-pending'))
-                    .catch(err => console.log('Background sync registration failed', err));
-            }
-        });
-
-        // Show banner on load if offline
-        if (!navigator.onLine) {
-            showBanner('📡 Offline — submits are saved on this device and sent when you reconnect', '#f59e0b', false);
-        }
-
-        // ── Listen for sync complete message from SW ────────────────────────
-    </script>
+    <script defer src="{{ url_for('static', filename='js/base-offline-banner.js') }}?v=1-ext"></script>
     
-    <script>
-    // Dark Mode Toggle - Apply immediately to prevent flash
-    (function() {
-        // Check for saved dark mode preference and apply to body immediately
-        const isDarkMode = localStorage.getItem('darkMode') === 'true';
-        if (isDarkMode) {
-            document.body.classList.add('dark-mode');
-        }
-    })();
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        const darkModeToggle = document.getElementById('darkModeToggle');
-        const darkModeIcon = document.getElementById('darkModeIcon');
-        const body = document.body;
-        
-        // Update icon based on current mode
-        const isDarkMode = body.classList.contains('dark-mode');
-        if (isDarkMode && darkModeIcon) {
-            darkModeIcon.classList.remove('bi-moon-fill');
-            darkModeIcon.classList.add('bi-sun-fill');
-        }
-        
-        // Toggle dark mode
-        darkModeToggle?.addEventListener('click', function() {
-            body.classList.toggle('dark-mode');
-            const isDark = body.classList.contains('dark-mode');
-            
-            // Update icon
-            if (isDark) {
-                darkModeIcon.classList.remove('bi-moon-fill');
-                darkModeIcon.classList.add('bi-sun-fill');
-            } else {
-                darkModeIcon.classList.remove('bi-sun-fill');
-                darkModeIcon.classList.add('bi-moon-fill');
-            }
-            
-            // Save preference
-            localStorage.setItem('darkMode', isDark);
-        });
-    });
-    
-    // User menu dropdown functionality - handles multiple dropdowns
-    function initUserMenuDropdowns() {
-        const menuContainers = document.querySelectorAll('.user-menu-container');
-        
-        menuContainers.forEach(function(container) {
-            const menuButton = container.querySelector('.user-menu-btn');
-            const menuDropdown = container.querySelector('.user-menu-dropdown');
-            
-            if (menuButton && menuDropdown) {
-                const newButton = menuButton.cloneNode(true);
-                menuButton.parentNode.replaceChild(newButton, menuButton);
-                
-                newButton.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    document.querySelectorAll('.user-menu-container').forEach(function(c) {
-                        const d = c.querySelector('.user-menu-dropdown');
-                        const b = c.querySelector('.user-menu-btn');
-                        if (d && d !== menuDropdown) {
-                            d.classList.remove('show');
-                            if (b) b.setAttribute('aria-expanded', 'false');
-                        }
-                    });
-                    
-                    menuDropdown.classList.toggle('show');
-                    newButton.setAttribute('aria-expanded', menuDropdown.classList.contains('show'));
-                });
-            }
-        });
-        
-        // Close all dropdowns when clicking outside
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('.user-menu-container')) {
-                document.querySelectorAll('.user-menu-dropdown').forEach(function(dropdown) {
-                    dropdown.classList.remove('show');
-                });
-                document.querySelectorAll('.user-menu-btn').forEach(function(btn) {
-                    btn.setAttribute('aria-expanded', 'false');
-                });
-            }
-        });
-        
-        document.querySelectorAll('.user-menu-btn').forEach(function(btn) {
-            if (!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', 'Open account menu');
-            btn.setAttribute('aria-haspopup', 'true');
-            if (btn.getAttribute('aria-expanded') == null) btn.setAttribute('aria-expanded', 'false');
-        });
-    }
-    
-    // Initialize on DOM ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initUserMenuDropdowns);
-    } else {
-        initUserMenuDropdowns();
-    }
-    </script>
+    <script defer src="{{ url_for('static', filename='js/base-chrome-ui.js') }}?v=1-ext"></script>
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
@@ -480,223 +236,12 @@
     {% block layout_feature_scripts %}{% endblock %}
     
     {% if current_user.is_authenticated %}
-    <script>
-        // Set login time to prevent immediate logout on successful login
-        if (!sessionStorage.getItem('loginTime')) {
-            sessionStorage.setItem('loginTime', Date.now().toString());
-        }
-        (function () {
-            var hbUrl = {{ url_for('session_heartbeat') | tojson }};
-            var stUrl = {{ url_for('api_session_status') | tojson }};
-            var intervalMs = 60 * 1000;
-            function applyCsrfFromPayload(data) {
-                if (data && data.csrf_token) {
-                    var m = document.querySelector('meta[name="csrf-token"]');
-                    if (m) m.setAttribute('content', data.csrf_token);
-                }
-            }
-            /* Refreshes <meta name="csrf-token"> from an authenticated GET (no CSRF header). */
-            function pullCsrfFromSessionStatus() {
-                if (!stUrl) return;
-                fetch(stUrl, {
-                    method: 'GET',
-                    credentials: 'same-origin',
-                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    cache: 'no-store',
-                })
-                    .then(function (r) { return r.ok ? r.json() : null; })
-                    .then(function (data) {
-                        if (data && data.ok) applyCsrfFromPayload(data);
-                    })
-                    .catch(function () {});
-            }
-            function sessionHeartbeat() {
-                if (!hbUrl) return;
-                fetch(hbUrl, {
-                    method: 'GET',
-                    credentials: 'same-origin',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        Accept: 'application/json',
-                    },
-                    cache: 'no-store',
-                })
-                    .then(function (r) { return r.json().catch(function () { return {}; }); })
-                    .then(function (data) {
-                        applyCsrfFromPayload(data);
-                    })
-                    .catch(function () {});
-            }
-            setInterval(sessionHeartbeat, intervalMs);
-            setInterval(pullCsrfFromSessionStatus, 3 * 60 * 1000);
-            document.addEventListener('visibilitychange', function () {
-                if (!document.hidden) {
-                    pullCsrfFromSessionStatus();
-                    sessionHeartbeat();
-                }
-            });
-            /* After paint: stagger CSRF then heartbeat so they don’t compete with HTML/CSS on navigation. */
-            document.addEventListener('DOMContentLoaded', function () {
-                setTimeout(pullCsrfFromSessionStatus, 900);
-                setTimeout(sessionHeartbeat, 2400);
-            });
-        })();
-    </script>
+    <script type="application/json" id="dccco-session-config">{{ {'heartbeat': url_for('session_heartbeat'), 'sessionStatus': url_for('api_session_status') } | tojson }}</script>
+    <script defer src="{{ url_for('static', filename='js/base-session-heartbeat.js') }}?v=1-ext"></script>
     {% endif %}
     
     <!-- Sidebar Navigation — active scroll + prefetch chrome links (intent on pointerdown, hover warmup idle). -->
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var currentPath = window.location.pathname;
-        var sidebarLinks = document.querySelectorAll('.sidebar-nav a');
-        sidebarLinks.forEach(function (link) {
-            var linkPath = new URL(link.href).pathname;
-            if (linkPath === currentPath) {
-                link.classList.add('active');
-            }
-            if (currentPath.includes('/dashboard') && link.textContent.trim().includes('Home')) {
-                link.classList.add('active');
-            }
-        });
-
-        var sidebar = document.querySelector('.sidebar-nav');
-        if (sidebar) {
-            var savedScrollPos = sessionStorage.getItem('sidebarScrollPos');
-            if (savedScrollPos) {
-                sidebar.scrollTop = parseInt(savedScrollPos, 10);
-            }
-            window.addEventListener('pagehide', function () {
-                try {
-                    sessionStorage.setItem('sidebarScrollPos', String(sidebar.scrollTop));
-                } catch (e) {}
-            });
-        }
-
-        var __dcccoChromePrefetch = {};
-
-        function shouldPrefetchChromeAnchor(a) {
-            if (!a || !a.getAttribute || !a.getAttribute('href')) {
-                return false;
-            }
-            if ((a.getAttribute('target') || '').toLowerCase().trim() === '_blank') {
-                return false;
-            }
-            if (a.hasAttribute('download')) {
-                return false;
-            }
-            var raw = String(a.getAttribute('href')).trim();
-            if (!raw || raw[0] === '#' || raw.indexOf('mailto:') === 0 || raw.indexOf('tel:') === 0) {
-                return false;
-            }
-            try {
-                var u = new URL(a.href, window.location.href);
-                if (u.origin !== window.location.origin) {
-                    return false;
-                }
-                if (u.pathname === '/logout' || raw.indexOf('logout') === 0 || u.pathname.indexOf('/logout') === 0) {
-                    return false;
-                }
-            } catch (_ePath) {
-                return false;
-            }
-            try {
-                var c = navigator.connection;
-                if (c && (c.saveData === true || (typeof c.effectiveType === 'string' && /^(slow-2g|2g)$/.test(c.effectiveType)))) {
-                    return false;
-                }
-            } catch (_eSkip) {}
-            return true;
-        }
-
-        function injectPrefetch(hrefCanonical) {
-            if (__dcccoChromePrefetch[hrefCanonical]) {
-                return;
-            }
-            __dcccoChromePrefetch[hrefCanonical] = 1;
-            try {
-                var l = document.createElement('link');
-                l.rel = 'prefetch';
-                l.href = hrefCanonical;
-                document.head.appendChild(l);
-            } catch (_eLink) {}
-        }
-
-        var dash = document.querySelector('.dashboard-container');
-        function onChromePointerPrefetch(ev) {
-            if (!ev.target || typeof ev.target.closest !== 'function') {
-                return;
-            }
-            if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) {
-                return;
-            }
-            if (typeof ev.button === 'number' && ev.button !== 0) {
-                return;
-            }
-            if (typeof ev.pointerType === 'string' && ev.pointerType !== 'touch' && !ev.isPrimary) {
-                return;
-            }
-            var a = ev.target.closest('a[href]');
-            if (!a) {
-                return;
-            }
-            var inChrome = !!(a.closest('.sidebar-nav') || a.closest('.bottom-nav') || a.closest('.user-menu-dropdown'));
-            if (!inChrome) {
-                return;
-            }
-            if (!shouldPrefetchChromeAnchor(a)) {
-                return;
-            }
-            try {
-                injectPrefetch(new URL(a.href, window.location.href).href);
-            } catch (_eU) {}
-        }
-
-        if (dash) {
-            dash.addEventListener('pointerdown', onChromePointerPrefetch, true);
-        }
-
-        if (dash) {
-            dash.addEventListener(
-                'mouseover',
-                function (ev) {
-                    if (!ev.target || typeof ev.target.closest !== 'function') {
-                        return;
-                    }
-                    var a = ev.target.closest('a[href]');
-                    if (
-                        !a ||
-                        (!a.closest('.sidebar-nav') &&
-                            !a.closest('.bottom-nav') &&
-                            !a.closest('.user-menu-dropdown'))
-                    ) {
-                        return;
-                    }
-                    if (!shouldPrefetchChromeAnchor(a)) {
-                        return;
-                    }
-                    var key;
-                    try {
-                        key = new URL(a.href, window.location.href).href;
-                    } catch (_err) {
-                        return;
-                    }
-                    if (__dcccoChromePrefetch[key]) {
-                        return;
-                    }
-                    function go() {
-                        injectPrefetch(key);
-                    }
-                    if (window.requestIdleCallback) {
-                        window.requestIdleCallback(go, { timeout: 2600 });
-                    } else {
-                        setTimeout(go, 120);
-                    }
-                },
-                true
-            );
-        }
-    });
-    </script>
+    <script defer src="{{ url_for('static', filename='js/base-sidebar-chrome.js') }}?v=1-ext"></script>
     
     <!-- CI staff: real offline stack (ci-pwa.min.js is a placeholder — keep these scripts for IndexedDB + sync) -->
     {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}

@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-files-path name="my_images" path="/" />
-    <!-- App-scoped exports: Documents/CI_Offline_Packages/... -->
-    <external-files-path name="offline_pkgs" path="Documents/CI_Offline_Packages" />
-    <external-path name="external_files" path="." />
-    <!-- Native LoanSubmitActivity stores camera evidence under filesDir/evidence -->
-    <files-path name="evidence" path="evidence/" />
-</paths>

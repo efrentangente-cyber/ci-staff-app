@@ -1,6 +1,6 @@
 """
 Idempotent CI interview completion for offline WebView / PWA sync.
-Registers POST /api/ci/complete_interview (same contract as MyCi flask_app).
+Registers POST /api/ci/complete_interview (native client / offline WebView contract).
 """
 from __future__ import annotations
 

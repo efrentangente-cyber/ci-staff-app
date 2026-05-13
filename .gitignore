@@ -98,3 +98,15 @@ ngrok.exe
 # Large image files
 *.psd
 *.ai
+
+# Android / Gradle (MyCi shells under repo — never commit build caches)
+.gradle/
+**/app/build/
+**/app/release/
+captures/
+*.apk
+*.aab
+.cxx/
+
+# Local toolchain installers accidentally dropped in repo root (not deployed)
+postgresql_*.exe

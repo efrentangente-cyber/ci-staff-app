@@ -16,7 +16,7 @@
 <h2>Submit New Loan Application</h2>
 <div class="card position-relative lps-submit-page-card">
     <div class="card-body">
-        <form method="POST" enctype="multipart/form-data" id="lpsSubmitApplicationForm">
+        <form method="POST" enctype="multipart/form-data" id="lpsSubmitApplicationForm" data-turbo="false">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div id="memberPrefillBanner" class="alert alert-info py-2 small mb-3" style="display: none;" role="status">
                 <span id="memberPrefillBannerText">Details from a previous application were filled in below. You can change any field before submitting.</span>
