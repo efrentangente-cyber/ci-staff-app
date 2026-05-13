@@ -96,12 +96,15 @@ def insert_loan_document_row(
     filepath: str,
     file_name: str,
     uploaded_by: int,
+    *,
+    store_blob: bool = True,
 ) -> None:
     """
     Insert a documents row; also stores bytes in file_data when the file fits.
     filepath: absolute path to saved upload.
+    If store_blob is False, file_data stays NULL (faster); serving still uses file_path.
     """
-    data = _read_file_bytes_for_blob(filepath)
+    data = _read_file_bytes_for_blob(filepath) if store_blob else None
     mt = mime_type_for_document(file_name or filepath or "")
     conn.execute(
         """

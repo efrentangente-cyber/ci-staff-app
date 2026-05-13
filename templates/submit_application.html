@@ -1,12 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Submit Application{% endblock %}
 {% block layout_feature_scripts %}{% include 'includes/assets_autocomplete.html' %}{% endblock %}
+{% block body_class %}lps-submit-page {% endblock %}
 {% block styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='loan-amount-confirm.css') }}?v=1">
 <style>
 /* Address suggestion list uses position:absolute; avoid clipping inside the card */
 .lps-submit-page-card,
 .lps-submit-page-card .card-body {
+    overflow: visible !important;
+}
+
+/* LPS: dropdown must escape main-content stacking (some layouts clip overflow-y) */
+body.lps-submit-page #main-content {
     overflow: visible !important;
 }
 </style>
@@ -138,9 +144,9 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=11"></script>
-<script src="{{ url_for('static', filename='addresses.js') }}?v=11"></script>
-<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=13"></script>
+<script src="{{ url_for('static', filename='generated/address_psgc_negros.generated.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='addresses.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='lps-address-autocomplete.js') }}?v=14"></script>
 <script src="{{ url_for('static', filename='loan-amount-confirm.js') }}?v=1"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -1288,7 +1294,7 @@ document.addEventListener('click', function(e) {
             </div>
             <div class="modal-body text-center">
                 <div id="cameraContainer" style="position: relative; max-width: 100%; margin: 0 auto;">
-                    <video id="cameraVideo" autoplay playsinline style="width: 100%; max-width: 640px; border-radius: 8px; background: #000;"></video>
+                    <video id="cameraVideo" autoplay playsinline muted data-lps-camera="1" style="width: 100%; max-width: 640px; border-radius: 8px; background: #000;"></video>
                     <canvas id="cameraCanvas" style="display: none;"></canvas>
                     
                     <!-- Camera controls overlay -->
@@ -1326,60 +1332,117 @@ document.addEventListener('click', function(e) {
 </div>
 
 <script>
-// Camera functionality
+// Camera functionality (getUserMedia after modal paint; muted video for autoplay; constraint fallbacks for desktop).
 let cameraStream = null;
 let cameraModal = null;
+let cameraShownListenerBound = false;
+
+async function acquireLpsCameraStream() {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        throw new Error('Camera API not available in this browser. Use HTTPS, or tap Choose Files.');
+    }
+    const gUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    const attempts = [
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+        { video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } },
+        { video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+        { video: true },
+    ];
+    let lastErr = null;
+    for (let i = 0; i < attempts.length; i++) {
+        try {
+            return await gUM(attempts[i]);
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+    throw lastErr || new Error('Could not open any camera.');
+}
 
 document.getElementById('openCameraBtn')?.addEventListener('click', function() {
     openCamera();
 });
 
-async function openCamera() {
-    cameraModal = new bootstrap.Modal(document.getElementById('cameraModal'));
-    cameraModal.show();
-    
-    const video = document.getElementById('cameraVideo');
-    const errorDiv = document.getElementById('cameraError');
-    const errorText = document.getElementById('cameraErrorText');
-    
-    try {
-        // Request camera access
-        cameraStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                facingMode: 'environment', // Use back camera on mobile
-                width: { ideal: 1920 },
-                height: { ideal: 1080 }
-            } 
-        });
-        
-        video.srcObject = cameraStream;
-        video.style.display = 'block';
-        document.getElementById('cameraControls').style.display = 'block';
-        errorDiv.style.display = 'none';
-        
-    } catch (error) {
-        console.error('Camera error:', error);
-        video.style.display = 'none';
-        document.getElementById('cameraControls').style.display = 'none';
-        errorDiv.style.display = 'block';
-        
-        if (error.name === 'NotAllowedError') {
-            errorText.textContent = 'Camera access denied. Please allow camera access in your browser settings.';
-        } else if (error.name === 'NotFoundError') {
-            errorText.textContent = 'No camera found on this device.';
-        } else {
-            errorText.textContent = 'Failed to access camera: ' + error.message;
-        }
+async function bindCameraModalOnce() {
+    const modalEl = document.getElementById('cameraModal');
+    if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+    if (!cameraModal) {
+        cameraModal = bootstrap.Modal.getOrCreateInstance(modalEl);
     }
+    if (cameraShownListenerBound) return;
+    cameraShownListenerBound = true;
+    modalEl.addEventListener(
+        'shown.bs.modal',
+        async function () {
+            const video = document.getElementById('cameraVideo');
+            const errorDiv = document.getElementById('cameraError');
+            const errorText = document.getElementById('cameraErrorText');
+            if (!video || !errorDiv || !errorText) return;
+
+            closeCamera();
+            errorDiv.style.display = 'none';
+            video.muted = true;
+            video.setAttribute('muted', '');
+            video.playsInline = true;
+
+            try {
+                cameraStream = await acquireLpsCameraStream();
+                video.srcObject = cameraStream;
+                video.style.display = 'block';
+                document.getElementById('cameraControls').style.display = 'block';
+                await video.play().catch(function () {});
+            } catch (error) {
+                console.error('Camera error:', error);
+                video.style.display = 'none';
+                document.getElementById('cameraControls').style.display = 'none';
+                errorDiv.style.display = 'block';
+                const n = error && error.name;
+                if (n === 'NotAllowedError' || n === 'SecurityError') {
+                    errorText.textContent =
+                        'Camera access denied. Allow camera for this site in the browser lock icon / site settings.';
+                } else if (n === 'NotFoundError' || n === 'OverconstrainedError') {
+                    errorText.textContent =
+                        'No suitable camera found, or constraints failed. Try Choose Files instead.';
+                } else {
+                    errorText.textContent =
+                        'Failed to access camera: ' + ((error && error.message) || String(error));
+                }
+            }
+        },
+        { passive: true }
+    );
 }
 
-// Capture photo
+async function openCamera() {
+    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+        alert('Camera UI failed to load. Refresh the page and try again.');
+        return;
+    }
+    await bindCameraModalOnce();
+    const modalEl = document.getElementById('cameraModal');
+    const errorDiv = document.getElementById('cameraError');
+    const video = document.getElementById('cameraVideo');
+    if (modalEl && errorDiv && video) {
+        errorDiv.style.display = 'none';
+        video.style.display = 'block';
+    }
+    if (!cameraModal) {
+        alert('Camera UI failed to load. Refresh the page and try again.');
+        return;
+    }
+    cameraModal.show();
+}
 document.getElementById('captureBtn')?.addEventListener('click', function() {
     const video = document.getElementById('cameraVideo');
     const canvas = document.getElementById('cameraCanvas');
     const capturedImage = document.getElementById('capturedImage');
     const capturedPreview = document.getElementById('capturedPreview');
-    
+
+    if (!video.videoWidth || !video.videoHeight) {
+        alert('Camera is still starting. Wait until you see the live preview, then capture.');
+        return;
+    }
+
     // Set canvas size to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -1414,6 +1477,10 @@ document.getElementById('usePhotoBtn')?.addEventListener('click', function() {
     
     // Convert canvas to blob
     canvas.toBlob(function(blob) {
+        if (!blob) {
+            alert('Could not capture image. Tap Retake and try again, or use Choose Files.');
+            return;
+        }
         // Create file from blob
         const timestamp = new Date().getTime();
         const file = new File([blob], `camera_${timestamp}.jpg`, { type: 'image/jpeg' });
@@ -1429,7 +1496,10 @@ document.getElementById('usePhotoBtn')?.addEventListener('click', function() {
         
         // Close modal
         closeCamera();
-        cameraModal.hide();
+        var camEl = document.getElementById('cameraModal');
+        var modalInst = camEl && typeof bootstrap !== 'undefined' ? bootstrap.Modal.getInstance(camEl) : null;
+        if (modalInst) modalInst.hide();
+        else if (cameraModal && typeof cameraModal.hide === 'function') cameraModal.hide();
         
         // Show success message
         showNotification('success', 'Photo captured successfully!');

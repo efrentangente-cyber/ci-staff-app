@@ -417,7 +417,7 @@
         var maxAttempts = typeof o.maxAttempts === 'number' ? o.maxAttempts : 100;
         var debounceMs = typeof o.debounceMs === 'number' ? o.debounceMs : 72;
 
-        function attachAutocomplete(forceAttach) {
+        function attachAutocomplete() {
             var input = document.getElementById(inputId);
             var list = document.getElementById(listId);
             if (!input || !list) {
@@ -429,14 +429,10 @@
             if (input.dataset.lpsAddressAcBound === '1') {
                 return true;
             }
-            var catalogueRows = resolveAddressCatalogueRows();
-            if (!catalogueRows.length && !forceAttach) {
-                return false;
-            }
 
             input.dataset.lpsAddressAcBound = '1';
             list.setAttribute('role', 'listbox');
-            list.style.zIndex = '1090';
+            list.style.zIndex = '5000';
             input.setAttribute('aria-autocomplete', 'list');
             input.setAttribute('aria-controls', listId);
 
@@ -597,14 +593,14 @@
 
         var attempts = 0;
         function schedule() {
-            if (attachAutocomplete(false)) {
+            if (attachAutocomplete()) {
                 return;
             }
             attempts += 1;
             if (attempts >= maxAttempts) {
-                if (!attachAutocomplete(true)) {
+                if (!document.getElementById(inputId) || !document.getElementById(listId)) {
                     console.warn(
-                        'LPS address autocomplete: #member_address / #address_suggestions missing; autocomplete not bound.'
+                        'LPS address autocomplete: #' + inputId + ' / #' + listId + ' missing; autocomplete not bound.'
                     );
                 }
                 return;

@@ -2998,6 +2998,195 @@ def emit_loan_application_realtime(event, payload, submitted_by=None, assigned_c
             pass
 
 
+def _lps_post_submit_publish(app_id, member_name, submitted_by_uid, ci_staff_assigned_id):
+    """One background task: optional CI inbox notification + watcher-scoped new_application emit."""
+    _new_aci = None
+    if ci_staff_assigned_id is not None:
+        try:
+            _new_aci = int(ci_staff_assigned_id)
+        except (TypeError, ValueError):
+            _new_aci = None
+    if _new_aci is not None:
+        try:
+            create_notification(
+                _new_aci,
+                f'New loan application assigned: {member_name}',
+                f'/ci/application/{app_id}',
+            )
+        except Exception:
+            pass
+    try:
+        emit_loan_application_realtime(
+            'new_application',
+            {
+                'id': app_id,
+                'member_name': member_name,
+                'status': 'assigned_to_ci' if _new_aci is not None else 'submitted',
+                'submitted_by': int(submitted_by_uid),
+                'assigned_ci_staff': _new_aci,
+                'timestamp': now_ph().isoformat(),
+            },
+            int(submitted_by_uid),
+            _new_aci,
+        )
+    except Exception:
+        pass
+
+
+def _persist_lps_uploaded_documents(loan_application_id: int, uploaded_by: int, entries):
+    """Register files already on disk into documents table (runs off the submit request thread)."""
+    if not entries:
+        return
+    conn = get_db()
+    try:
+        for filepath, file_name in entries:
+            try:
+                if not filepath or not os.path.isfile(filepath):
+                    continue
+                insert_loan_document_row(
+                    conn,
+                    loan_application_id,
+                    filepath,
+                    file_name,
+                    uploaded_by,
+                    store_blob=False,
+                )
+            except Exception as doc_err:
+                app.logger.warning('persist_lps_document failed: %s', doc_err)
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        app.logger.exception('persist_lps_uploaded_documents failed: %s', e)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _background_lps_submit_followup(
+    loan_application_id: int,
+    member_name: str,
+    submitted_by_uid: int,
+    ci_staff_assigned_id,
+    uploaded_entries,
+):
+    """After LPS HTTP response: persist document rows then notify / realtime (ordering matters)."""
+    if uploaded_entries:
+        _persist_lps_uploaded_documents(loan_application_id, submitted_by_uid, uploaded_entries)
+    _lps_post_submit_publish(
+        loan_application_id,
+        member_name,
+        submitted_by_uid,
+        ci_staff_assigned_id,
+    )
+
+
+def _background_ci_completed_side_effects(loan_application_id):
+    """After CI checklist commit: emit to watchers once, insert LO/admin notifications in one txn."""
+    try:
+        ac = get_db()
+        try:
+            prow = ac.execute(
+                '''
+                SELECT submitted_by, assigned_ci_staff,
+                       COALESCE(member_name, '') AS member_name, loan_amount
+                FROM loan_applications WHERE id = ?
+                ''',
+                (loan_application_id,),
+            ).fetchone()
+        finally:
+            ac.close()
+
+        if not prow:
+            return
+        pd = dict(prow)
+
+        try:
+            la = float(pd.get('loan_amount') or 0)
+        except (TypeError, ValueError):
+            la = 0.0
+        try:
+            _sb = pd.get('submitted_by')
+            _ci_sb = int(_sb) if _sb is not None else None
+        except (TypeError, ValueError):
+            _ci_sb = None
+        _aci = _assigned_ci_staff_from_row(pd)
+        mn = pd.get('member_name') or ''
+
+        try:
+            emit_loan_application_realtime(
+                'application_updated',
+                {
+                    'id': loan_application_id,
+                    'status': 'ci_completed',
+                    'member_name': mn,
+                    'loan_amount': la,
+                    'submitted_by': _ci_sb,
+                    'assigned_ci_staff': _aci,
+                    'timestamp': now_ph().isoformat(),
+                },
+                submitted_by=_ci_sb,
+                assigned_ci_staff_id=_aci,
+                conn=None,
+            )
+        except Exception:
+            pass
+
+        msg = f'CI interview completed for: {mn or "Application"}'
+        link = f'/admin/application/{loan_application_id}'
+
+        bn = get_db()
+        try:
+            try:
+                notifiers = bn.execute('''
+                    SELECT id FROM users
+                    WHERE is_approved = 1 AND role IN ('loan_officer', 'admin')
+                    ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id
+                ''').fetchall() or []
+            except Exception:
+                notifiers = bn.execute('''
+                    SELECT id FROM users
+                    WHERE role IN ('loan_officer', 'admin')
+                    ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id
+                ''').fetchall() or []
+
+            for nr in notifiers:
+                bn.execute(
+                    '''INSERT INTO notifications (user_id, message, link, group_key, stack_count)
+                       VALUES (?, ?, ?, ?, ?)''',
+                    (int(nr['id']), msg, link, None, 1),
+                )
+            bn.commit()
+
+            with _count_cache_lock:
+                for nr in notifiers:
+                    try:
+                        _notification_count_cache.pop(int(nr['id']), None)
+                    except Exception:
+                        pass
+
+            for nr in notifiers:
+                try:
+                    socketio.emit(
+                        'new_notification',
+                        {'message': msg},
+                        room=str(int(nr['id'])),
+                    )
+                except Exception:
+                    pass
+        finally:
+            try:
+                bn.close()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def _request_client_ip():
     """Best-effort client IP extraction behind proxies/CDN."""
     forwarded = (request.headers.get('X-Forwarded-For') or '').strip()
@@ -4988,6 +5177,7 @@ def submit_application():
                 flash(f'Error processing form data: {str(e)}', 'danger')
                 return redirect(url_for('submit_application'))
             try:
+                lps_saved_docs = []
                 app_id = _insert_loan_application(
                     conn,
                     member_name,
@@ -5006,7 +5196,7 @@ def submit_application():
                     flash('Could not save the application. Please try again.', 'danger')
                     return redirect(url_for('submit_application'))
                 _invalidate_lps_dedupe(current_user.id)
-                # Handle file uploads
+                # Handle file uploads — save to disk on this thread only; INSERT documents in background for fast redirect.
                 if 'documents' in request.files:
                     files = request.files.getlist('documents')
                     for file in files:
@@ -5015,6 +5205,12 @@ def submit_application():
                             if not allowed_file(file.filename):
                                 conn.rollback()
                                 conn.close()
+                                for fp_prev, _ in lps_saved_docs:
+                                    try:
+                                        if fp_prev and os.path.isfile(fp_prev):
+                                            os.remove(fp_prev)
+                                    except OSError:
+                                        pass
                                 flash('Invalid file type. Allowed: PNG, JPG, JPEG, GIF, PDF, DOC, DOCX', 'danger')
                                 return redirect(url_for('submit_application'))
 
@@ -5022,9 +5218,7 @@ def submit_application():
                             unique_filename = f"{app_id}_{uuid.uuid4().hex[:8]}_{filename}"
                             filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
                             file.save(filepath)
-                            insert_loan_document_row(
-                                conn, app_id, filepath, filename, current_user.id
-                            )
+                            lps_saved_docs.append((filepath, filename))
 
                 # Assign to CI staff — route match only (no random workload fallback);
                 # only staff who have the resolved route_key in assigned_route receive the app.
@@ -5063,11 +5257,6 @@ def submit_application():
                                    (ci_staff_id,))
                         conn.commit()
                         conn.close()
-                        enqueue_notification(
-                            ci_staff_id,
-                            f'New loan application assigned: {member_name}',
-                            f'/ci/application/{app_id}'
-                        )
                     else:
                         conn.commit()
                         conn.close()
@@ -5110,27 +5299,13 @@ def submit_application():
                     'warning' if needs_ci and not ci_staff_id else 'success',
                 )
 
-                _new_aci = None
-                if needs_ci and ci_staff_id:
-                    try:
-                        _new_aci = int(ci_staff_id)
-                    except (TypeError, ValueError):
-                        pass
-                _rt_payload = {
-                    'id': app_id,
-                    'member_name': member_name,
-                    'status': 'assigned_to_ci' if _new_aci else 'submitted',
-                    'submitted_by': int(current_user.id),
-                    'assigned_ci_staff': _new_aci,
-                    'timestamp': now_ph().isoformat(),
-                }
-                _rt_sb = int(current_user.id)
                 run_background_task(
-                    emit_loan_application_realtime,
-                    'new_application',
-                    _rt_payload,
-                    _rt_sb,
-                    _new_aci,
+                    _background_lps_submit_followup,
+                    app_id,
+                    member_name,
+                    int(current_user.id),
+                    ci_staff_id if (needs_ci and ci_staff_id) else None,
+                    list(lps_saved_docs),
                 )
 
                 return redirect(url_for('loan_dashboard', submitted='1'))
@@ -5141,6 +5316,12 @@ def submit_application():
                 if 'conn' in locals():
                     conn.rollback()
                     conn.close()
+                for fp_prev, _ in locals().get('lps_saved_docs') or []:
+                    try:
+                        if fp_prev and os.path.isfile(fp_prev):
+                            os.remove(fp_prev)
+                    except OSError:
+                        pass
                 flash(f'Error submitting application: {str(e)}', 'danger')
                 return redirect(url_for('submit_application'))
 
@@ -6092,7 +6273,13 @@ def submit_ci_checklist(id):
 
     conn = get_db()
     try:
-        app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
+        app_data = conn.execute(
+            '''
+            SELECT id, assigned_ci_staff, submitted_by, member_name, loan_amount
+            FROM loan_applications WHERE id = ?
+            ''',
+            (id,),
+        ).fetchone()
         if not app_data:
             flash('Application not found', 'danger')
             return redirect(url_for('ci_dashboard'))
@@ -6170,56 +6357,7 @@ def submit_ci_checklist(id):
 
         conn.commit()
 
-        try:
-            la = float(app_data_dict.get('loan_amount') or 0)
-        except (TypeError, ValueError):
-            la = 0.0
-        try:
-            try:
-                _ci_sb = app_data_dict.get('submitted_by')
-                _ci_sb = int(_ci_sb) if _ci_sb is not None else None
-            except (KeyError, TypeError, ValueError):
-                _ci_sb = None
-            _aci_ci = _assigned_ci_staff_from_row(app_data_dict)
-            emit_loan_application_realtime(
-                'application_updated',
-                {
-                    'id': id,
-                    'status': 'ci_completed',
-                    'member_name': app_data_dict.get('member_name') or '',
-                    'loan_amount': la,
-                    'submitted_by': _ci_sb,
-                    'assigned_ci_staff': _aci_ci,
-                    'timestamp': now_ph().isoformat(),
-                },
-                submitted_by=_ci_sb,
-                assigned_ci_staff_id=_aci_ci,
-                conn=conn,
-            )
-        except Exception as sock_err:
-            app.logger.debug('socket emit after ci submit: %s', sock_err)
-
-        try:
-            notifiers = conn.execute('''
-                SELECT id FROM users
-                WHERE is_approved = 1 AND role IN ('loan_officer', 'admin')
-                ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id
-            ''').fetchall() or []
-        except Exception:
-            notifiers = conn.execute('''
-                SELECT id FROM users
-                WHERE role IN ('loan_officer', 'admin')
-                ORDER BY CASE WHEN role = 'loan_officer' THEN 0 ELSE 1 END, id
-            ''').fetchall() or []
-        for row in notifiers:
-            try:
-                enqueue_notification(
-                    int(row['id']),
-                    f'CI interview completed for: {app_data_dict.get("member_name") or "Application"}',
-                    f'/admin/application/{id}'
-                )
-            except Exception:
-                pass
+        run_background_task(_background_ci_completed_side_effects, id)
 
         flash('CI Checklist submitted successfully!', 'success')
         return redirect(url_for('ci_dashboard'))
