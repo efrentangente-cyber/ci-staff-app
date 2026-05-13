@@ -248,7 +248,13 @@ function addLogEntry(name, time) {
     if (items.length > 20) items[items.length-1].remove();
 }
 
-const trackSocket = io({ transports: ['websocket'], upgrade: false });
+const trackSocket = io({
+    path: '/socket.io/',
+    transports: ['polling', 'websocket'],
+    upgrade: true,
+    rememberUpgrade: false,
+    timeout: 20000
+});
 trackSocket.emit('join_tracking', {});
 
 trackSocket.on('ci_location_update', function(data) {

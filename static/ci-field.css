@@ -156,3 +156,97 @@ body.ci-checklist-wizard .main-content {
     font-size: 1rem;
   }
 }
+
+/* ─── CI dashboard (not checklist): denser tablet grid + full-width search on phones ─── */
+@media (min-width: 576px) and (max-width: 1024px) {
+  body.ci-field-user:not(.ci-checklist-wizard) .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  body.ci-field-user:not(.ci-checklist-wizard) .main-content .top-bar {
+    align-items: stretch;
+  }
+
+  body.ci-field-user .top-bar-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  body.ci-field-user .search-container {
+    width: 100%;
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  body.ci-field-user .search-input-wrapper {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body.ci-field-user .search-input-wrapper input {
+    width: 100% !important;
+    max-width: none !important;
+    box-sizing: border-box;
+  }
+
+  body.ci-field-user .content-card-header .d-flex.justify-content-between {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+}
+
+@media (max-width: 575.98px) {
+  body.ci-field-user .btn-sm .btn-text {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  body.ci-field-user:not(.ci-checklist-wizard) .table-scroll-5 {
+    max-height: min(60vh, 440px);
+  }
+}
+
+/* ─── CI review application (LPS docs): fluid layout + no clipped sticky sidebar on phones ─── */
+body.ci-review-application .container-fluid {
+  padding-left: max(0.5rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.5rem, env(safe-area-inset-right, 0px));
+}
+
+@media (max-width: 991.98px) {
+  body.ci-review-application .sticky-top {
+    position: static !important;
+    top: auto !important;
+  }
+
+  body.ci-review-application .ci-lps-doc-thumb {
+    height: auto !important;
+    max-height: min(52vh, 320px);
+    object-fit: contain;
+    background: #f1f5f9;
+  }
+
+  body.ci-review-application .ci-doc-placeholder {
+    min-height: 140px;
+    height: auto !important;
+    max-height: min(40vh, 240px);
+  }
+}
+
+/* ─── Checklist “paper” form: readable gutters on narrow phones ─── */
+@media (max-width: 576px) {
+  body.ci-checklist-wizard .paper-form {
+    padding: 14px 10px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  body.ci-checklist-wizard .form-header h4 {
+    font-size: 1rem;
+  }
+}

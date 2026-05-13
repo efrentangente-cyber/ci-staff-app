@@ -901,32 +901,38 @@
 </style>
 
 <script>
-if (!window.__dcccoSocket) {
-    window.__dcccoSocket = io({
-    transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
-    reconnection: true,
-    reconnectionDelay: 500,  // Faster reconnection for instant messaging
-    reconnectionAttempts: 10,  // More attempts
-    timeout: 10000,
-    upgrade: true,
-    rememberUpgrade: true
-    });
+/** Ensures Socket.IO exists (normally base.html creates it polling-first behind Render/nginx). */
+function __dcccoMsgSocketEnsure() {
+    if (typeof io !== 'function') return null;
+    if (!window.__dcccoSocket) {
+        window.__dcccoSocket = io({
+            path: '/socket.io/',
+            transports: ['polling', 'websocket'],
+            upgrade: true,
+            rememberUpgrade: false,
+            reconnection: true,
+            reconnectionDelay: 800,
+            reconnectionDelayMax: 12000,
+            reconnectionAttempts: 15,
+            timeout: 20000
+        });
+        window.__dcccoSocket.once('connect', function () {
+            try {
+                window.__dcccoSocket.emit('join', { room: '{{ current_user.id }}' });
+            } catch (_) {}
+        });
+        try {
+            document.dispatchEvent(new CustomEvent('dccco:socket-ready'));
+        } catch (_) {}
+    }
+    return window.__dcccoSocket;
 }
-const socket = window.__dcccoSocket;
+
+const socket = __dcccoMsgSocketEnsure() || { on: function () {} };
+
 let currentChatUserId = null;
 let onlineUsers = new Set();
 
-// Connection status logging
-socket.on('connect', function() {
-    console.log('âœ… Messages Socket.IO connected');
-    socket.emit('join', {room: '{{ current_user.id }}'});
-});
-
-socket.on('disconnect', function(reason) {
-    console.log('âŒ Messages Socket.IO disconnected:', reason);
-});
-
-// Listen for online/offline events
 socket.on('user_online', function(data) {
     onlineUsers.add(data.user_id);
     updateOnlineIndicator(data.user_id, true);

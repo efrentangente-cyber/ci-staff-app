@@ -580,10 +580,15 @@
 <script>
 if (!window.__dcccoSocket) {
     window.__dcccoSocket = io({
-    transports: ['websocket', 'polling'],
+    path: '/socket.io/',
+    transports: ['polling', 'websocket'],
+    upgrade: true,
+    rememberUpgrade: false,
     reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionAttempts: 5
+    reconnectionDelay: 800,
+    reconnectionDelayMax: 12000,
+    reconnectionAttempts: 15,
+    timeout: 20000
     });
 }
 const socket = window.__dcccoSocket;

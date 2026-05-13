@@ -1337,12 +1337,12 @@ try:
 except ValueError:
     _COUNT_CACHE_TTL_SECONDS = 120
 _count_cache_lock = eventlet.semaphore.Semaphore()
-# Skip user_login_sessions SELECT on rapid GET navigations (default ~20s throttle). POST/PUT/PATCH/DELETE always validate.
+# Skip user_login_sessions SELECT on rapid GET navigations (default ~45s throttle). POST/PUT/PATCH/DELETE always validate.
 # Set SESSION_ENFORCE_GET_MIN_SEC=0 to check every request (slowest, strictest).
 try:
-    _ENFORCE_GET_MIN_SEC = float((os.getenv('SESSION_ENFORCE_GET_MIN_SEC') or '20').strip() or '20')
+    _ENFORCE_GET_MIN_SEC = float((os.getenv('SESSION_ENFORCE_GET_MIN_SEC') or '45').strip() or '45')
 except ValueError:
-    _ENFORCE_GET_MIN_SEC = 20.0
+    _ENFORCE_GET_MIN_SEC = 45.0
 _ENFORCE_GET_MIN_SEC = max(0.0, _ENFORCE_GET_MIN_SEC)
 _notification_count_cache = {}
 _message_count_cache = {}
@@ -1755,33 +1755,15 @@ def get_psgc_negros_catalogue_rows():
     return _PSGC_CATALOGUE_ROWS_CACHE
 
 
-def _ensure_psgc_municipalities_list():
-    """Unique municipalities only — lazy; avoids building barangay maps for /municipalities search."""
-    global _PSGC_CATALOGUE_MUNICIPALITIES_CACHE
-    if _PSGC_CATALOGUE_MUNICIPALITIES_CACHE is not None:
-        return _PSGC_CATALOGUE_MUNICIPALITIES_CACHE
+def _ensure_psgc_coverage_indexes():
+    """Single pass over catalogue rows: dedupe municipalities + barangay sets per key."""
+    global _PSGC_CATALOGUE_MUNICIPALITIES_CACHE, _PSGC_BARANGAYS_BY_KEY_CACHE
+    if (
+        _PSGC_CATALOGUE_MUNICIPALITIES_CACHE is not None
+        and _PSGC_BARANGAYS_BY_KEY_CACHE is not None
+    ):
+        return
     municipalities: dict[tuple[str, str], dict] = {}
-    for row in get_psgc_negros_catalogue_rows():
-        if not isinstance(row, dict):
-            continue
-        mun = str(row.get('municipality') or '').strip()
-        prov = str(row.get('province') or '').strip()
-        if not mun:
-            continue
-        key = (mun, prov)
-        municipalities[key] = {'municipality': mun, 'province': prov}
-    _PSGC_CATALOGUE_MUNICIPALITIES_CACHE = sorted(
-        municipalities.values(),
-        key=lambda item: (item['municipality'].lower(), item['province'].lower()),
-    )
-    return _PSGC_CATALOGUE_MUNICIPALITIES_CACHE
-
-
-def _ensure_psgc_barangays_by_key():
-    """Barangay names keyed by (municipality, province); lazy; lists sorted only when serving one area."""
-    global _PSGC_BARANGAYS_BY_KEY_CACHE
-    if _PSGC_BARANGAYS_BY_KEY_CACHE is not None:
-        return _PSGC_BARANGAYS_BY_KEY_CACHE
     barangays_by_key: dict[tuple[str, str], set[str]] = {}
     for row in get_psgc_negros_catalogue_rows():
         if not isinstance(row, dict):
@@ -1789,11 +1771,26 @@ def _ensure_psgc_barangays_by_key():
         mun = str(row.get('municipality') or '').strip()
         prov = str(row.get('province') or '').strip()
         brgy = str(row.get('barangay') or '').strip()
-        if not mun or not brgy:
-            continue
-        key = (mun, prov)
-        barangays_by_key.setdefault(key, set()).add(brgy)
+        if mun:
+            municipalities[(mun, prov)] = {'municipality': mun, 'province': prov}
+        if mun and brgy:
+            barangays_by_key.setdefault((mun, prov), set()).add(brgy)
+    _PSGC_CATALOGUE_MUNICIPALITIES_CACHE = sorted(
+        municipalities.values(),
+        key=lambda item: (item['municipality'].lower(), item['province'].lower()),
+    )
     _PSGC_BARANGAYS_BY_KEY_CACHE = barangays_by_key
+
+
+def _ensure_psgc_municipalities_list():
+    """Unique municipalities only — lazy; built together with barangay index in one scan."""
+    _ensure_psgc_coverage_indexes()
+    return _PSGC_CATALOGUE_MUNICIPALITIES_CACHE
+
+
+def _ensure_psgc_barangays_by_key():
+    """Barangay names keyed by (municipality, province); lazy; built in same scan as municipalities."""
+    _ensure_psgc_coverage_indexes()
     return _PSGC_BARANGAYS_BY_KEY_CACHE
 
 
@@ -1830,19 +1827,23 @@ def coverage_find_municipalities_from_catalogue(rows, raw_query):
     segments = _coverage_split_search_segments(raw_query)
     if not segments:
         return []
+    mun_list = _ensure_psgc_municipalities_list()
+    prepared = [
+        (item, (item.get('municipality') or '').lower()) for item in mun_list
+    ]
     seen: set[tuple[str, str]] = set()
     out: list[dict] = []
     for seg in segments:
         q = seg.lower().strip()
         if not q:
             continue
-        for item in _ensure_psgc_municipalities_list():
+        for item, mun_lower in prepared:
             mun = item.get('municipality') or ''
             prov = str(item.get('province') or '')
             key = (mun, prov)
             if key in seen:
                 continue
-            if not _coverage_municipality_matches(mun.lower(), mun, q):
+            if not _coverage_municipality_matches(mun_lower, mun, q):
                 continue
             seen.add(key)
             out.append(item)
@@ -1870,8 +1871,7 @@ def _warm_psgc_coverage_catalogue():
         rows = get_psgc_negros_catalogue_rows()
         if not rows:
             return
-        _ensure_psgc_municipalities_list()
-        _ensure_psgc_barangays_by_key()
+        _ensure_psgc_coverage_indexes()
     except Exception as e:
         try:
             app.logger.warning('warm psgc coverage catalogue: %s', e)

@@ -48,8 +48,8 @@
                         No matching loan records for this name. Enter contact and address manually.
                     </div>
                     <div id="memberHistoryLinkWrap" class="mt-2" style="display:none;">
-                        <a href="#" id="memberHistoryLink" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener"
-                           title="Open full loan history for this member (new tab — keeps this form)">Loan history</a>
+                        <a href="#" id="memberHistoryLink" class="btn btn-sm btn-outline-primary"
+                           title="Open full loan history for this member">Loan history</a>
                     </div>
                 </div>
                 <div class="col-md-4 mb-3">
@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const suggestionsUrl = {{ url_for('api_member_name_suggestions') | tojson }};
     const memberHistoryBase = {{ url_for('loan_member_history') | tojson }};
     const MEMBER_HISTORY_LINK_DEFAULT = 'Loan history';
-    const MEMBER_HISTORY_TITLE_DEFAULT = 'Open full loan history for this member (new tab — keeps this form)';
+    const MEMBER_HISTORY_TITLE_DEFAULT = 'Open full loan history for this member';
     // Prefill debounce: short enough to feel responsive; long enough to avoid a query per keystroke.
     const DEBOUNCE_PREFILL_MS = 180;
     const SUGGEST_DEBOUNCE_MS = 80;
@@ -355,8 +355,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             href += '&next=' + encodeURIComponent(window.location.pathname + window.location.search);
             memberHistoryLink.href = href;
-            memberHistoryLink.target = '_blank';
-            memberHistoryLink.rel = 'noopener';
             const adc = Number(data.awaiting_decision_count || 0);
             const pcc = Number(data.pending_ci_pipeline_count || 0);
             if (adc > 0) {

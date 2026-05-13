@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Review Application - {{ application.member_name }}{% endblock %}
+{% block body_class %}ci-review-application{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ci-doc-fullscreen-zoom.css') }}?v=1">
@@ -7,7 +8,7 @@
 
 {% block content %}
 
-<div class="container-fluid">
+<div class="container-fluid px-2 px-sm-3 px-lg-4">
     <div class="row mb-3">
         <div class="col-12">
             <a href="{{ url_for('ci_dashboard') }}" class="btn btn-secondary py-2 px-3 d-inline-flex align-items-center gap-2" style="min-height: 48px;">
@@ -90,7 +91,7 @@
                         {% set doc_display_name = doc.file_name or doc_filename or 'document' %}
                         {% set _lower_name = (doc.file_name or doc_filename or '')|lower %}
                         {% set _is_img = _lower_name.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.heic', '.heif', '.svg')) %}
-                        <div class="col-md-4 col-sm-6">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <div class="card h-100">
                                 {% if doc.id and _is_img %}
                                 <!-- Image preview (authorized URL uses stored file_path) -->
@@ -105,7 +106,7 @@
                                      loading="lazy">
                                 {% else %}
                                 <!-- PDF / other -->
-                                <div class="card-img-top d-flex align-items-center justify-content-center bg-light" style="height: 200px;">
+                                <div class="card-img-top ci-doc-placeholder d-flex align-items-center justify-content-center bg-light" style="height: 200px;">
                                     <a href="{{ url_for('view_loan_document', doc_id=doc.id) if doc.id else '#' }}" target="_blank" rel="noopener" class="text-decoration-none text-center {% if not doc.id %}disabled text-muted{% endif %}">
                                         <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 4rem;"></i>
                                         <div class="small text-primary mt-1">Open / preview</div>
