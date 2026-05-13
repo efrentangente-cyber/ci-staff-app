@@ -7281,21 +7281,19 @@ def ci_tracking():
     
     conn = get_db()
     
-    # Get all CI staff with their latest location
+    # Get all CI staff with their latest location (one row per CI; latest location_tracking by time)
     ci_staff = conn.execute('''
-        SELECT 
+        SELECT
             u.id, u.name, u.email,
             lt.latitude, lt.longitude, lt.activity, lt.tracked_at,
-            (SELECT COUNT(*) FROM loan_applications WHERE assigned_ci_staff = u.id AND status = 'assigned_to_ci') as active_cases
+            (SELECT COUNT(*) FROM loan_applications WHERE assigned_ci_staff = u.id AND status = 'assigned_to_ci') AS active_cases
         FROM users u
-        LEFT JOIN location_tracking lt ON u.id = lt.user_id
+        LEFT JOIN location_tracking lt ON lt.user_id = u.id
+          AND lt.id = (
+              SELECT lt2.id FROM location_tracking lt2
+              WHERE lt2.user_id = u.id ORDER BY lt2.tracked_at DESC LIMIT 1
+          )
         WHERE u.role = 'ci_staff'
-        AND (lt.id IS NULL OR lt.id = (
-            SELECT id FROM location_tracking 
-            WHERE user_id = u.id 
-            ORDER BY tracked_at DESC 
-            LIMIT 1
-        ))
         ORDER BY u.name
     ''').fetchall()
     
@@ -7307,33 +7305,38 @@ def ci_tracking():
 @app.route('/api/update_location', methods=['POST'])
 @login_required
 def update_location():
-    data = request.json
+    if getattr(current_user, 'role', None) != 'ci_staff':
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    data = request.get_json(silent=True) or {}
     latitude = data.get('latitude')
     longitude = data.get('longitude')
-    activity = data.get('activity', 'Active')
-    
-    if not latitude or not longitude:
-        return jsonify({'success': False, 'error': 'Missing coordinates'})
-    
+    activity = (data.get('activity') or 'Active')[:120]
+
+    try:
+        lat_f = float(latitude)
+        lng_f = float(longitude)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid coordinates'}), 400
+    if not (-90.0 <= lat_f <= 90.0 and -180.0 <= lng_f <= 180.0):
+        return jsonify({'success': False, 'error': 'Out of range'}), 400
+
     conn = get_db()
     conn.execute('''
         INSERT INTO location_tracking (user_id, latitude, longitude, activity)
         VALUES (?, ?, ?, ?)
-    ''', (current_user.id, latitude, longitude, activity))
+    ''', (current_user.id, lat_f, lng_f, activity))
     conn.commit()
     conn.close()
-    
-    # Emit realtime location update to admin tracking room
-    from datetime import datetime
+
     socketio.emit('ci_location_update', {
         'user_id': current_user.id,
         'name': current_user.name,
-        'latitude': latitude,
-        'longitude': longitude,
+        'latitude': lat_f,
+        'longitude': lng_f,
         'activity': activity,
-        'tracked_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        'tracked_at': now_ph().strftime('%Y-%m-%d %H:%M:%S'),
     }, room='admin_tracking')
-    
+
     return jsonify({'success': True})
 
 @app.route('/api/online_users')

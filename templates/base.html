@@ -240,6 +240,10 @@
     {% if request.endpoint == 'manage_users' %}
     <script src="{{ url_for('static', filename='route-assign-dropdown.js') }}?v=8" defer></script>
     {% endif %}
+
+    {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
+    <script defer src="{{ url_for('static', filename='js/ci-live-location-dashboard.js') }}?v=1"></script>
+    {% endif %}
     
     {% block scripts %}{% endblock %}
 </body>

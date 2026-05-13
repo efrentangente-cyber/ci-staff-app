@@ -46,6 +46,21 @@ function captureLocation() {
                 latField.value = lastKnownLocation.latitude;
                 lngField.value = lastKnownLocation.longitude;
             }
+
+            // Live CI tracking map (/ci-tracking): persist row + realtime emit
+            fetch('/api/update_location', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    latitude: lastKnownLocation.latitude,
+                    longitude: lastKnownLocation.longitude,
+                    activity: 'Interview / checklist',
+                }),
+            }).catch(function () {});
             
             // Update status display
             const timestamp = new Date().toLocaleTimeString();

@@ -248,24 +248,34 @@ function addLogEntry(name, time) {
     if (items.length > 20) items[items.length-1].remove();
 }
 
-const trackSocket = io({
-    path: '/socket.io/',
-    transports: ['polling', 'websocket'],
-    upgrade: true,
-    rememberUpgrade: false,
-    timeout: 20000
-});
-trackSocket.emit('join_tracking', {});
-
-trackSocket.on('ci_location_update', function(data) {
+var trackSocket = window.__dcccoSocket;
+if (!trackSocket || typeof trackSocket.emit !== 'function') {
+    trackSocket = typeof io === 'function' ? io({
+        path: '/socket.io/',
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        rememberUpgrade: false,
+        timeout: 20000
+    }) : null;
+}
+if (trackSocket) {
+    trackSocket.emit('join_tracking', {});
+    trackSocket.off('ci_location_update');
+    trackSocket.on('ci_location_update', function(data) {
     const id = data.user_id;
     const lat = parseFloat(data.latitude);
     const lng = parseFloat(data.longitude);
     const name = data.name;
     const activity = data.activity || 'Active';
     const cases = staffData[id] ? staffData[id].cases : 0;
-    const ts = (data.tracked_at + 'Z').replace(' ', 'T');
-    const time = new Date(ts).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12:true });
+    var time = '';
+    if (data.tracked_at) {
+        try {
+            time = new Date(String(data.tracked_at).replace(' ', 'T')).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', hour12:true });
+        } catch (_e) {
+            time = String(data.tracked_at);
+        }
+    }
 
     addOrUpdateMarker(id, lat, lng, name, cases, activity, time, true);
 
@@ -283,7 +293,8 @@ trackSocket.on('ci_location_update', function(data) {
 
     addLogEntry(name, time);
     if (staffData[id]) { staffData[id].lat=lat; staffData[id].lng=lng; staffData[id].activity=activity; staffData[id].trackedAt=time; }
-});
+    });
+}
 
 if (!USE_GOOGLE) {
     document.addEventListener('DOMContentLoaded', initLeafletMap);

@@ -22,6 +22,9 @@
             if (p === '/loan/submit') {
                 return true;
             }
+            if (p === '/ci-tracking') {
+                return true;
+            }
             if (p.indexOf('/ci/checklist/wizard/') === 0) {
                 return true;
             }
