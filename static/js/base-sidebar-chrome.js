@@ -40,6 +40,11 @@
     }
 
     function injectPrefetch(hrefCanonical) {
+        // Authenticated shell uses Turbo Drive; `<link rel="prefetch">` still triggers a full-document
+        // fetch and stacks with hover traffic — painful on Gunicorn/eventlet + small DB pools.
+        if (typeof Turbo !== 'undefined') {
+            return;
+        }
         if (__dcccoChromePrefetch[hrefCanonical]) {
             return;
         }

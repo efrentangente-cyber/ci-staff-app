@@ -38,7 +38,9 @@ def _fetch(url: str) -> bytes:
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parents[1]
     out_js = root / "static" / "generated" / "address_psgc_negros.generated.js"
+    out_staff = root / "ci-staff-app" / "static" / "generated" / "address_psgc_negros.generated.js"
     out_js.parent.mkdir(parents=True, exist_ok=True)
+    out_staff.parent.mkdir(parents=True, exist_ok=True)
 
     print("Fetching Adm3…")
     adm3_raw = _fetch(ADM3_URL).decode("utf-8", errors="replace")
@@ -98,8 +100,11 @@ def main() -> int:
     ).strip()
 
     payload = prose + dumped + ";"
-    out_js.write_text(payload + "\n", encoding="utf-8")
+    written = payload + "\n"
+    out_js.write_text(written, encoding="utf-8")
+    out_staff.write_text(written, encoding="utf-8")
     print(f"wrote {len(flat)} barangays -> {out_js.relative_to(root)}")
+    print(f"wrote duplicate -> {out_staff.relative_to(root)}")
     print(f"non-Bgy geography rows skipped: {geo_skip}")
     return 0
 

@@ -21,7 +21,7 @@ from flask_socketio import SocketIO, emit, join_room, disconnect
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from werkzeug.security import generate_password_hash, check_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from database import get_db, get_database_type, is_postgresql  # Use database abstraction layer
 from io import BytesIO
@@ -45,6 +45,8 @@ from dotenv import load_dotenv
 import resend
 import requests  # For SMS API
 from pathlib import Path
+
+from sql_literals import SQL_CI_CHECKLIST_WIZARD_BY_ID, SQL_NOTIFICATIONS_INBOX
 
 # Load environment variables
 load_dotenv()
@@ -3958,14 +3960,13 @@ def _user_can_access_application(user_id, role, app_id):
     """Role-aware authorization for a single loan application record."""
     if role in ['admin', 'loan_officer']:
         return True
+    # Never close get_db(): it is request-scoped; closing mid-request frees g._db_conn
+    # and forces extra pool checkouts plus subtle bugs in the same Flask request.
     conn = get_db()
-    try:
-        row = conn.execute(
-            'SELECT submitted_by, assigned_ci_staff FROM loan_applications WHERE id=?',
-            (app_id,),
-        ).fetchone()
-    finally:
-        conn.close()
+    row = conn.execute(
+        'SELECT submitted_by, assigned_ci_staff FROM loan_applications WHERE id=?',
+        (app_id,),
+    ).fetchone()
     if not row:
         return False
     if role == 'loan_staff':
@@ -5578,8 +5579,10 @@ def ci_checklist_wizard(id):
         return redirect(url_for('index'))
     
     conn = get_db()
-    app_data = conn.execute('SELECT * FROM loan_applications WHERE id=?', (id,)).fetchone()
-    
+    # Narrow columns: SELECT * pulled admin notes, officer notes, and other wide TEXT
+    # columns that the wizard never renders — major latency on PostgreSQL + larger rows.
+    app_data = conn.execute(SQL_CI_CHECKLIST_WIZARD_BY_ID, (id,)).fetchone()
+
     if not app_data:
         flash('Application not found', 'danger')
         conn.close()
@@ -7017,12 +7020,7 @@ def chat_with_user(user_id):
 def notifications():
     conn = get_db()
     try:
-        rows = conn.execute('''
-            SELECT * FROM notifications
-            WHERE user_id=?
-            ORDER BY created_at DESC
-            LIMIT 50
-        ''', (current_user.id,)).fetchall()
+        rows = conn.execute(SQL_NOTIFICATIONS_INBOX, (current_user.id,)).fetchall()
 
         notifs = []
         for r in rows:

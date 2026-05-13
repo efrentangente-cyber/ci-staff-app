@@ -8,6 +8,7 @@
     <meta name="login-url" content="{{ url_for('login') }}">
     {% endif %}
     <link rel="icon" type="image/png" href="/static/favicon.png?v=3">
+    <link rel="apple-touch-icon" href="/static/favicon.png?v=3">
     
     <!-- CRITICAL: Load dark mode BEFORE any rendering to prevent flash -->
     <script src="{{ url_for('static', filename='js/base-dark-mode-head.js') }}?v=1-ext"></script>
@@ -18,8 +19,6 @@
         <img src="https://ui-avatars.com/api/?name={{ user_name }}&background=random&color=fff&size={{size}}" alt="{{ user_name }}" style="width:{{size}}px; height:{{size}}px; border-radius:50%;">
     {% endif %}
 {% endmacro %}
-    <link rel="shortcut icon" type="image/png" href="/static/favicon.png?v=3">
-    <link rel="apple-touch-icon" href="/static/favicon.png?v=3">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -46,7 +45,7 @@
     {% if current_user.is_authenticated %}
     {# Turbo Drive: client-side navigations without full reload (see static/app-shell-navigation.js). #}
     <script defer src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-umd.js" crossorigin="anonymous"></script>
-    <script defer src="{{ url_for('static', filename='app-shell-navigation.js') }}?v=1"></script>
+    <script defer src="{{ url_for('static', filename='app-shell-navigation.js') }}?v=2-prefetch-off"></script>
     {% endif %}
     {% block styles %}{% endblock %}
     {% block extra_head %}{% endblock %}
@@ -241,7 +240,7 @@
     {% endif %}
     
     <!-- Sidebar Navigation — active scroll + prefetch chrome links (intent on pointerdown, hover warmup idle). -->
-    <script defer src="{{ url_for('static', filename='js/base-sidebar-chrome.js') }}?v=1-ext"></script>
+    <script defer src="{{ url_for('static', filename='js/base-sidebar-chrome.js') }}?v=2-turbo-no-extra-prefetch"></script>
     
     <!-- CI staff: real offline stack (ci-pwa.min.js is a placeholder — keep these scripts for IndexedDB + sync) -->
     {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}

@@ -99,7 +99,7 @@ ngrok.exe
 *.psd
 *.ai
 
-# Android / Gradle (MyCi shells under repo — never commit build caches)
+# Android / Gradle build caches — never commit
 .gradle/
 **/app/build/
 **/app/release/

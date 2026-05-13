@@ -46,6 +46,15 @@
         }
     });
 
+    /*
+     * Turbo 8 link prefetch (hover) issues a second full navigation request.
+     * With Gunicorn+eventlet and a small pool, that doubles DB/HTML work and makes
+     * real clicks feel sluggish. Drive remains SPA-like; only hover prefetch is off.
+     */
+    document.addEventListener('turbo:before-prefetch', function (event) {
+        event.preventDefault();
+    });
+
     var progressTimer = null;
 
     function showProgressSoon() {
