@@ -9,8 +9,24 @@ import os
 
 from database import get_database_type, get_db
 
-# Cap per file to keep DB size reasonable (PDFs included).
-MAX_DOCUMENT_BLOB_BYTES = 50 * 1024 * 1024
+
+def max_document_blob_bytes() -> int:
+    """
+    Max size to mirror file bytes into documents.file_data.
+    Larger files stay on disk only; /view_document and /download still work via file_path.
+
+    DOCUMENT_BLOB_MAX_MB: unset defaults to 2 (typical screenshots exceed this → much faster submits).
+    Set to 50 for old behavior, or 0 to never store blobs.
+    """
+    raw = (os.getenv("DOCUMENT_BLOB_MAX_MB") or "2").strip()
+    if raw.lower() in ("0", "none", "off", "false"):
+        return 0
+    try:
+        mb = float(raw)
+    except ValueError:
+        mb = 2.0
+    mb = max(0.0, min(mb, 50.0))
+    return int(mb * 1024 * 1024)
 
 
 def ensure_documents_blob_columns() -> None:
@@ -59,10 +75,13 @@ def mime_type_for_document(filename: str) -> str:
 def _read_file_bytes_for_blob(abs_path: str) -> bytes | None:
     if not abs_path:
         return None
+    cap = max_document_blob_bytes()
+    if cap <= 0:
+        return None
     try:
         if os.path.isfile(abs_path):
             sz = os.path.getsize(abs_path)
-            if sz > MAX_DOCUMENT_BLOB_BYTES:
+            if sz > cap:
                 return None
             with open(abs_path, "rb") as f:
                 return f.read()

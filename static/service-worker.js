@@ -1,10 +1,7 @@
-// DCCCO CI Staff App - cache pages for offline (must register at /service-worker.js so scope is /)
-const CACHE_NAME = 'dccco-staff-v24';
-const OFFLINE_URL = '/static/offline.html';
+// DCCCO CI Staff App — caches assets/pages for resilient loading; workflows require network.
+const CACHE_NAME = 'dccco-staff-v25';
 
-// Static assets to pre-cache on install (Bootstrap Icons are self-hosted so fonts load with CSS — no CDN font delay).
 const STATIC_ASSETS = [
-  '/static/offline.html',
   '/static/manifest.json',
   '/static/css/base.css',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css',
@@ -22,11 +19,9 @@ const STATIC_ASSETS = [
   '/static/ci-doc-fullscreen-zoom.css',
 ];
 
-// Pages to cache after first successful online visit — prefix match (do not use '/' alone).
 const CACHE_PAGES = [
   '/login',
   '/ci/dashboard',
-  '/ci/offline_saves',
   '/loan/dashboard',
   '/admin/dashboard',
   '/loan/submit',
@@ -42,33 +37,25 @@ const CACHE_PAGES = [
   '/manage_users',
 ];
 
-/** LPS → CI reference photos + downloads (img src / “Download” on review page). */
 function isLoanDocumentMediaPath(pathname) {
   if (pathname.startsWith('/view_document/')) return true;
   return /^\/download\/\d+$/.test(pathname);
 }
 
-/** Top-level HTML navigations: treat like navigate mode (Edge is consistent here). */
 function isDocumentNavigation(request) {
   return request.mode === 'navigate' || request.destination === 'document';
 }
 
-/**
- * When a navigation is not in Cache Storage, serve the first available cached app page
- * so staff can keep working (dashboard, assignments, checklists opened while online).
- */
 const OFFLINE_NAV_FALLBACKS = [
   '/ci/dashboard',
   '/loan/dashboard',
   '/admin/dashboard',
   '/notifications',
   '/messages',
-  '/ci/offline_saves',
   '/change_password',
   '/login',
 ];
 
-// ── Install: pre-cache static assets + request persistent storage ──────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
     Promise.all([
@@ -78,7 +65,6 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// ── Activate: remove old caches + navigation preload (faster HTML when supported) ─
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
@@ -101,15 +87,10 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/**
- * @param {Request} request
- * @param {URL} url
- */
 async function cachedNavigationFallback(request, url) {
   const origin = url.origin;
   const docNav = isDocumentNavigation(request);
 
-  /** @param {Request|string} reqLike */
   const tryMatch = async (reqLike) => {
     let r = await caches.match(reqLike);
     if (r) return r;
@@ -161,16 +142,9 @@ async function cachedNavigationFallback(request, url) {
     }
   }
 
-  if (docNav) {
-    const off = await tryMatch(origin + OFFLINE_URL);
-    if (off) return off;
-  }
   return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
 }
 
-/**
- * Walk cache keys — caches.match(Request) often misses navigate requests after cache.put.
- */
 async function findCachedByExactPath(origin, pathname) {
   try {
     const cache = await caches.open(CACHE_NAME);
@@ -220,31 +194,21 @@ async function putInCacheIfEligible(request, url, response) {
   }
 }
 
-const OFFLINE_HELP_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title><style>body{font-family:system-ui,sans-serif;max-width:36rem;margin:2rem auto;padding:0 1rem;line-height:1.45}</style></head><body><h1>You're offline</h1><p>This page isn’t cached on this device yet.</p><p><strong>To fix:</strong> while online, open the <a href="/ci/dashboard">CI dashboard</a>, then tap <strong>Download</strong> on an application (or wait a few seconds on the dashboard so pages preload). After that, <strong>Start</strong> will work offline.</p></body></html>`;
+const OFFLINE_HELP_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title><style>body{font-family:system-ui,sans-serif;max-width:36rem;margin:2rem auto;padding:0 1rem;line-height:1.45}</style></head><body><h1>You're offline</h1><p>This page isn’t cached on this device yet, or CI actions need an active internet connection.</p><p><strong>Reconnect</strong> then open the app again.</p></body></html>`;
 
-async function offlineShellResponse(origin) {
-  try {
-    const r = await caches.match(new Request(origin + OFFLINE_URL, { credentials: 'include' }), {
-      ignoreSearch: true
-    });
-    if (r && r.ok) return r;
-  } catch {
-    /* ignore */
-  }
+function offlineShellResponse() {
   return new Response(OFFLINE_HELP_HTML, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
   });
 }
 
-// ── Fetch ────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
   if (!url.protocol.startsWith('http')) return;
 
-  /** Hot paths — we never cache these; skipping SW avoids extra async hop + clones. */
   const path = url.pathname;
   if (path.startsWith('/api/') || path.startsWith('/socket.io')) {
     return;
@@ -291,7 +255,6 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         }
 
-        // Fetch failed (typical offline) or bad HTTP: reuse cached shell for CI interview HTML
         if (networkFailed || !networkResponse) {
           if (docNav) {
             const exact = await findCachedByExactPath(url.origin, path);
@@ -319,10 +282,9 @@ self.addEventListener('fetch', (event) => {
 
           const fallback = await cachedNavigationFallback(request, url);
           if (fallback && (!ciShell || fallback.ok)) return fallback;
-          return offlineShellResponse(url.origin);
+          return offlineShellResponse();
         }
 
-        // Online but e.g. 401/404 — pass through (do not silently swap in stale interview page)
         return networkResponse;
       } catch {
         try {
@@ -333,7 +295,7 @@ self.addEventListener('fetch', (event) => {
         } catch {
           /* ignore */
         }
-        return offlineShellResponse(url.origin);
+        return offlineShellResponse();
       }
     })()
   );

@@ -7,18 +7,6 @@ body.ci-field-user {
   -webkit-tap-highlight-color: rgba(30, 58, 95, 0.15);
 }
 
-/* Checklist: status chip below safe area (wizard has its own top content) */
-body.ci-checklist-wizard .offline-indicator {
-  top: max(12px, env(safe-area-inset-top, 12px));
-  right: max(10px, env(safe-area-inset-right, 10px));
-  font-size: 13px;
-  padding: 10px 14px;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
 body.ci-field-user .btn,
 body.ci-field-user button[type="button"],
 body.ci-field-user a.btn {

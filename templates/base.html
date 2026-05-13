@@ -85,7 +85,6 @@
     
     {% if current_user.is_authenticated %}
     <div class="dashboard-container">
-        {% include 'offline_indicator.html' %}
         <!-- Sidebar (Desktop & Landscape) -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
@@ -216,19 +215,15 @@
     <!-- PWA: service worker & install banner -->
     <script defer src="{{ url_for('static', filename='js/base-pwa-install.js') }}?v=1-ext"></script>
 
-    <!-- Offline Mode & Auto-Sync -->
-    <script defer src="{{ url_for('static', filename='js/base-offline-banner.js') }}?v=1-ext"></script>
-    
     <script defer src="{{ url_for('static', filename='js/base-chrome-ui.js') }}?v=1-ext"></script>
     
     <!-- Core security scripts (bundled+minified in production) -->
     {% if config.USE_MINIFIED_ASSETS %}
-    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=19" defer></script>
+    <script src="{{ url_for('static', filename='js/app-core.min.js') }}?v=20" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='csrf-protection.js') }}?v=20260424" defer></script>
     <script src="{{ url_for('static', filename='session-security.js') }}?v=20260512-bfcache-csrf" defer></script>
     <script src="{{ url_for('static', filename='tab-close-logout.js') }}?v=12" defer></script>
-    <script src="{{ url_for('static', filename='offline-request-queue.js') }}?v=1" defer></script>
     {% endif %}
     
     {# Per-page: {% include 'includes/assets_autocomplete.html' %} or assets_datatable.html — see block below #}
@@ -241,12 +236,6 @@
     
     <!-- Sidebar Navigation — active scroll + prefetch chrome links (intent on pointerdown, hover warmup idle). -->
     <script defer src="{{ url_for('static', filename='js/base-sidebar-chrome.js') }}?v=2-turbo-no-extra-prefetch"></script>
-    
-    <!-- CI staff: real offline stack (ci-pwa.min.js is a placeholder — keep these scripts for IndexedDB + sync) -->
-    {% if current_user.is_authenticated and current_user.role == 'ci_staff' %}
-    <script src="{{ url_for('static', filename='indexeddb-manager.js') }}?v=3-idb-version" defer></script>
-    <script src="{{ url_for('static', filename='offline-sync.js') }}?v=4-download-banner-msg" defer></script>
-    {% endif %}
     
     {% if request.endpoint == 'manage_users' %}
     <script src="{{ url_for('static', filename='route-assign-dropdown.js') }}?v=8" defer></script>

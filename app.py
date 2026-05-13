@@ -546,6 +546,55 @@ _CI_ROUTE_GENERIC_ADDRESS_KEYWORDS = frozenset({
 })
 
 
+# Words stripped from coverage route labels when deriving address-match tokens (avoid lone generic hits).
+_LABEL_ROUTE_DERIVED_STOPWORDS = frozenset({
+    'the',
+    'and',
+    'of',
+    'to',
+    'from',
+    'in',
+    'city',
+    'town',
+    'coverage',
+    'corridor',
+    'area',
+    'zone',
+    'branch',
+    'center',
+    'centre',
+    'metro',
+    'municipality',
+    'multipurpose',
+    'purpose',
+    'coop',
+    'cooperative',
+    'dccco',
+})
+
+
+def _derive_address_match_tokens_from_route_label(label: str) -> list[str]:
+    """Place-like tokens from a route display label so auto-assign can match ``member_address``.
+
+    Labels such as ``Bayawan → Kalumboyan`` contribute ``kalumboyan``; region boilerplate is dropped.
+    """
+    if not label:
+        return []
+    s = str(label).lower()
+    for sep in ('\u2192', '->', '|', '/', '\\'):
+        s = s.replace(sep, ',')
+    s = re.sub(r'[\s_]+', ' ', s.strip())
+    raw: list[str] = []
+    for part in re.split(r'[^a-z0-9\-\']+', s):
+        t = part.strip('-').lower()
+        if len(t) < 3:
+            continue
+        if t in _CI_ROUTE_GENERIC_ADDRESS_KEYWORDS or t in _LABEL_ROUTE_DERIVED_STOPWORDS:
+            continue
+        raw.append(t)
+    return sorted(set(raw), key=lambda x: (-len(str(x)), str(x)))
+
+
 def invalidate_ci_route_label_cache() -> None:
     global _ci_route_label_cache, _ci_route_sort_index_cache, _ci_route_address_match_cache
     _ci_route_label_cache = None
@@ -593,22 +642,31 @@ def get_ci_route_address_match_map() -> dict:
     try:
         conn = get_db()
         rows = conn.execute(
-            "SELECT route_key, keywords FROM ci_coverage_routes WHERE is_active = 1"
+            """
+            SELECT route_key, label, keywords
+            FROM ci_coverage_routes
+            WHERE is_active = 1
+            """
         ).fetchall()
         for r in rows or []:
             rk = str(r['route_key'] or '').strip()
             if not rk:
                 continue
             raw = (r['keywords'] or '') or ''
-            if not str(raw).strip():
-                continue
-            kws = []
-            try:
-                j = json.loads(raw)
-                if isinstance(j, list):
-                    kws = [str(x).lower() for x in j if str(x).strip()]
-            except Exception:
-                kws = [x.strip().lower() for x in str(raw).split(',') if x.strip()]
+            kws_json: list[str] = []
+            if str(raw).strip():
+                try:
+                    j = json.loads(raw)
+                    if isinstance(j, list):
+                        kws_json = [str(x).lower() for x in j if str(x).strip()]
+                except Exception:
+                    kws_json = [
+                        x.strip().lower() for x in str(raw).split(',') if x.strip()
+                    ]
+            lab_tokens = _derive_address_match_tokens_from_route_label(str(r['label'] or ''))
+            kws = sorted(
+                set(kws_json) | set(lab_tokens), key=lambda x: (-len(str(x)), str(x))
+            )
             if not kws:
                 continue
             base_fb = _FALLBACK_ADDRESS_KEYWORDS.get(rk)
@@ -944,14 +1002,6 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'webm',
 
 # Initialize CSRF Protection
 csrf = CSRFProtect(app)
-
-# Offline / WebView: idempotent CI interview POST (FormData + client_request_id)
-from offline_interview_complete import init_offline_interview_api, ensure_ci_idempotent_migrations
-from ci_offline_saves import ensure_ci_offline_packages_table, init_ci_offline_saves, get_offline_package_for_wizard
-
-init_offline_interview_api(app, csrf)
-init_ci_offline_saves(app, csrf)
-
 
 def _csrf_safe_redirect_target():
     """
@@ -2638,11 +2688,7 @@ def _build_minified_assets():
     _js_bundles = [
         (
             'js/app-core.min.js',
-            ['csrf-protection.js', 'session-security.js', 'tab-close-logout.js', 'offline-request-queue.js'],
-        ),
-        (
-            'js/ci-pwa.min.js',
-            ['indexeddb-manager.js', 'offline-sync.js'],
+            ['csrf-protection.js', 'session-security.js', 'tab-close-logout.js'],
         ),
     ]
     _js_ok = False
@@ -2819,7 +2865,6 @@ def setup_production_users():
 def _deferred_schema_indexes_seed():
     """PostgreSQL DDL + CREATE INDEX + seeds — must not run during import (Render port scan)."""
     for _step_name, _step_fn in (
-        ('ensure_ci_idempotent_complete', ensure_ci_idempotent_migrations),
         ('ensure_direct_message_columns', ensure_direct_message_columns),
         ('ensure_users_columns', ensure_users_columns),
         ('ensure_notification_aggregate_columns', ensure_notification_aggregate_columns),
@@ -2828,7 +2873,6 @@ def _deferred_schema_indexes_seed():
         ('ensure_system_activity_log_table', ensure_system_activity_log_table),
         ('ensure_user_login_sessions_table', ensure_user_login_sessions_table),
         ('ensure_ci_coverage_routes_table', ensure_ci_coverage_routes_table),
-        ('ensure_ci_offline_packages_table', ensure_ci_offline_packages_table),
         ('ensure_documents_blob_columns', ensure_documents_blob_columns),
         ('ensure_loan_applications_member_uid_column', ensure_loan_applications_member_uid_column),
     ):
@@ -5072,18 +5116,21 @@ def submit_application():
                         _new_aci = int(ci_staff_id)
                     except (TypeError, ValueError):
                         pass
-                emit_loan_application_realtime(
+                _rt_payload = {
+                    'id': app_id,
+                    'member_name': member_name,
+                    'status': 'assigned_to_ci' if _new_aci else 'submitted',
+                    'submitted_by': int(current_user.id),
+                    'assigned_ci_staff': _new_aci,
+                    'timestamp': now_ph().isoformat(),
+                }
+                _rt_sb = int(current_user.id)
+                run_background_task(
+                    emit_loan_application_realtime,
                     'new_application',
-                    {
-                        'id': app_id,
-                        'member_name': member_name,
-                        'status': 'assigned_to_ci' if _new_aci else 'submitted',
-                        'submitted_by': int(current_user.id),
-                        'assigned_ci_staff': _new_aci,
-                        'timestamp': now_ph().isoformat(),
-                    },
-                    submitted_by=int(current_user.id),
-                    assigned_ci_staff_id=_new_aci,
+                    _rt_payload,
+                    _rt_sb,
+                    _new_aci,
                 )
 
                 return redirect(url_for('loan_dashboard', submitted='1'))
@@ -5597,24 +5644,6 @@ def ci_checklist_wizard(id):
 
     unread_count = get_unread_notification_count(current_user.id)
     prefill_data = _build_ci_prefill_data(app_data, current_user.name)
-
-    import_pkg = request.args.get("import_offline_package", type=int)
-    if import_pkg:
-        off = get_offline_package_for_wizard(import_pkg, current_user.id, id)
-        if off:
-            ch = off.get("checklist")
-            if isinstance(ch, str):
-                try:
-                    ch = json.loads(ch)
-                except Exception:
-                    ch = None
-            if isinstance(ch, dict):
-                prefill_data.update(ch)
-        else:
-            flash(
-                "Offline import is missing or not for this application. You can still edit the checklist as usual.",
-                "warning",
-            )
 
     conn.close()
     return render_template(
@@ -8620,108 +8649,6 @@ def ci_application_api(id):
     return jsonify({
         'application': dict(app) if app else None,
         'documents': [dict(doc) for doc in documents],
-    })
-
-# OFFLINE PWA API ENDPOINTS
-@app.route('/api/ci/download_applications', methods=['GET'])
-@login_required
-def api_download_applications():
-    """Get all applications assigned to current CI staff for offline download"""
-    if current_user.role != 'ci_staff':
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    conn = get_db()
-    apps = conn.execute('''
-        SELECT * FROM loan_applications 
-        WHERE assigned_ci_staff = ? AND status = 'assigned_to_ci'
-        ORDER BY submitted_at ASC, id ASC
-    ''', (current_user.id,)).fetchall()
-    conn.close()
-    
-    return jsonify({
-        'success': True,
-        'applications': [dict(app) for app in apps],
-        'count': len(apps)
-    })
-
-@app.route('/api/ci/upload_checklist', methods=['POST'])
-@login_required
-def api_upload_checklist():
-    """Upload completed checklist from offline storage"""
-    if current_user.role != 'ci_staff':
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    try:
-        data = request.get_json()
-        application_id = data.get('application_id')
-        checklist_data = data.get('checklist_data')
-        signature = data.get('signature')
-        latitude = data.get('latitude')
-        longitude = data.get('longitude')
-        
-        if not all([application_id, checklist_data, signature]):
-            return jsonify({'error': 'Missing required fields'}), 400
-        
-        conn = get_db()
-        
-        # Update application
-        conn.execute('''
-            UPDATE loan_applications 
-            SET status = 'ci_completed',
-                ci_checklist_data = ?,
-                ci_signature = ?,
-                ci_completed_at = ?,
-                ci_notes = 'Submitted offline'
-            WHERE id = ? AND assigned_ci_staff = ?
-        ''', (checklist_data, signature, now_ph().strftime('%Y-%m-%d %H:%M:%S'), 
-              application_id, current_user.id))
-        
-        # Track location if provided
-        if latitude and longitude:
-            conn.execute('''
-                INSERT INTO location_tracking (user_id, latitude, longitude, activity, tracked_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (current_user.id, latitude, longitude, 'CI Checklist Submitted', 
-                  now_ph().strftime('%Y-%m-%d %H:%M:%S')))
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Checklist uploaded successfully'
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/ci/sync_status', methods=['GET'])
-@login_required
-def api_sync_status():
-    """Get sync status for offline PWA"""
-    if current_user.role != 'ci_staff':
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    conn = get_db()
-    
-    # Count pending applications
-    pending = conn.execute('''
-        SELECT COUNT(*) as count FROM loan_applications 
-        WHERE assigned_ci_staff = ? AND status = 'assigned_to_ci'
-    ''', (current_user.id,)).fetchone()
-    
-    # Count completed applications
-    completed = conn.execute('''
-        SELECT COUNT(*) as count FROM loan_applications 
-        WHERE assigned_ci_staff = ? AND status = 'ci_completed'
-    ''', (current_user.id,)).fetchone()
-    
-    conn.close()
-    
-    return jsonify({
-        'success': True,
-        'pending_count': pending['count'] if pending else 0,
-        'completed_count': completed['count'] if completed else 0,
-        'is_online': True
     })
 
 # --- Signup: hand-sign captcha (session-bound) + honeypot + min submit time ---------

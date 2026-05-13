@@ -59,8 +59,8 @@ function showCiChecklistSubmitOverlay(fileCount) {
 
     const subtitle =
         fileCount > 0
-            ? 'Uploading ' + fileCount + ' file' + (fileCount > 1 ? 's' : '') + '...'
-            : 'Saving checklist and processing your submission...';
+            ? fileCount + ' attachment' + (fileCount > 1 ? 's' : '') + ' — finishing on server (large photos may take longer).'
+            : 'Saving checklist on server…';
 
     const overlay = document.createElement('div');
     overlay.id = 'ci-submit-overlay';
@@ -69,16 +69,16 @@ function showCiChecklistSubmitOverlay(fileCount) {
     overlay.style.cssText =
         'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
     overlay.innerHTML =
-        '<div style="background:white;padding:30px;border-radius:12px;text-align:center;max-width:400px;">' +
+        '<div style="background:white;padding:30px;border-radius:12px;text-align:center;max-width:420px;">' +
         '<div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;" role="status"></div>' +
-        '<h5 class="mb-2">Submitting checklist</h5>' +
-        '<p class="text-muted mb-3">' +
+        '<h5 class="mb-2">Saving checklist</h5>' +
+        '<p class="text-muted mb-3 small">' +
         subtitle +
         '</p>' +
-        '<div class="progress" style="height:25px;">' +
-        '<div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:100%">Processing...</div>' +
+        '<div class="progress" style="height:8px;">' +
+        '<div class="progress-bar bg-primary" role="progressbar" style="width:100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>' +
         '</div>' +
-        '<small class="text-muted d-block mt-2">Please wait, do not close this page</small>' +
+        '<small class="text-muted d-block mt-3">Keep this tab open until the next page loads.</small>' +
         '</div>';
     document.body.appendChild(overlay);
 }
@@ -429,32 +429,9 @@ function submitChecklist() {
 
     if (!navigator.onLine) {
         saveCurrentPageData();
-        let excelData = null;
-        if (window.excelSheet) excelData = window.excelSheet.exportData();
-        checklistData = buildChecklistPayloadFromForm();
-        if (excelData) checklistData.excel_cashflow = excelData;
-        document.getElementById('checklist_data').value = JSON.stringify(checklistData);
-
-        const signature = signatureInput ? signatureInput.value : '';
-        const latitude = document.getElementById('ci_latitude').value;
-        const longitude = document.getElementById('ci_longitude').value;
-        const applicationId = parseInt(window.location.pathname.split('/').pop(), 10);
-
-        if (typeof syncManager !== 'undefined' && syncManager.saveChecklistOffline) {
-            syncManager
-                .saveChecklistOffline(applicationId, checklistData, signature, latitude, longitude)
-                .then(() => {
-                    alert(
-                        'Saved as pending upload. Your interview will be sent to the database automatically when you are online again.',
-                    );
-                    window.location.href = '/ci/dashboard';
-                })
-                .catch((err) => {
-                    alert('Failed to save offline: ' + (err && err.message ? err.message : err));
-                });
-        } else {
-            alert('You appear offline. Stay on this page until your connection returns, then submit again.');
-        }
+        alert(
+            'You need an internet connection to submit the checklist. Stay on this page and try again when you are back online.',
+        );
         return;
     }
 

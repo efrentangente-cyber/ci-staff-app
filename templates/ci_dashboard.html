@@ -13,9 +13,6 @@
         <button type="button" class="btn btn-outline-secondary" id="darkModeToggle" title="Toggle Dark Mode" aria-label="Toggle light and dark theme">
             <i class="bi bi-moon-fill" id="darkModeIcon" aria-hidden="true"></i>
         </button>
-        <button type="button" class="btn btn-outline-primary" onclick="syncManager.downloadAllPending()" title="Download pending work for offline use" aria-label="Download all pending for offline">
-            <i class="bi bi-cloud-download" aria-hidden="true"></i>
-        </button>
         <a href="{{ url_for('notifications') }}" class="btn btn-outline-secondary notification-badge" style="position: relative;" aria-label="Notifications">
             <i class="bi bi-bell" aria-hidden="true"></i>
             <span class="badge bg-danger" id="notif-count-topbar" style="position: absolute; top: -5px; right: -5px; font-size: 10px; padding: 2px 5px; {% if not unread_count or unread_count == 0 %}display:none;{% endif %}">{{ unread_count if unread_count else '' }}</span>
@@ -140,9 +137,6 @@
                                         <i class="bi bi-eye"></i>
                                         <span class="btn-text">Start</span>
                                     </a>
-                                    <button class="btn btn-sm btn-primary" onclick="syncManager.downloadApplication({{ app.id }})" title="Download for offline">
-                                        <i class="bi bi-download"></i>
-                                    </button>
                                 </div>
                                 {% endfor %}
                             </div>
@@ -367,6 +361,5 @@ function clearSearch(tableType) {
 {% block scripts %}
 <script>window.__MEMBER_HISTORY_URL = {{ url_for('loan_member_history') | tojson }};</script>
 <script>window.__CI_USER_ID = {{ current_user.id | tojson }};</script>
-<script src="{{ url_for('static', filename='ci-dashboard-offline.js') }}?v=17-hydrate-parity" defer></script>
-<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=19-fetch-dedup" defer></script>
+<script src="{{ url_for('static', filename='realtime-dashboard.js') }}?v=20-online-only-ci" defer></script>
 {% endblock %}

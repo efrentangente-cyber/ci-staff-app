@@ -277,7 +277,6 @@ function showToast(title, message, type) {
     }, 5000);
 }
 
-/** Used by CI offline dashboard for download start / success toasts (ci-dashboard-offline.js). */
 window.__dcccoShowToast = showToast;
 
 var __dcccoDashboardFetchLocks = {};
@@ -611,11 +610,6 @@ function renderCiDashboardTables(applications) {
                     '<i class="bi bi-eye"></i>' +
                     '<span class="btn-text">Start</span>' +
                     '</a>' +
-                    '<button class="btn btn-sm btn-primary" onclick="syncManager.downloadApplication(' +
-                    app.id +
-                    ')" title="Download for offline">' +
-                    '<i class="bi bi-download"></i>' +
-                    '</button>' +
                     '</div>'
                 );
             })
@@ -704,22 +698,6 @@ function renderCiDashboardTables(applications) {
         if (typeof searchApplications === 'function') {
             searchApplications('pending');
             searchApplications('completed');
-        }
-    } catch (e) { /* ignore */ }
-
-    try {
-        var runPrefetch = function () {
-            if (typeof window.prefetchCiInterviewShellsForApps === 'function') {
-                window.prefetchCiInterviewShellsForApps(applications);
-            }
-            if (typeof window.prefetchLpsDocumentBytesForApplications === 'function') {
-                window.prefetchLpsDocumentBytesForApplications(applications);
-            }
-        };
-        if (typeof window.scheduleCiIdlePrefetch === 'function') {
-            window.scheduleCiIdlePrefetch(runPrefetch);
-        } else {
-            runPrefetch();
         }
     } catch (e) { /* ignore */ }
 }
